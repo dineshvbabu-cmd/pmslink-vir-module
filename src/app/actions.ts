@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { summarizeProgress } from "@/lib/vir/analytics";
+import { carryForwardOpenItems, findCarryForwardSourceInspection } from "@/lib/vir/carryover";
 import { normalizeVirTemplateImport } from "@/lib/vir/import";
 import { canAccessVessel, isOfficeSession, isVesselSession, requireVirSession, type VirSession } from "@/lib/vir/session";
 import {
@@ -21,13 +22,16 @@ import {
 
 function revalidateVirPaths(inspectionId?: string) {
   revalidatePath("/");
+  revalidatePath("/schedule");
   revalidatePath("/inspections");
   revalidatePath("/inspections/new");
   revalidatePath("/templates");
   revalidatePath("/imports");
+  revalidatePath("/reports/management");
 
   if (inspectionId) {
     revalidatePath(`/inspections/${inspectionId}`);
+    revalidatePath(`/reports/inspection/${inspectionId}`);
   }
 }
 
@@ -69,6 +73,7 @@ export async function createInspectionAction(formData: FormData) {
   const templateIdInput = toStringOrNull(formData.get("templateId"));
   const title = toStringOrNull(formData.get("title"));
   const vesselId = isVesselSession(session) ? session.vesselId : requestedVesselId;
+  const inspectionDate = toDateOrNull(formData.get("inspectionDate")) ?? new Date();
 
   if (!vesselId || !inspectionTypeId || !title) {
     throw new Error("Vessel, inspection type, and title are required.");
@@ -86,13 +91,15 @@ export async function createInspectionAction(formData: FormData) {
     templateId = latestTemplate?.id ?? null;
   }
 
+  const carryForwardSource = await findCarryForwardSourceInspection(vesselId, inspectionTypeId, inspectionDate);
+
   const inspection = await prisma.virInspection.create({
     data: {
       vesselId,
       inspectionTypeId,
       templateId,
       title,
-      inspectionDate: toDateOrNull(formData.get("inspectionDate")) ?? new Date(),
+      inspectionDate,
       port: toStringOrNull(formData.get("port")),
       country: toStringOrNull(formData.get("country")),
       inspectorName: toStringOrNull(formData.get("inspectorName")) ?? session.actorName,
@@ -100,13 +107,20 @@ export async function createInspectionAction(formData: FormData) {
       externalReference: toStringOrNull(formData.get("externalReference")),
       summary: toStringOrNull(formData.get("summary")),
       status: "DRAFT",
+      previousInspectionId: carryForwardSource?.id ?? null,
       metadata: {
         createdByWorkspace: session.workspace,
         createdByActor: session.actorName,
+        carryForwardCandidateCount: carryForwardSource?.findings.length ?? 0,
       },
     },
     select: { id: true },
   });
+
+  if (carryForwardSource?.findings.length) {
+    await carryForwardOpenItems(carryForwardSource.id, inspection.id);
+    await syncInspectionCounters(inspection.id);
+  }
 
   revalidateVirPaths(inspection.id);
   redirect(`/inspections/${inspection.id}`);

@@ -144,11 +144,14 @@ async function OfficeDashboard() {
           <Link className="btn" href="/inspections/new">
             Launch VIR
           </Link>
+          <Link className="btn-secondary" href="/schedule">
+            Scheduling board
+          </Link>
           <Link className="btn-secondary" href="/imports">
             Open import engine
           </Link>
-          <Link className="btn-secondary" href="/templates">
-            Review templates
+          <Link className="btn-secondary" href="/reports/management">
+            Management pack
           </Link>
         </div>
       </section>
@@ -430,6 +433,9 @@ async function VesselDashboard({ vesselId, vesselName }: { vesselId: string; ves
         <div className="actions-row">
           <Link className="btn" href="/inspections/new">
             Start VIR
+          </Link>
+          <Link className="btn-secondary" href="/schedule">
+            My schedule
           </Link>
           <Link className="btn-secondary" href="/inspections?scope=my-drafts">
             Open my queue

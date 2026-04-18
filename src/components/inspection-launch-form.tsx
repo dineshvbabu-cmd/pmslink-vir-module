@@ -115,6 +115,16 @@ export function InspectionLaunchForm({
       </div>
 
       <div className="field-wide">
+        <div className="list-card" style={{ background: "rgba(15, 156, 106, 0.06)" }}>
+          <strong>Carry-forward control</strong>
+          <div className="small-text" style={{ marginTop: "0.35rem" }}>
+            When a new VIR is created, unresolved findings and pending corrective actions from the most recent matching
+            inspection for the same vessel are carried into this inspection automatically.
+          </div>
+        </div>
+      </div>
+
+      <div className="field-wide">
         <label htmlFor="title">Inspection title</label>
         <input id="title" name="title" placeholder="PSC Self Assessment - Singapore" required />
       </div>

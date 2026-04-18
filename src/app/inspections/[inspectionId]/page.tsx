@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   addCorrectiveActionAction,
@@ -8,6 +9,7 @@ import {
   updateFindingStatusAction,
   updateInspectionStatusAction,
 } from "@/app/actions";
+import { EvidenceSyncPanel } from "@/components/evidence-sync-panel";
 import { SubmitButton } from "@/components/submit-button";
 import { prisma } from "@/lib/prisma";
 import { calculateInspectionScore, summarizeProgress } from "@/lib/vir/analytics";
@@ -36,6 +38,14 @@ export default async function InspectionDetailPage({ params }: { params: Promise
     include: {
       vessel: true,
       inspectionType: true,
+      previousInspection: {
+        select: {
+          id: true,
+          title: true,
+          inspectionDate: true,
+          status: true,
+        },
+      },
       template: {
         include: {
           sections: {
@@ -58,11 +68,25 @@ export default async function InspectionDetailPage({ params }: { params: Promise
         orderBy: [{ severity: "desc" }, { createdAt: "desc" }],
         include: {
           question: { select: { prompt: true, code: true } },
+          carriedFromFinding: {
+            select: {
+              title: true,
+              inspection: {
+                select: {
+                  title: true,
+                  inspectionDate: true,
+                },
+              },
+            },
+          },
           correctiveActions: { orderBy: { createdAt: "desc" } },
         },
       },
       signOffs: {
         orderBy: { signedAt: "desc" },
+      },
+      photos: {
+        orderBy: { createdAt: "desc" },
       },
     },
   });
@@ -87,6 +111,14 @@ export default async function InspectionDetailPage({ params }: { params: Promise
   const saveAnswers = saveInspectionAnswersAction.bind(null, inspection.id);
   const addFinding = addFindingAction.bind(null, inspection.id);
   const addSignOff = addSignOffAction.bind(null, inspection.id);
+  const questionOptions = questions.map((question) => ({
+    id: question.id,
+    label: `${question.code} / ${question.prompt}`,
+  }));
+  const findingOptions = inspection.findings.map((finding) => ({
+    id: finding.id,
+    label: finding.title,
+  }));
 
   return (
     <div className="page-stack">
@@ -112,6 +144,9 @@ export default async function InspectionDetailPage({ params }: { params: Promise
         </div>
 
         <div className="actions-row">
+          <Link className="btn-secondary" href={`/reports/inspection/${inspection.id}`}>
+            Printable pack
+          </Link>
           {isVesselSession(session) ? (
             <form action={updateInspectionStatusAction.bind(null, inspection.id, "SUBMITTED")}>
               <SubmitButton className="btn">Submit to office</SubmitButton>
@@ -161,6 +196,7 @@ export default async function InspectionDetailPage({ params }: { params: Promise
           value={`${inspection.signOffs.filter((item) => item.approved).length}`}
           note="Workflow audit trail"
         />
+        <MetricBox label="Evidence" value={`${inspection.photos.length}`} note="Synced photo records" />
       </section>
 
       <section className="detail-grid">
@@ -357,6 +393,11 @@ export default async function InspectionDetailPage({ params }: { params: Promise
                             Linked to {finding.question.code} / {finding.question.prompt}
                           </div>
                         ) : null}
+                        {finding.carriedFromFinding ? (
+                          <div className="small-text">
+                            Carried from {finding.carriedFromFinding.inspection.title} / {finding.carriedFromFinding.title}
+                          </div>
+                        ) : null}
                       </div>
 
                       <div className="actions-row">
@@ -442,6 +483,21 @@ export default async function InspectionDetailPage({ params }: { params: Promise
               )}
             </div>
           </section>
+
+          <EvidenceSyncPanel
+            canUpload={isVesselSession(session)}
+            existingPhotos={inspection.photos.map((photo) => ({
+              id: photo.id,
+              url: photo.url,
+              caption: photo.caption,
+              fileName: photo.fileName,
+              uploadedBy: photo.uploadedBy,
+              createdAt: photo.createdAt.toISOString(),
+            }))}
+            findingOptions={findingOptions}
+            inspectionId={inspection.id}
+            questionOptions={questionOptions}
+          />
         </div>
 
         <div className="page-stack">
@@ -459,6 +515,14 @@ export default async function InspectionDetailPage({ params }: { params: Promise
               <div className="list-card">
                 <strong>Reference</strong>
                 <div className="small-text">{inspection.externalReference ?? "Not recorded"}</div>
+              </div>
+              <div className="list-card">
+                <strong>Previous VIR</strong>
+                <div className="small-text">
+                  {inspection.previousInspection
+                    ? `${inspection.previousInspection.title} / ${fmt.format(inspection.previousInspection.inspectionDate)}`
+                    : "No prior linked inspection"}
+                </div>
               </div>
               <div className="list-card">
                 <strong>Summary</strong>
