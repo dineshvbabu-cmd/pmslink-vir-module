@@ -1,0 +1,1588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PMSLink · VIR Module Specification v1.0</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,600;0,700;1,300&display=swap');
+
+  :root {
+    --navy: #0a1628;
+    --navy-mid: #0f2040;
+    --navy-light: #1a3060;
+    --teal: #00b4b4;
+    --teal-dim: #007e7e;
+    --amber: #f5a623;
+    --amber-dim: #c4841c;
+    --red: #e84b4b;
+    --green: #2ec97f;
+    --white: #f0f4f8;
+    --grey: #8899aa;
+    --border: rgba(0,180,180,0.15);
+    --card: rgba(15,32,64,0.7);
+    --font-main: 'IBM Plex Sans', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--font-main);
+    background: var(--navy);
+    color: var(--white);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  /* HEADER */
+  header {
+    background: var(--navy-mid);
+    border-bottom: 2px solid var(--teal);
+    padding: 28px 48px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+  }
+  .logo-block { display: flex; align-items: center; gap: 14px; }
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: var(--teal);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; color: var(--navy); font-size: 13px; font-family: var(--font-mono);
+  }
+  .logo-text { font-family: var(--font-mono); font-size: 16px; font-weight: 600; color: var(--teal); letter-spacing: 2px; }
+  .doc-meta { text-align: right; font-size: 11px; color: var(--grey); line-height: 1.5; font-family: var(--font-mono); }
+  .doc-meta strong { color: var(--amber); }
+
+  /* NAV */
+  nav {
+    background: var(--navy-mid);
+    border-bottom: 1px solid var(--border);
+    padding: 0 48px;
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  nav::-webkit-scrollbar { display: none; }
+  nav a {
+    color: var(--grey);
+    text-decoration: none;
+    padding: 12px 18px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+  }
+  nav a:hover { color: var(--teal); border-bottom-color: var(--teal); }
+
+  /* LAYOUT */
+  .container { max-width: 1200px; margin: 0 auto; padding: 48px 48px 120px; }
+
+  /* SECTION */
+  .section { margin-bottom: 72px; }
+  .section-header {
+    display: flex; align-items: center; gap: 16px;
+    margin-bottom: 32px; padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-num {
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--teal); background: rgba(0,180,180,0.08);
+    padding: 4px 10px; border: 1px solid var(--teal-dim);
+    border-radius: 3px; white-space: nowrap;
+  }
+  .section-title { font-size: 22px; font-weight: 700; color: var(--white); }
+  .section-sub { font-size: 13px; color: var(--grey); margin-top: 2px; }
+
+  /* CARDS */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px 28px;
+    margin-bottom: 16px;
+    backdrop-filter: blur(4px);
+  }
+  .card-title {
+    font-size: 13px; font-weight: 700;
+    color: var(--teal); font-family: var(--font-mono);
+    letter-spacing: 0.5px; margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+  .card p { color: #c8d8e8; font-size: 13px; margin-bottom: 8px; }
+  .card p:last-child { margin-bottom: 0; }
+
+  /* GRID */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+
+  /* TAGS */
+  .tag {
+    display: inline-block; font-family: var(--font-mono); font-size: 10px;
+    padding: 2px 8px; border-radius: 3px; margin: 2px;
+    font-weight: 600; letter-spacing: 0.5px;
+  }
+  .tag-teal { background: rgba(0,180,180,0.12); color: var(--teal); border: 1px solid var(--teal-dim); }
+  .tag-amber { background: rgba(245,166,35,0.12); color: var(--amber); border: 1px solid var(--amber-dim); }
+  .tag-red { background: rgba(232,75,75,0.12); color: var(--red); border: 1px solid rgba(232,75,75,0.4); }
+  .tag-green { background: rgba(46,201,127,0.12); color: var(--green); border: 1px solid rgba(46,201,127,0.4); }
+  .tag-grey { background: rgba(136,153,170,0.1); color: var(--grey); border: 1px solid rgba(136,153,170,0.3); }
+
+  /* SPRINT CARD */
+  .sprint {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--teal);
+    border-radius: 8px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+  }
+  .sprint.amber { border-left-color: var(--amber); }
+  .sprint.green { border-left-color: var(--green); }
+  .sprint.red { border-left-color: var(--red); }
+  .sprint.grey { border-left-color: var(--grey); }
+  .sprint-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+  .sprint-title { font-size: 15px; font-weight: 700; color: var(--white); }
+  .sprint-label { font-family: var(--font-mono); font-size: 10px; }
+  .story { display: flex; gap: 10px; margin-bottom: 8px; align-items: flex-start; }
+  .story-id { font-family: var(--font-mono); font-size: 10px; color: var(--teal); white-space: nowrap; padding-top: 2px; min-width: 72px; }
+  .story p { font-size: 13px; color: #c8d8e8; margin: 0; }
+  .story-pts { font-family: var(--font-mono); font-size: 10px; color: var(--grey); white-space: nowrap; padding-top: 2px; }
+
+  /* TABLE */
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
+  th { background: rgba(0,180,180,0.08); color: var(--teal); text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; }
+  td { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.04); color: #c8d8e8; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(0,180,180,0.03); }
+
+  /* CODE BLOCK */
+  .code-block {
+    background: #050d1a;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px 24px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: #7ec8e3;
+    overflow-x: auto;
+    margin: 12px 0;
+    line-height: 1.6;
+  }
+  .code-block .cm { color: #4a7a8a; }
+  .code-block .kw { color: var(--amber); }
+  .code-block .ty { color: #a6e22e; }
+  .code-block .st { color: #e6db74; }
+  .code-block .pr { color: #66d9ef; }
+
+  /* FLOW */
+  .flow { display: flex; gap: 0; align-items: stretch; flex-wrap: wrap; margin: 16px 0; }
+  .flow-step {
+    background: rgba(0,180,180,0.06);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 18px;
+    flex: 1; min-width: 120px;
+    text-align: center; font-size: 12px; color: #c8d8e8;
+    position: relative;
+  }
+  .flow-step strong { display: block; color: var(--teal); font-family: var(--font-mono); font-size: 10px; margin-bottom: 4px; }
+  .flow-arr { display: flex; align-items: center; color: var(--teal); padding: 0 8px; font-size: 18px; }
+
+  /* ALERT */
+  .alert {
+    border-left: 3px solid var(--amber);
+    background: rgba(245,166,35,0.06);
+    padding: 14px 18px;
+    border-radius: 0 6px 6px 0;
+    margin: 12px 0;
+    font-size: 13px;
+    color: #c8d8e8;
+  }
+  .alert.info { border-left-color: var(--teal); background: rgba(0,180,180,0.05); }
+  .alert.danger { border-left-color: var(--red); background: rgba(232,75,75,0.05); }
+  .alert strong { color: var(--amber); }
+  .alert.info strong { color: var(--teal); }
+  .alert.danger strong { color: var(--red); }
+
+  /* HERO */
+  .hero {
+    background: linear-gradient(135deg, var(--navy-mid) 0%, #071224 100%);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 40px 48px;
+    margin-bottom: 48px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute; top: -60px; right: -60px;
+    width: 300px; height: 300px;
+    background: radial-gradient(circle, rgba(0,180,180,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero h1 { font-size: 28px; font-weight: 700; color: var(--white); margin-bottom: 8px; }
+  .hero h1 span { color: var(--teal); }
+  .hero .tagline { color: var(--grey); font-size: 14px; max-width: 600px; margin-bottom: 20px; }
+  .hero-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* STAT BOXES */
+  .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 40px; }
+  .stat-box {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px;
+    text-align: center;
+  }
+  .stat-val { font-family: var(--font-mono); font-size: 24px; font-weight: 600; color: var(--teal); }
+  .stat-lbl { font-size: 11px; color: var(--grey); margin-top: 4px; }
+
+  /* INSPECTION LIST */
+  .insp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .insp-item {
+    background: rgba(15,32,64,0.5);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: #c8d8e8;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .insp-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .dot-vetting { background: #e84b4b; }
+  .dot-psc { background: var(--amber); }
+  .dot-class { background: var(--teal); }
+  .dot-internal { background: var(--green); }
+  .dot-audit { background: #a78bfa; }
+  .dot-survey { background: #fb923c; }
+  .dot-other { background: var(--grey); }
+
+  /* MOBILE FRAME */
+  .mobile-frame {
+    background: #111;
+    border: 2px solid #333;
+    border-radius: 32px;
+    padding: 8px;
+    width: 220px;
+    flex-shrink: 0;
+  }
+  .mobile-screen {
+    background: var(--navy-mid);
+    border-radius: 26px;
+    overflow: hidden;
+    font-size: 10px;
+  }
+  .mobile-top { background: var(--teal); padding: 8px 12px; color: var(--navy); font-weight: 700; font-size: 11px; }
+  .mobile-body { padding: 10px 12px; }
+  .mobile-field { background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; margin-bottom: 6px; color: var(--grey); }
+  .mobile-field label { display: block; color: var(--teal); font-size: 9px; margin-bottom: 2px; font-family: var(--font-mono); }
+  .mobile-btn { background: var(--teal); color: var(--navy); text-align: center; padding: 7px; border-radius: 4px; font-weight: 700; font-size: 10px; margin-top: 8px; }
+  .mobile-photo { background: rgba(0,180,180,0.08); border: 1px dashed var(--teal-dim); border-radius: 4px; padding: 12px; text-align: center; color: var(--grey); font-size: 9px; margin-bottom: 6px; }
+
+  /* SCHEMA */
+  .schema-block {
+    background: #050d1a;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .schema-header { background: rgba(0,180,180,0.08); padding: 10px 16px; font-family: var(--font-mono); font-size: 11px; color: var(--teal); border-bottom: 1px solid var(--border); }
+  .schema-body { padding: 14px 16px; font-family: var(--font-mono); font-size: 11px; color: #7ec8e3; line-height: 1.8; }
+  .schema-field { color: #c8d8e8; }
+  .schema-type { color: var(--amber); }
+  .schema-null { color: var(--grey); }
+  .schema-comment { color: #4a7a8a; }
+
+  /* PDF EXPORT PREVIEW */
+  .pdf-preview {
+    background: white;
+    color: #1a1a2e;
+    border-radius: 6px;
+    padding: 24px 28px;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 11px;
+    max-width: 500px;
+    line-height: 1.5;
+  }
+  .pdf-header { border-bottom: 2px solid #0a1628; padding-bottom: 12px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start; }
+  .pdf-logo { font-weight: 700; color: #0a1628; font-size: 14px; }
+  .pdf-logo span { color: #00b4b4; }
+  .pdf-meta { font-size: 10px; color: #666; text-align: right; }
+  .pdf-section { font-size: 10px; font-weight: 700; color: #0a1628; background: #f0f4f8; padding: 4px 8px; margin: 10px 0 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .pdf-row { display: flex; gap: 8px; margin-bottom: 4px; }
+  .pdf-label { color: #666; min-width: 100px; flex-shrink: 0; }
+  .pdf-val { color: #1a1a2e; font-weight: 500; }
+  .pdf-obs { background: #fff8f0; border-left: 3px solid #f5a623; padding: 8px 10px; margin: 8px 0; border-radius: 0 4px 4px 0; }
+  .pdf-obs-title { font-weight: 700; color: #c4841c; margin-bottom: 4px; }
+  .pdf-badge { display: inline-block; font-size: 9px; background: #e84b4b; color: white; padding: 1px 6px; border-radius: 3px; font-weight: 700; }
+
+  ul.feat { list-style: none; padding: 0; }
+  ul.feat li { padding: 5px 0; color: #c8d8e8; font-size: 13px; display: flex; gap: 8px; align-items: flex-start; }
+  ul.feat li::before { content: '▸'; color: var(--teal); flex-shrink: 0; }
+
+  .divider { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+
+  h3 { font-size: 15px; font-weight: 700; color: var(--white); margin: 20px 0 10px; }
+  h4 { font-size: 13px; font-weight: 600; color: var(--teal); margin: 16px 0 8px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  @media (max-width: 768px) {
+    header { padding: 16px 20px; }
+    nav { padding: 0 20px; }
+    .container { padding: 24px 20px 80px; }
+    .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .insp-grid { grid-template-columns: 1fr 1fr; }
+    .hero { padding: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-block">
+    <div class="logo-icon">PMS</div>
+    <div>
+      <div class="logo-text">PMSLink</div>
+      <div style="font-size:10px; color:var(--grey); font-family:var(--font-mono);">VIR Module · Product Specification</div>
+    </div>
+  </div>
+  <div class="doc-meta">
+    <strong>VIR-SPEC-v1.0</strong><br>
+    Atlantas Ship Management Ltd<br>
+    April 2026 · CONFIDENTIAL
+  </div>
+</header>
+
+<nav>
+  <a href="#overview">Overview</a>
+  <a href="#inspection-types">Inspection Types</a>
+  <a href="#architecture">Architecture</a>
+  <a href="#data-model">Data Model</a>
+  <a href="#questionnaire">Questionnaire Engine</a>
+  <a href="#observations">Observations</a>
+  <a href="#workflow">Workflow</a>
+  <a href="#import-engine">Import Engine</a>
+  <a href="#mobile">Mobile / Offline</a>
+  <a href="#dashboard">Dashboard</a>
+  <a href="#pdf-export">PDF Export</a>
+  <a href="#sprints">Sprint Plan</a>
+  <a href="#demo">Demo Guide</a>
+</nav>
+
+<div class="container">
+
+  <!-- HERO -->
+  <div class="hero" id="overview">
+    <h1>Vessel Inspection Report <span>(VIR)</span> Module</h1>
+    <div class="tagline">A standalone inspection management module for PMSLink covering all external, internal, and vetting inspection types. Built for Angular + .NET Core + OpenAI, with mobile/tablet PWA support and AI-powered PDF import.</div>
+    <div class="hero-badges">
+      <span class="tag tag-teal">Angular 17</span>
+      <span class="tag tag-teal">.NET 8 Core</span>
+      <span class="tag tag-teal">OpenAI GPT-4o</span>
+      <span class="tag tag-amber">PWA · Offline</span>
+      <span class="tag tag-amber">SIRE 2.0</span>
+      <span class="tag tag-amber">PSC / CDI / Rightship</span>
+      <span class="tag tag-green">Dual Sign-Off</span>
+      <span class="tag tag-green">Carryover Defects</span>
+      <span class="tag tag-grey">Demo: VB.NET / ASP.NET</span>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat-box"><div class="stat-val">54</div><div class="stat-lbl">Inspection Types</div></div>
+    <div class="stat-box"><div class="stat-val">8</div><div class="stat-lbl">Sprint Blocks</div></div>
+    <div class="stat-box"><div class="stat-val">3</div><div class="stat-lbl">Sign-Off Tiers</div></div>
+    <div class="stat-box"><div class="stat-val">PWA</div><div class="stat-lbl">Mobile + Tablet</div></div>
+    <div class="stat-box"><div class="stat-val">GPT-4o</div><div class="stat-lbl">PDF Import AI</div></div>
+  </div>
+
+  <!-- SCOPE -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-num">01</div>
+      <div>
+        <div class="section-title">Module Scope & Design Principles</div>
+        <div class="section-sub">What VIR covers, key differentiators vs generic QHSE tools</div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Core Purpose</div>
+        <ul class="feat">
+          <li>Full lifecycle management of all vessel inspections — from scheduling through to close-out</li>
+          <li>Questionnaire-based inspection with conditional logic, risk levels, and mandatory flagging</li>
+          <li>Observation / finding capture with photo evidence (offline capable)</li>
+          <li>PSC Concentrated Inspection Campaign (CIC) auto-detection and highlight</li>
+          <li>Defect carryover between consecutive VIRs until formally closed</li>
+          <li>AI-powered import of third-party PDF reports (Idwal, Anglo-Eastern, RightShip, etc.)</li>
+          <li>Dual sign-off: Vessel → Shore Review → Acknowledgement → Close</li>
+          <li>Gantt-based inspection calendar across fleet</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-title">Design Differentiators vs Generic QHSE</div>
+        <ul class="feat">
+          <li><strong style="color:var(--teal)">JiBe-parity UX</strong> — Section grouping, color-coded findings, photo timeline</li>
+          <li><strong style="color:var(--teal)">CIC Intelligence</strong> — Auto-flag concentrated PSC items in questionnaire view</li>
+          <li><strong style="color:var(--teal)">VIR-to-VIR continuity</strong> — Unresolved findings auto-surface in next inspection</li>
+          <li><strong style="color:var(--teal)">Shore gate</strong> — Vessel cannot close VIR without shore review and feedback logged</li>
+          <li><strong style="color:var(--teal)">Reference images</strong> — Small thumbnail standards; actual evidence uploads are full-size</li>
+          <li><strong style="color:var(--teal)">AI import</strong> — Drop a PDF; OpenAI maps it to PMSLink VIR structure</li>
+          <li><strong style="color:var(--teal)">True offline</strong> — Photos compressed and queued; full sync on reconnect</li>
+        </ul>
+      </div>
+    </div>
+    <div class="alert info" style="margin-top:16px;">
+      <strong>Note:</strong> VIR is a separate module from the existing QHSE checklist module. It replaces ad-hoc PDF/Word-based inspection recording currently done offline. The existing QHSE module retains Safety Meetings, Drills, and Non-Conformance tracking.
+    </div>
+  </div>
+
+  <!-- INSPECTION TYPES -->
+  <div class="section" id="inspection-types">
+    <div class="section-header">
+      <div class="section-num">02</div>
+      <div>
+        <div class="section-title">Inspection Type Master List</div>
+        <div class="section-sub">54 types sourced from JiBe reference + ASM fleet requirements. Colour-coded by category.</div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex; gap:24px; flex-wrap:wrap; font-size:11px; margin-bottom:12px;">
+        <span><span class="insp-dot dot-vetting" style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;"></span>Vetting / Oil Major</span>
+        <span><span class="insp-dot dot-psc" style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;"></span>PSC / Flag State</span>
+        <span><span class="insp-dot dot-class" style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;"></span>Class / Survey</span>
+        <span><span class="insp-dot dot-internal" style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;"></span>Internal / Company</span>
+        <span><span class="insp-dot dot-audit" style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;"></span>Audit / ISO</span>
+        <span><span class="insp-dot dot-survey" style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;"></span>Charter / Commercial</span>
+        <span><span class="insp-dot dot-other" style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;"></span>Other</span>
+      </div>
+    </div>
+    <div class="insp-grid">
+      <div class="insp-item"><span class="insp-dot dot-vetting"></span>SIRE</div>
+      <div class="insp-item"><span class="insp-dot dot-vetting"></span>SIRE 2.0</div>
+      <div class="insp-item"><span class="insp-dot dot-vetting"></span>CDI (Chemical Distributor's Inspection)</div>
+      <div class="insp-item"><span class="insp-dot dot-vetting"></span>Rightship</div>
+      <div class="insp-item"><span class="insp-dot dot-vetting"></span>Rightship Self</div>
+      <div class="insp-item"><span class="insp-dot dot-vetting"></span>Non-SIRE</div>
+      <div class="insp-item"><span class="insp-dot dot-vetting"></span>Pre-Vetting Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-vetting"></span>Pre-Vet (Self)</div>
+      <div class="insp-item"><span class="insp-dot dot-vetting"></span>Master's Vetting Self Assessment</div>
+      <div class="insp-item"><span class="insp-dot dot-vetting"></span>Oil_Major_ID</div>
+      <div class="insp-item"><span class="insp-dot dot-vetting"></span>Idle SIRE</div>
+      <div class="insp-item"><span class="insp-dot dot-vetting"></span>Idle CDI</div>
+      <div class="insp-item"><span class="insp-dot dot-vetting"></span>OVID (Offshore Vessel Inspection DB)</div>
+      <div class="insp-item"><span class="insp-dot dot-vetting"></span>Charterer's Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-psc"></span>Port State Control</div>
+      <div class="insp-item"><span class="insp-dot dot-psc"></span>PSC Self Assessment</div>
+      <div class="insp-item"><span class="insp-dot dot-psc"></span>Flag State Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-psc"></span>Immigration / Customs Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-psc"></span>MARPOL Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-psc"></span>Port Safety Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-psc"></span>Sanitation Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-psc"></span>Security Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-psc"></span>Terminal Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-class"></span>Class Survey</div>
+      <div class="insp-item"><span class="insp-dot dot-class"></span>Dry Docking Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-class"></span>Dry Docking Inspection (External)</div>
+      <div class="insp-item"><span class="insp-dot dot-class"></span>Damage & Repair Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-class"></span>H & M Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-class"></span>P & I Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-class"></span>Off Hire Survey</div>
+      <div class="insp-item"><span class="insp-dot dot-class"></span>On Hire Survey</div>
+      <div class="insp-item"><span class="insp-dot dot-class"></span>Pre Purchase Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-class"></span>Sea Trial</div>
+      <div class="insp-item"><span class="insp-dot dot-class"></span>Gas Trial</div>
+      <div class="insp-item"><span class="insp-dot dot-internal"></span>Owner's Inspection (Internal)</div>
+      <div class="insp-item"><span class="insp-dot dot-internal"></span>QHSE Visit</div>
+      <div class="insp-item"><span class="insp-dot dot-internal"></span>General Office Visit</div>
+      <div class="insp-item"><span class="insp-dot dot-internal"></span>Senior Management Visit</div>
+      <div class="insp-item"><span class="insp-dot dot-internal"></span>Operations Visit</div>
+      <div class="insp-item"><span class="insp-dot dot-internal"></span>Fleet Performance Centre Visit</div>
+      <div class="insp-item"><span class="insp-dot dot-internal"></span>Engineering Audit</div>
+      <div class="insp-item"><span class="insp-dot dot-internal"></span>Engineering Audit (External)</div>
+      <div class="insp-item"><span class="insp-dot dot-internal"></span>Navigation Audit (Internal)</div>
+      <div class="insp-item"><span class="insp-dot dot-internal"></span>Navigation Audit (External)</div>
+      <div class="insp-item"><span class="insp-dot dot-internal"></span>Mooring Audit</div>
+      <div class="insp-item"><span class="insp-dot dot-internal"></span>SMS Setup</div>
+      <div class="insp-item"><span class="insp-dot dot-internal"></span>Rapid Vessel Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-internal"></span>Master's Takeover Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-internal"></span>Chief Engineer's Takeover Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-internal"></span>Master's Navigational Assessment</div>
+      <div class="insp-item"><span class="insp-dot dot-internal"></span>Remote Navigational Assessment</div>
+      <div class="insp-item"><span class="insp-dot dot-audit"></span>ISM / ISPS / MLC / ISO Audit (External)</div>
+      <div class="insp-item"><span class="insp-dot dot-audit"></span>Environmental Audit</div>
+      <div class="insp-item"><span class="insp-dot dot-audit"></span>Environmental Inspection (External)</div>
+      <div class="insp-item"><span class="insp-dot dot-audit"></span>ISO 9001 Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-audit"></span>ISO 14001 Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-audit"></span>ISO 45001 Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-audit"></span>ISO 50001 Inspection</div>
+      <div class="insp-item"><span class="insp-dot dot-audit"></span>ISO 27001 Inspection</div>
+    </div>
+    <div class="alert" style="margin-top:16px;">
+      <strong>PSC CIC Logic:</strong> When inspection type = Port State Control, system checks the IMO CIC table for the current year and auto-flags matching questionnaire items with a <span class="tag tag-amber" style="font-size:10px;">CIC CONCENTRATED</span> badge. Inspector sees these items highlighted at the top of each section.
+    </div>
+  </div>
+
+  <!-- ARCHITECTURE -->
+  <div class="section" id="architecture">
+    <div class="section-header">
+      <div class="section-num">03</div>
+      <div>
+        <div class="section-title">Technical Architecture</div>
+        <div class="section-sub">Angular PWA + .NET 8 API + SQL Server + OpenAI GPT-4o + Syncthing Photo Sync</div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div>
+        <div class="card">
+          <div class="card-title">Frontend Stack</div>
+          <table>
+            <tr><th>Layer</th><th>Technology</th><th>Notes</th></tr>
+            <tr><td>Framework</td><td>Angular 17</td><td>Standalone components, signals</td></tr>
+            <tr><td>PWA</td><td>@angular/service-worker</td><td>Background sync, offline cache</td></tr>
+            <tr><td>Offline DB</td><td>IndexedDB (Dexie.js)</td><td>Draft VIRs, photo queue</td></tr>
+            <tr><td>Photo</td><td>Capacitor Camera API</td><td>EXIF strip, WebP compress</td></tr>
+            <tr><td>Charts</td><td>ECharts / Apache</td><td>Gantt, trend lines, heatmap</td></tr>
+            <tr><td>PDF View</td><td>PDF.js</td><td>In-app import preview</td></tr>
+            <tr><td>Styling</td><td>SCSS + PrimeNG</td><td>Aligned to PMSLink DS</td></tr>
+          </table>
+        </div>
+        <div class="card" style="margin-top:16px;">
+          <div class="card-title">Backend Stack</div>
+          <table>
+            <tr><th>Layer</th><th>Technology</th><th>Notes</th></tr>
+            <tr><td>API</td><td>.NET 8 Web API</td><td>RESTful + minimal API</td></tr>
+            <tr><td>ORM</td><td>Entity Framework Core 8</td><td>Code-first migrations</td></tr>
+            <tr><td>DB</td><td>SQL Server 2019</td><td>Shared PMSLink instance</td></tr>
+            <tr><td>File Store</td><td>Azure Blob / NAS</td><td>Photos, PDF reports</td></tr>
+            <tr><td>AI</td><td>OpenAI GPT-4o API</td><td>PDF import, classification</td></tr>
+            <tr><td>Queue</td><td>Hangfire</td><td>Async AI processing jobs</td></tr>
+            <tr><td>Auth</td><td>JWT + existing PMSLink roles</td><td>Vessel / Shore / TSI roles</td></tr>
+          </table>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <div class="card-title">Offline & Sync Architecture</div>
+          <div class="flow" style="flex-direction:column; gap:8px;">
+            <div class="flow-step" style="text-align:left;">
+              <strong>VESSEL (OFFLINE)</strong>
+              IndexedDB stores: Draft VIR header, questionnaire responses, observations, photo queue (base64 compressed WebP)
+            </div>
+            <div class="flow-arr" style="justify-content:center;">↓ Auto-detect connectivity</div>
+            <div class="flow-step" style="text-align:left;">
+              <strong>SYNC TRIGGER</strong>
+              Service Worker detects online → Background Sync API fires → Queued records POST to API
+            </div>
+            <div class="flow-arr" style="justify-content:center;">↓ Server receives</div>
+            <div class="flow-step" style="text-align:left;">
+              <strong>API LAYER</strong>
+              Idempotent endpoints (ClientId dedup). Photos compressed server-side → Blob. Conflict resolution: last-write-wins for responses, merge for observations.
+            </div>
+            <div class="flow-arr" style="justify-content:center;">↓ Notification</div>
+            <div class="flow-step" style="text-align:left;">
+              <strong>SHORE OFFICE</strong>
+              Real-time SignalR push on sync complete. Shore reviewer notified for dual sign-off gate.
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px;">
+          <div class="card-title">Photo Handling Policy</div>
+          <ul class="feat">
+            <li>Capture: Native camera via Capacitor (mobile) or file input (tablet/desktop)</li>
+            <li>Compression: WebP, max 1200px wide, quality 75% before IndexedDB store</li>
+            <li>Reference images: Max 300px thumbnails stored in DB as blob preview</li>
+            <li>Evidence uploads: Full-size stored in Blob; thumbnail generated server-side</li>
+            <li>Offline queue: Up to 200 photos queued; sync on reconnect in batches of 10</li>
+            <li>EXIF: GPS and device metadata stripped before upload for privacy</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DATA MODEL -->
+  <div class="section" id="data-model">
+    <div class="section-header">
+      <div class="section-num">04</div>
+      <div>
+        <div class="section-title">Core Data Model</div>
+        <div class="section-sub">SQL Server schema — key entities and relationships</div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="schema-block">
+        <div class="schema-header">VIR_Inspection (Header)</div>
+        <div class="schema-body">
+<span class="schema-comment">-- Primary inspection record</span>
+<span class="schema-field">InspectionId</span>      <span class="schema-type">UNIQUEIDENTIFIER</span> PK
+<span class="schema-field">VesselId</span>          <span class="schema-type">INT</span>             FK → Vessels
+<span class="schema-field">InspectionTypeId</span>  <span class="schema-type">INT</span>             FK → InspType
+<span class="schema-field">InspectionDate</span>    <span class="schema-type">DATE</span>
+<span class="schema-field">EndDate</span>           <span class="schema-type">DATE</span>            <span class="schema-null">NULL</span>
+<span class="schema-field">Port</span>              <span class="schema-type">NVARCHAR(100)</span>
+<span class="schema-field">InspectionMode</span>    <span class="schema-type">NVARCHAR(50)</span>    <span class="schema-comment">At Berth/Sailing</span>
+<span class="schema-field">InspectorName</span>     <span class="schema-type">NVARCHAR(150)</span>
+<span class="schema-field">InspectorOrg</span>      <span class="schema-type">NVARCHAR(150)</span>
+<span class="schema-field">StatusId</span>          <span class="schema-type">INT</span>             <span class="schema-comment">Draft/Submitted/Shore Review/Closed</span>
+<span class="schema-field">NCCount</span>           <span class="schema-type">INT</span>             <span class="schema-comment">Non-conformities</span>
+<span class="schema-field">ObsCount</span>          <span class="schema-type">INT</span>             <span class="schema-comment">Observations</span>
+<span class="schema-field">RecCount</span>          <span class="schema-type">INT</span>             <span class="schema-comment">Recommendations</span>
+<span class="schema-field">PosCount</span>          <span class="schema-type">INT</span>             <span class="schema-comment">Positive findings</span>
+<span class="schema-field">CICActive</span>         <span class="schema-type">BIT</span>             <span class="schema-comment">PSC CIC campaign flag</span>
+<span class="schema-field">CICYear</span>           <span class="schema-type">INT</span>             <span class="schema-null">NULL</span>
+<span class="schema-field">PreviousVIRId</span>     <span class="schema-type">UNIQUEIDENTIFIER</span> <span class="schema-null">NULL</span> <span class="schema-comment">For carryover</span>
+<span class="schema-field">ShoreReviewedBy</span>   <span class="schema-type">NVARCHAR(100)</span>   <span class="schema-null">NULL</span>
+<span class="schema-field">ShoreReviewDate</span>   <span class="schema-type">DATETIME</span>        <span class="schema-null">NULL</span>
+<span class="schema-field">ClosedBy</span>          <span class="schema-type">NVARCHAR(100)</span>   <span class="schema-null">NULL</span>
+<span class="schema-field">ClosedDate</span>        <span class="schema-type">DATETIME</span>        <span class="schema-null">NULL</span>
+<span class="schema-field">ImportSourceId</span>    <span class="schema-type">UNIQUEIDENTIFIER</span> <span class="schema-null">NULL</span> <span class="schema-comment">If AI-imported</span>
+<span class="schema-field">CreatedAt</span>         <span class="schema-type">DATETIME</span>
+<span class="schema-field">ModifiedAt</span>        <span class="schema-type">DATETIME</span>
+        </div>
+      </div>
+      <div>
+        <div class="schema-block">
+          <div class="schema-header">VIR_Observation (Finding)</div>
+          <div class="schema-body">
+<span class="schema-field">ObservationId</span>     <span class="schema-type">UNIQUEIDENTIFIER</span> PK
+<span class="schema-field">InspectionId</span>      <span class="schema-type">UNIQUEIDENTIFIER</span> FK
+<span class="schema-field">FindingType</span>       <span class="schema-type">INT</span>             <span class="schema-comment">NC/Obs/Rec/Positive</span>
+<span class="schema-field">Priority</span>          <span class="schema-type">INT</span>             <span class="schema-comment">Critical/High/Med/Low</span>
+<span class="schema-field">Category</span>          <span class="schema-type">NVARCHAR(200)</span>
+<span class="schema-field">Title</span>             <span class="schema-type">NVARCHAR(300)</span>
+<span class="schema-field">Description</span>       <span class="schema-type">NVARCHAR(MAX)</span>
+<span class="schema-field">SuggestedAction</span>   <span class="schema-type">NVARCHAR(MAX)</span>
+<span class="schema-field">DueDate</span>           <span class="schema-type">DATE</span>
+<span class="schema-field">References</span>        <span class="schema-type">NVARCHAR(MAX)</span>   <span class="schema-comment">SIRE/MARPOL refs</span>
+<span class="schema-field">IsCICItem</span>         <span class="schema-type">BIT</span>             <span class="schema-comment">PSC concentrated flag</span>
+<span class="schema-field">IsCarriedOver</span>     <span class="schema-type">BIT</span>
+<span class="schema-field">CarriedFromObsId</span>  <span class="schema-type">UNIQUEIDENTIFIER</span> <span class="schema-null">NULL</span>
+<span class="schema-field">StatusId</span>          <span class="schema-type">INT</span>             <span class="schema-comment">Open/In Progress/Closed</span>
+<span class="schema-field">ClosedDate</span>        <span class="schema-type">DATE</span>            <span class="schema-null">NULL</span>
+<span class="schema-field">ClosureVerifiedBy</span> <span class="schema-type">NVARCHAR(100)</span>   <span class="schema-null">NULL</span>
+          </div>
+        </div>
+        <div class="schema-block" style="margin-top:12px;">
+          <div class="schema-header">VIR_Photo (Evidence)</div>
+          <div class="schema-body">
+<span class="schema-field">PhotoId</span>           <span class="schema-type">UNIQUEIDENTIFIER</span> PK
+<span class="schema-field">ObservationId</span>     <span class="schema-type">UNIQUEIDENTIFIER</span> FK <span class="schema-null">NULL</span>
+<span class="schema-field">QuestionId</span>        <span class="schema-type">UNIQUEIDENTIFIER</span> FK <span class="schema-null">NULL</span>
+<span class="schema-field">IsReference</span>       <span class="schema-type">BIT</span>             <span class="schema-comment">Standard vs evidence</span>
+<span class="schema-field">BlobUrl</span>           <span class="schema-type">NVARCHAR(500)</span>
+<span class="schema-field">ThumbUrl</span>          <span class="schema-type">NVARCHAR(500)</span>
+<span class="schema-field">Caption</span>           <span class="schema-type">NVARCHAR(300)</span>   <span class="schema-null">NULL</span>
+<span class="schema-field">SizeMB</span>            <span class="schema-type">DECIMAL(5,2)</span>
+<span class="schema-field">TakenAt</span>           <span class="schema-type">DATETIME</span>        <span class="schema-null">NULL</span>
+<span class="schema-field">UploadedAt</span>        <span class="schema-type">DATETIME</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-3" style="margin-top:16px;">
+      <div class="schema-block">
+        <div class="schema-header">VIR_CorrectiveAction</div>
+        <div class="schema-body">
+<span class="schema-field">ActionId</span>     <span class="schema-type">UNIQUEIDENTIFIER</span> PK
+<span class="schema-field">ObsId</span>        <span class="schema-type">UNIQUEIDENTIFIER</span> FK
+<span class="schema-field">ActionRef</span>    <span class="schema-type">NVARCHAR(50)</span>   <span class="schema-comment">e.g. VT-V-1483</span>
+<span class="schema-field">Title</span>        <span class="schema-type">NVARCHAR(300)</span>
+<span class="schema-field">Description</span> <span class="schema-type">NVARCHAR(MAX)</span>
+<span class="schema-field">DueDate</span>      <span class="schema-type">DATE</span>
+<span class="schema-field">Status</span>       <span class="schema-type">INT</span>
+<span class="schema-field">ClosedDate</span>   <span class="schema-type">DATE</span>        <span class="schema-null">NULL</span>
+<span class="schema-field">Remarks</span>      <span class="schema-type">NVARCHAR(MAX)</span> <span class="schema-null">NULL</span>
+        </div>
+      </div>
+      <div class="schema-block">
+        <div class="schema-header">VIR_Question (Questionnaire)</div>
+        <div class="schema-body">
+<span class="schema-field">QuestionId</span>    <span class="schema-type">UNIQUEIDENTIFIER</span> PK
+<span class="schema-field">TemplateId</span>    <span class="schema-type">INT</span>
+<span class="schema-field">SectionId</span>     <span class="schema-type">INT</span>
+<span class="schema-field">SeqNo</span>         <span class="schema-type">INT</span>
+<span class="schema-field">QuestionText</span>  <span class="schema-type">NVARCHAR(MAX)</span>
+<span class="schema-field">AnswerType</span>    <span class="schema-type">INT</span>            <span class="schema-comment">Yes/No/NA/Score/Text</span>
+<span class="schema-field">IsMandatory</span>   <span class="schema-type">BIT</span>
+<span class="schema-field">RiskLevel</span>     <span class="schema-type">INT</span>            <span class="schema-comment">High/Med/Low</span>
+<span class="schema-field">InspStandard</span>  <span class="schema-type">NVARCHAR(100)</span>  <span class="schema-comment">SIRE/TMSA/CDI ref</span>
+<span class="schema-field">IsCICItem</span>     <span class="schema-type">BIT</span>
+<span class="schema-field">HasRefImage</span>   <span class="schema-type">BIT</span>
+        </div>
+      </div>
+      <div class="schema-block">
+        <div class="schema-header">VIR_SignOff (Workflow)</div>
+        <div class="schema-body">
+<span class="schema-field">SignOffId</span>     <span class="schema-type">UNIQUEIDENTIFIER</span> PK
+<span class="schema-field">InspectionId</span> <span class="schema-type">UNIQUEIDENTIFIER</span> FK
+<span class="schema-field">Stage</span>         <span class="schema-type">INT</span>            <span class="schema-comment">1=Vessel,2=Shore,3=Close</span>
+<span class="schema-field">SignedBy</span>      <span class="schema-type">NVARCHAR(100)</span>
+<span class="schema-field">SignedAt</span>      <span class="schema-type">DATETIME</span>
+<span class="schema-field">Feedback</span>     <span class="schema-type">NVARCHAR(MAX)</span>  <span class="schema-null">NULL</span>
+<span class="schema-field">IsApproved</span>   <span class="schema-type">BIT</span>
+<span class="schema-field">ReturnReason</span> <span class="schema-type">NVARCHAR(MAX)</span>  <span class="schema-null">NULL</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- QUESTIONNAIRE ENGINE -->
+  <div class="section" id="questionnaire">
+    <div class="section-header">
+      <div class="section-num">05</div>
+      <div>
+        <div class="section-title">Questionnaire Engine</div>
+        <div class="section-sub">Template-driven, configurable per inspection type with answer types, risk levels, CIC highlighting</div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div>
+        <h3>Answer Types Supported</h3>
+        <table>
+          <tr><th>Type</th><th>Renders As</th><th>Notes</th></tr>
+          <tr><td><span class="tag tag-teal">YES_NO_NA</span></td><td>3-button toggle</td><td>Most common; maps to SIRE</td></tr>
+          <tr><td><span class="tag tag-teal">SCORE</span></td><td>1–5 star / numeric</td><td>Rightship, condition rating</td></tr>
+          <tr><td><span class="tag tag-teal">TEXT</span></td><td>Multi-line textarea</td><td>Observations, remarks</td></tr>
+          <tr><td><span class="tag tag-teal">DROPDOWN</span></td><td>Select list</td><td>From configurable option set</td></tr>
+          <tr><td><span class="tag tag-teal">DATE</span></td><td>Date picker</td><td>Certificate dates etc.</td></tr>
+          <tr><td><span class="tag tag-teal">NUMERIC</span></td><td>Number input + unit</td><td>Soundings, pressures</td></tr>
+          <tr><td><span class="tag tag-teal">PHOTO</span></td><td>Camera / upload</td><td>Evidence capture inline</td></tr>
+          <tr><td><span class="tag tag-teal">CHECKLIST</span></td><td>Multi-checkbox</td><td>Activity lists, gear checks</td></tr>
+        </table>
+
+        <h3 style="margin-top:20px;">Risk Levels</h3>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+          <div class="card" style="flex:1; padding:14px; min-width:100px; text-align:center;">
+            <div style="color:var(--red); font-size:20px; font-weight:700; font-family:var(--font-mono);">H</div>
+            <div style="font-size:11px; color:var(--grey);">HIGH</div>
+            <div style="font-size:10px; color:#c8d8e8; margin-top:4px;">Requires immediate action. Blocks sign-off if unanswered.</div>
+          </div>
+          <div class="card" style="flex:1; padding:14px; min-width:100px; text-align:center;">
+            <div style="color:var(--amber); font-size:20px; font-weight:700; font-family:var(--font-mono);">M</div>
+            <div style="font-size:11px; color:var(--grey);">MEDIUM</div>
+            <div style="font-size:10px; color:#c8d8e8; margin-top:4px;">Must be answered. Observation auto-raised if non-compliant.</div>
+          </div>
+          <div class="card" style="flex:1; padding:14px; min-width:100px; text-align:center;">
+            <div style="color:var(--green); font-size:20px; font-weight:700; font-family:var(--font-mono);">L</div>
+            <div style="font-size:11px; color:var(--grey);">LOW</div>
+            <div style="font-size:10px; color:#c8d8e8; margin-top:4px;">Optional; non-compliance logged as recommendation.</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <h3>CIC Auto-Highlight Logic</h3>
+        <div class="code-block">
+<span class="cm">// .NET API — CIC detection on VIR create</span>
+<span class="kw">public async</span> <span class="ty">Task</span>&lt;<span class="ty">VirDto</span>&gt; <span class="pr">CreateInspection</span>(<span class="ty">CreateVirCmd</span> cmd)
+{
+  <span class="kw">var</span> vir = <span class="kw">new</span> <span class="ty">VirInspection</span> { ... };
+
+  <span class="kw">if</span> (cmd.InspectionType == <span class="ty">InspType</span>.PortStateControl)
+  {
+    <span class="kw">var</span> cicYear = DateTime.Now.Year;
+    <span class="kw">var</span> cicItems = <span class="kw">await</span> _cicRepo
+      .<span class="pr">GetActiveItems</span>(cicYear);
+
+    <span class="cm">// Flag questionnaire items matching CIC topics</span>
+    <span class="kw">foreach</span> (<span class="kw">var</span> q <span class="kw">in</span> vir.Questions)
+    {
+      q.IsCICItem = cicItems
+        .<span class="pr">Any</span>(c => c.TopicKeywords
+          .<span class="pr">Any</span>(k => q.Text
+            .<span class="pr">Contains</span>(k, <span class="ty">StringComparison</span>.OrdinalIgnoreCase)));
+    }
+
+    <span class="cm">// Sort CIC items to top within each section</span>
+    vir.Questions = vir.Questions
+      .<span class="pr">OrderByDescending</span>(q => q.IsCICItem)
+      .<span class="pr">ThenBy</span>(q => q.SeqNo)
+      .<span class="pr">ToList</span>();
+  }
+  <span class="kw">return</span> <span class="pr">Map</span>(vir);
+}
+        </div>
+        <div class="alert info" style="margin-top:12px;">
+          <strong>Mandatory vs Non-Mandatory:</strong> Mandatory questions (IsMandatory = true) display a <span class="tag tag-red" style="font-size:10px;">REQUIRED</span> badge. Attempting to submit with unanswered mandatory HIGH-risk questions triggers a blocking modal listing outstanding items.
+        </div>
+        <div class="alert" style="margin-top:8px;">
+          <strong>Inspection Standard Reference:</strong> Each question can display its source reference (e.g., SIRE 2.0 – 10.4.1, CDI Core-6.1.12, TMSA Element 4) as a collapsible info pane. Inspectors tap to see full clause text.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OBSERVATIONS -->
+  <div class="section" id="observations">
+    <div class="section-header">
+      <div class="section-num">06</div>
+      <div>
+        <div class="section-title">Observations, Defects & Carryover Logic</div>
+        <div class="section-sub">Finding lifecycle from raise → corrective action → close → carryover if unresolved</div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div>
+        <h3>Finding Types & Severity</h3>
+        <table>
+          <tr><th>Type</th><th>Colour</th><th>Auto-close rule</th></tr>
+          <tr><td>Non-Conformity (NC)</td><td><span style="color:var(--red)">●</span> Red</td><td>Requires shore sign-off before close</td></tr>
+          <tr><td>Observation</td><td><span style="color:var(--amber)">●</span> Amber</td><td>Vessel submits; shore reviews</td></tr>
+          <tr><td>Recommendation</td><td><span style="color:var(--teal)">●</span> Teal</td><td>Vessel can self-close with remark</td></tr>
+          <tr><td>Positive Comment</td><td><span style="color:var(--green)">●</span> Green</td><td>No action required</td></tr>
+        </table>
+
+        <h3 style="margin-top:20px;">Defect Carryover Rules</h3>
+        <div class="flow" style="flex-direction:column; gap:6px; margin-top:12px;">
+          <div class="flow-step" style="text-align:left; border-left:3px solid var(--amber);">
+            <strong>VIR CLOSE GATE</strong>
+            Before closing, system asks: "Were all observations from previous VIR [ID] closed?" Shows table of open items.
+          </div>
+          <div class="flow-arr" style="justify-content:center;">↓ If any remain open</div>
+          <div class="flow-step" style="text-align:left; border-left:3px solid var(--red);">
+            <strong>CARRYOVER</strong>
+            Open findings auto-copied to new VIR with IsCarriedOver=true and CarriedFromObsId link. Badge shows <span class="tag tag-amber" style="font-size:9px;">CARRIED OVER</span>.
+          </div>
+          <div class="flow-arr" style="justify-content:center;">↓ Inspector updates</div>
+          <div class="flow-step" style="text-align:left; border-left:3px solid var(--green);">
+            <strong>CLOSE CARRIED ITEM</strong>
+            Inspector marks defect closed (requires evidence photo + close remark). Propagates closure back to original observation record.
+          </div>
+        </div>
+      </div>
+      <div>
+        <h3>Corrective Action Workflow</h3>
+        <div class="alert info">
+          <strong>Two-Question Close Rule:</strong> Before a corrective action can be marked complete, the system prompts: (1) "Has the defect been physically rectified?" and (2) "Has the evidence been photographed and uploaded?" Both must be confirmed Yes.
+        </div>
+        <div class="card" style="margin-top:12px;">
+          <div class="card-title">Corrective Action States</div>
+          <table>
+            <tr><th>Status</th><th>Who Can Set</th></tr>
+            <tr><td><span class="tag tag-amber">PENDING</span></td><td>Auto on creation</td></tr>
+            <tr><td><span class="tag tag-teal">IN PROGRESS</span></td><td>Vessel / CE / C/O</td></tr>
+            <tr><td><span class="tag tag-green">COMPLETED</span></td><td>Vessel (after 2-Q check)</td></tr>
+            <tr><td><span class="tag tag-red">OVERDUE</span></td><td>Auto — past due date</td></tr>
+            <tr><td><span class="tag tag-grey">VERIFIED</span></td><td>Shore reviewer only</td></tr>
+          </table>
+        </div>
+        <div class="card" style="margin-top:12px;">
+          <div class="card-title">Reference Image vs Evidence Upload</div>
+          <p>Reference images are set by office on the questionnaire template — small standard thumbnails (max 300px) showing what "good" looks like. These are view-only.</p>
+          <p>Evidence uploads by vessel are full-size (up to 8MB raw, compressed to ~600KB WebP). The viewer shows them at 800px with a lightbox for full-size review.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WORKFLOW -->
+  <div class="section" id="workflow">
+    <div class="section-header">
+      <div class="section-num">07</div>
+      <div>
+        <div class="section-title">Dual Sign-Off Workflow</div>
+        <div class="section-sub">3-stage workflow: Vessel Submit → Shore Review → Final Close. Shore gate is mandatory.</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="flow">
+        <div class="flow-step">
+          <strong>STAGE 1 — VESSEL</strong>
+          Inspector completes all sections. Mandatory items checked. Vessel Master or CE reviews. Signs off digitally. Status → <span class="tag tag-amber">SUBMITTED</span>
+        </div>
+        <div class="flow-arr">→</div>
+        <div class="flow-step">
+          <strong>STAGE 2 — SHORE REVIEW</strong>
+          QHSE/Fleet Mgr notified. Reviews all findings and photos. Adds shore feedback comments per observation. Approves or returns with comments. Status → <span class="tag tag-teal">SHORE REVIEWED</span>
+        </div>
+        <div class="flow-arr">→</div>
+        <div class="flow-step">
+          <strong>STAGE 2b — RETURNED</strong>
+          If shore returns: Vessel sees shore comments highlighted in red per item. Must address and resubmit. Status → <span class="tag tag-red">RETURNED</span>
+        </div>
+        <div class="flow-arr">→</div>
+        <div class="flow-step">
+          <strong>STAGE 3 — CLOSE</strong>
+          After shore approval, VIR can be closed. Vessel acknowledges shore feedback. System checks all CAs have completion date. Status → <span class="tag tag-green">CLOSED</span>
+        </div>
+      </div>
+    </div>
+    <div class="alert danger" style="margin-top:16px;">
+      <strong>Constraint:</strong> System enforces that VIR cannot be set to CLOSED without Stage 2 shore sign-off logged. This is a backend validation — bypassing via API is not possible. Shore sign-off creates a VIR_SignOff record with Stage=2 and IsApproved=true.
+    </div>
+
+    <h3 style="margin-top:24px;">Role-Based Access Matrix</h3>
+    <table>
+      <tr><th>Role</th><th>Create VIR</th><th>Fill Questionnaire</th><th>Raise Obs</th><th>Stage 1 Sign</th><th>Stage 2 Sign</th><th>Close VIR</th><th>View All Fleet</th></tr>
+      <tr><td>Master / CE</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✗</td><td>✓ (after Stage 2)</td><td>Own vessel</td></tr>
+      <tr><td>C/O / 2/E</td><td>✓</td><td>✓</td><td>✓</td><td>✗</td><td>✗</td><td>✗</td><td>Own vessel</td></tr>
+      <tr><td>Inspector (External)</td><td>✓</td><td>✓</td><td>✓</td><td>✗</td><td>✗</td><td>✗</td><td>Assigned vessels</td></tr>
+      <tr><td>QHSE (Shore)</td><td>✓</td><td>Read</td><td>✓</td><td>✗</td><td>✓</td><td>✗</td><td>Full fleet</td></tr>
+      <tr><td>Fleet Manager</td><td>Read</td><td>Read</td><td>Read</td><td>✗</td><td>✓</td><td>✗</td><td>Assigned fleet</td></tr>
+      <tr><td>TSI / DPA</td><td>Read</td><td>Read</td><td>Read</td><td>✗</td><td>✗</td><td>✗</td><td>Full fleet</td></tr>
+    </table>
+  </div>
+
+  <!-- IMPORT ENGINE -->
+  <div class="section" id="import-engine">
+    <div class="section-header">
+      <div class="section-num">08</div>
+      <div>
+        <div class="section-title">AI-Powered PDF Import Engine</div>
+        <div class="section-sub">OpenAI GPT-4o converts third-party inspection PDFs into PMSLink VIR data structure</div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div>
+        <h3>Import Flow</h3>
+        <div class="flow" style="flex-direction:column; gap:8px;">
+          <div class="flow-step" style="text-align:left;">
+            <strong>1 — UPLOAD</strong>
+            User uploads PDF via web or mobile (max 50MB). File stored in blob. Import job queued via Hangfire.
+          </div>
+          <div class="flow-arr" style="justify-content:center;">↓</div>
+          <div class="flow-step" style="text-align:left;">
+            <strong>2 — EXTRACT</strong>
+            .NET extracts text using PdfPig library. Images extracted via Aspose.PDF or iTextSharp. Text chunked into sections ≤ 4,000 tokens.
+          </div>
+          <div class="flow-arr" style="justify-content:center;">↓</div>
+          <div class="flow-step" style="text-align:left;">
+            <strong>3 — AI PARSE</strong>
+            GPT-4o called with structured prompt. Returns JSON matching VIR schema: header fields, findings array, corrective actions array.
+          </div>
+          <div class="flow-arr" style="justify-content:center;">↓</div>
+          <div class="flow-step" style="text-align:left;">
+            <strong>4 — REVIEW SCREEN</strong>
+            User reviews AI-parsed data side-by-side with original PDF. Edit, confirm, or reject individual fields. Confidence score shown per field.
+          </div>
+          <div class="flow-arr" style="justify-content:center;">↓</div>
+          <div class="flow-step" style="text-align:left;">
+            <strong>5 — COMMIT</strong>
+            User confirms. VIR record created with ImportSourceId. Status = IMPORTED (sub-status before Draft).
+          </div>
+        </div>
+      </div>
+      <div>
+        <h3>GPT-4o Prompt Structure</h3>
+        <div class="code-block">
+<span class="cm">// System prompt (trimmed)</span>
+<span class="st">"You are a maritime inspection data extractor.
+Extract structured data from the following vessel
+inspection report text. Return ONLY valid JSON
+matching this schema:
+{
+  header: {
+    vesselName, inspectionDate, inspectorName,
+    inspectorOrg, port, inspectionType,
+    nonConformities, observations, recommendations
+  },
+  findings: [{
+    findingType, priority, title, description,
+    suggestedAction, dueDate, references, category
+  }],
+  correctiveActions: [{
+    observationIndex, actionRef, title,
+    description, dueDate, status, remarks
+  }]
+}
+Use inspectionType from this list: [SIRE, SIRE2, PSC,
+CDI, RightShip, InternalOwner, ...].
+For findingType: NC | Observation | Recommendation |
+Positive.
+For priority: Critical | High | Medium | Low.
+Return null for fields not found. Do not invent data."</span>
+        </div>
+        <div class="alert" style="margin-top:12px;">
+          <strong>Token Strategy:</strong> For long reports (60+ pages like the sample Marine Hope INI-O-854), text is split into 5–8 chunks. Header extraction uses pages 1–2. Each findings section processed separately. Results merged client-side with dedup on finding title hash.
+        </div>
+        <div class="card" style="margin-top:12px;">
+          <div class="card-title">Supported Source Formats</div>
+          <ul class="feat">
+            <li>Anglo-Eastern / Idwal Vessel Manager Reports</li>
+            <li>RightShip GHIA inspection PDFs</li>
+            <li>SIRE 2.0 questionnaire exports</li>
+            <li>ClassNK / BV / DNV survey reports</li>
+            <li>Generic inspection PDFs (best-effort)</li>
+            <li>Scanned PDFs → OCR via Azure Form Recognizer pre-process</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="margin-top:24px;">.NET API — Import Controller Sketch</h3>
+    <div class="code-block">
+<span class="cm">// POST /api/vir/import</span>
+[<span class="ty">HttpPost</span>(<span class="st">"import"</span>)]
+<span class="kw">public async</span> <span class="ty">Task</span>&lt;<span class="ty">IActionResult</span>&gt; <span class="pr">ImportPdf</span>([<span class="ty">FromForm</span>] <span class="ty">IFormFile</span> file, [<span class="ty">FromForm</span>] <span class="kw">int</span> vesselId)
+{
+    <span class="kw">var</span> blobUrl = <span class="kw">await</span> _blobService.<span class="pr">UploadAsync</span>(file);
+    <span class="kw">var</span> jobId  = <span class="ty">BackgroundJob</span>.<span class="pr">Enqueue</span>&lt;<span class="ty">VirImportJob</span>&gt;(
+        j => j.<span class="pr">ProcessAsync</span>(blobUrl, vesselId, <span class="ty">UserId</span>));
+    <span class="kw">return</span> <span class="pr">Accepted</span>(<span class="kw">new</span> { jobId });
+}
+
+<span class="cm">// VirImportJob.ProcessAsync</span>
+<span class="kw">public async</span> <span class="ty">Task</span> <span class="pr">ProcessAsync</span>(<span class="kw">string</span> blobUrl, <span class="kw">int</span> vesselId, <span class="kw">string</span> userId)
+{
+    <span class="kw">var</span> text     = <span class="kw">await</span> _pdfExtractor.<span class="pr">ExtractTextAsync</span>(blobUrl);
+    <span class="kw">var</span> chunks   = <span class="ty">TextChunker</span>.<span class="pr">Split</span>(text, maxTokens: <span class="st">3500</span>);
+    <span class="kw">var</span> results  = <span class="kw">new</span> <span class="ty">List</span>&lt;<span class="ty">VirImportDto</span>&gt;();
+
+    <span class="kw">foreach</span> (<span class="kw">var</span> chunk <span class="kw">in</span> chunks)
+    {
+        <span class="kw">var</span> response = <span class="kw">await</span> _openAI.<span class="pr">ChatAsync</span>(
+            systemPrompt: <span class="ty">VirPrompts</span>.ExtractionPrompt,
+            userContent: chunk);
+        <span class="kw">var</span> dto = <span class="ty">JsonSerializer</span>.<span class="pr">Deserialize</span>&lt;<span class="ty">VirImportDto</span>&gt;(response);
+        results.<span class="pr">Add</span>(dto);
+    }
+
+    <span class="kw">var</span> merged = <span class="ty">VirImportMerger</span>.<span class="pr">Merge</span>(results);
+    <span class="kw">await</span> _importRepo.<span class="pr">SaveDraftAsync</span>(merged, vesselId, blobUrl);
+    <span class="kw">await</span> _hub.<span class="pr">SendAsync</span>(userId, <span class="st">"ImportComplete"</span>, merged.DraftId);
+}
+    </div>
+  </div>
+
+  <!-- MOBILE -->
+  <div class="section" id="mobile">
+    <div class="section-header">
+      <div class="section-num">09</div>
+      <div>
+        <div class="section-title">Mobile & Tablet Support</div>
+        <div class="section-sub">Angular PWA with full offline capability — designed for iPad and Android tablets primarily, phones secondary</div>
+      </div>
+    </div>
+    <div style="display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap;">
+      <div style="flex:1; min-width:280px;">
+        <div class="card">
+          <div class="card-title">Device Priority Matrix</div>
+          <table>
+            <tr><th>Device</th><th>Priority</th><th>Key Features</th></tr>
+            <tr><td>iPad (10"+)</td><td><span class="tag tag-green">P1</span></td><td>Full questionnaire, camera, offline</td></tr>
+            <tr><td>Android Tablet</td><td><span class="tag tag-green">P1</span></td><td>Same as iPad</td></tr>
+            <tr><td>iPhone / Android Phone</td><td><span class="tag tag-amber">P2</span></td><td>Observation entry, photos, view-only questionnaire</td></tr>
+            <tr><td>Desktop / Laptop</td><td><span class="tag tag-teal">P0</span></td><td>Full feature, import engine, dashboard</td></tr>
+          </table>
+        </div>
+        <div class="card" style="margin-top:16px;">
+          <div class="card-title">Offline Capability Scope</div>
+          <ul class="feat">
+            <li>Pre-download: VIR template, vessel particulars, questionnaire structure cached in IndexedDB before going offline</li>
+            <li>Offline actions: Fill questionnaire, add/edit observations, capture photos (queued in Dexie.js)</li>
+            <li>Offline photos: Compressed to ≤300KB per image before IndexedDB store; up to 200 queued</li>
+            <li>Sync indicator: Persistent banner shows "X items pending sync" with retry option</li>
+            <li>Conflict handling: Server timestamp wins; user notified of any server-side override</li>
+            <li>Auto-sync: Fires within 5 seconds of connectivity restore via Background Sync API</li>
+          </ul>
+        </div>
+        <div class="card" style="margin-top:16px;">
+          <div class="card-title">Angular PWA Setup (key config)</div>
+          <div class="code-block" style="font-size:11px;">
+<span class="cm">// ngsw-config.json (relevant)</span>
+{
+  <span class="st">"assetGroups"</span>: [<span class="st">"app"</span>, <span class="st">"assets"</span>],
+  <span class="st">"dataGroups"</span>: [{
+    <span class="st">"name"</span>: <span class="st">"vir-api"</span>,
+    <span class="st">"urls"</span>: [<span class="st">"/api/vir/template/**"</span>],
+    <span class="st">"cacheConfig"</span>: {
+      <span class="st">"maxSize"</span>: 50,
+      <span class="st">"maxAge"</span>: <span class="st">"12h"</span>,
+      <span class="st">"strategy"</span>: <span class="st">"freshness"</span>
+    }
+  }]
+}
+
+<span class="cm">// Dexie.js IndexedDB schema</span>
+<span class="kw">class</span> <span class="ty">VirOfflineDb</span> <span class="kw">extends</span> <span class="ty">Dexie</span> {
+  virDrafts: <span class="ty">Table</span>&lt;<span class="ty">VirDraft</span>&gt;;
+  photoQueue: <span class="ty">Table</span>&lt;<span class="ty">PhotoQueueItem</span>&gt;;
+  responses: <span class="ty">Table</span>&lt;<span class="ty">QuestionResponse</span>&gt;;
+}
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start;">
+        <div>
+          <div style="font-size:11px; color:var(--grey); font-family:var(--font-mono); margin-bottom:8px; text-align:center;">TABLET — QUESTIONNAIRE VIEW</div>
+          <div class="mobile-frame" style="width:280px;">
+            <div class="mobile-screen">
+              <div class="mobile-top">📋 Section 9 · Fire Fighting</div>
+              <div class="mobile-body">
+                <div style="background:rgba(245,166,35,0.1);border:1px solid var(--amber-dim);border-radius:4px;padding:6px 8px;margin-bottom:8px;font-size:9px;color:var(--amber);">⚠ CIC CONCENTRATED ITEM 2026</div>
+                <div class="mobile-field">
+                  <label>Q9.4 · MANDATORY · HIGH</label>
+                  Emergency fire pump tested and operational?
+                  <div style="display:flex;gap:4px;margin-top:4px;">
+                    <div style="flex:1;background:var(--green);border-radius:3px;padding:3px;text-align:center;color:var(--navy);font-weight:700;font-size:9px;">YES</div>
+                    <div style="flex:1;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:3px;padding:3px;text-align:center;font-size:9px;">NO</div>
+                    <div style="flex:1;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:3px;padding:3px;text-align:center;font-size:9px;">N/A</div>
+                  </div>
+                </div>
+                <div class="mobile-field">
+                  <label>Q9.5 · MEDIUM</label>
+                  Fire hoses in good condition?
+                  <div style="display:flex;gap:4px;margin-top:4px;">
+                    <div style="flex:1;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:3px;padding:3px;text-align:center;font-size:9px;">YES</div>
+                    <div style="flex:1;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:3px;padding:3px;text-align:center;font-size:9px;">NO</div>
+                    <div style="flex:1;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:3px;padding:3px;text-align:center;font-size:9px;">N/A</div>
+                  </div>
+                </div>
+                <div class="mobile-photo">📷 Tap to add evidence photo</div>
+                <div style="background:rgba(0,180,180,0.08);border-radius:4px;padding:6px 8px;font-size:9px;color:var(--grey);margin-bottom:6px;">🖼 Reference: <span style="color:var(--teal);">View standard</span></div>
+                <div style="display:flex;gap:4px;">
+                  <div style="flex:1;border:1px solid var(--border);border-radius:3px;padding:5px;text-align:center;font-size:9px;color:var(--grey);">← Prev</div>
+                  <div style="flex:1;background:var(--teal);border-radius:3px;padding:5px;text-align:center;font-size:9px;color:var(--navy);font-weight:700;">Next →</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px; color:var(--grey); font-family:var(--font-mono); margin-bottom:8px; text-align:center;">PHONE — OBSERVATION ENTRY</div>
+          <div class="mobile-frame">
+            <div class="mobile-screen">
+              <div class="mobile-top" style="font-size:10px;">+ New Observation</div>
+              <div class="mobile-body">
+                <div class="mobile-field">
+                  <label>Type</label>
+                  <span style="color:var(--amber);">Observation</span>
+                </div>
+                <div class="mobile-field">
+                  <label>Priority</label>
+                  <span style="color:var(--amber);">Medium</span>
+                </div>
+                <div class="mobile-field">
+                  <label>Title</label>
+                  IGS Aux fan seal leak
+                </div>
+                <div class="mobile-field">
+                  <label>Description</label>
+                  Slight leak observed from IGS Aux fan seal at shaft...
+                </div>
+                <div class="mobile-field">
+                  <label>Due Date</label>
+                  10-11-2025
+                </div>
+                <div class="mobile-photo">📷 2 photos attached</div>
+                <div class="mobile-field">
+                  <label>Sync Status</label>
+                  <span style="color:var(--amber);">⏳ Queued (offline)</span>
+                </div>
+                <div class="mobile-btn">SAVE DRAFT</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div class="section" id="dashboard">
+    <div class="section-header">
+      <div class="section-num">10</div>
+      <div>
+        <div class="section-title">VIR Dashboard</div>
+        <div class="section-sub">Fleet-wide inspection visibility with Gantt, drilldown, vessel filter, and Excel export on every chart</div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div>
+        <div class="card">
+          <div class="card-title">Dashboard Panels</div>
+          <table>
+            <tr><th>Panel</th><th>Chart Type</th><th>Drilldown</th></tr>
+            <tr><td>Upcoming Inspections</td><td>Gantt (by vessel × date)</td><td>→ VIR detail</td></tr>
+            <tr><td>Inspection Calendar</td><td>Monthly heatmap</td><td>→ Day view</td></tr>
+            <tr><td>Open Findings by Vessel</td><td>Stacked bar (NC/Obs/Rec)</td><td>→ Vessel findings list</td></tr>
+            <tr><td>Finding Trend</td><td>Line (6-month rolling)</td><td>→ Period breakdown</td></tr>
+            <tr><td>Overdue CAs</td><td>Table + RAG colour</td><td>→ CA detail</td></tr>
+            <tr><td>Inspection Score Trend</td><td>Sparkline per vessel</td><td>→ Score history</td></tr>
+            <tr><td>PSC Detentions / Deficiencies</td><td>Map + count badges</td><td>→ PSC record</td></tr>
+            <tr><td>SIRE / Rightship Rating</td><td>Gauge + history</td><td>→ VIR report</td></tr>
+          </table>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <div class="card-title">Vessel Selection Control</div>
+          <p>Users choose which vessels to display from a multi-select sidebar (not all-or-nothing). Preference persists per user. Options:</p>
+          <ul class="feat">
+            <li>Select All / Deselect All toggle</li>
+            <li>Filter by vessel type, flag, fleet group</li>
+            <li>Save named views (e.g. "My 5 VLCCs")</li>
+            <li>Dashboard refreshes instantly on vessel change — no page reload</li>
+          </ul>
+        </div>
+        <div class="card" style="margin-top:16px;">
+          <div class="card-title">Export Options</div>
+          <ul class="feat">
+            <li>Every chart and table has an <span class="tag tag-green">↓ Excel</span> button</li>
+            <li>Gantt chart exports as xlsx with conditional formatting on overdue items</li>
+            <li>VIR findings list exports with photos hyperlinked in column G</li>
+            <li>Fleet summary sheet combines all panels into one workbook</li>
+            <li>Scheduled monthly email: Fleet inspection summary PDF auto-generated</li>
+          </ul>
+        </div>
+        <div class="card" style="margin-top:16px;">
+          <div class="card-title">Gantt View Spec (Upcoming Inspections)</div>
+          <p>X-axis: next 90 days. Y-axis: vessels in selected set. Colour coding:</p>
+          <p>
+            <span class="tag tag-green">Scheduled</span>
+            <span class="tag tag-amber">Due in 14 days</span>
+            <span class="tag tag-red">Overdue</span>
+            <span class="tag tag-teal">Completed</span>
+            <span class="tag tag-grey">No data</span>
+          </p>
+          <p>Click bar → VIR detail drawer slides in. Hover → tooltip with inspector name, type, port.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PDF EXPORT -->
+  <div class="section" id="pdf-export">
+    <div class="section-header">
+      <div class="section-num">11</div>
+      <div>
+        <div class="section-title">PDF Export — Report Format</div>
+        <div class="section-sub">Output mirrors the Anglo-Eastern Idwal format shown in sample report INI-O-854</div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div>
+        <h3>PDF Structure (page order)</h3>
+        <table>
+          <tr><th>Page(s)</th><th>Content</th></tr>
+          <tr><td>1</td><td>Cover: Vessel name, inspection type, date, port, inspector, company logo, summary counts (NC/Obs/Rec/Pos)</td></tr>
+          <tr><td>2</td><td>Executive Summary + Scope of Inspection narrative</td></tr>
+          <tr><td>3–N</td><td>Preamble sections (A–I): General, Safety, Engineering, Navigation, PMS, Environment, Cyber, MLC, Certs</td></tr>
+          <tr><td>N+1</td><td>Condition Assessment (section-by-section with Good/Fair/Poor colour blocks)</td></tr>
+          <tr><td>Last N</td><td>Observations section — each finding with corrective actions + photos</td></tr>
+          <tr><td>Annex A</td><td>Photo evidence gallery (full page, captioned)</td></tr>
+          <tr><td>Annex B</td><td>Sign-off page with digital signature fields + shore feedback</td></tr>
+        </table>
+        <div class="alert info" style="margin-top:12px;">
+          <strong>Library:</strong> Use QuestPDF (.NET) for structured layout. Header/footer templated. Photos inserted at report position with auto page-break. Font: IBM Plex Sans (embedded). Supports multi-page photo galleries.
+        </div>
+      </div>
+      <div>
+        <h3>Sample PDF Preview</h3>
+        <div class="pdf-preview">
+          <div class="pdf-header">
+            <div class="pdf-logo">PMS<span>Link</span> · Vessel Inspection Report</div>
+            <div class="pdf-meta">INI-O-000<br>CONFIDENTIAL</div>
+          </div>
+          <div class="pdf-row"><span class="pdf-label">Vessel:</span><span class="pdf-val">MV EXAMPLE VESSEL</span></div>
+          <div class="pdf-row"><span class="pdf-label">Inspection Type:</span><span class="pdf-val">Owner's Inspection (Internal)</span></div>
+          <div class="pdf-row"><span class="pdf-label">Date:</span><span class="pdf-val">15-04-2026 to 18-04-2026</span></div>
+          <div class="pdf-row"><span class="pdf-label">Inspector:</span><span class="pdf-val">Shivendra Chaturvedi</span></div>
+          <div class="pdf-row"><span class="pdf-label">Port:</span><span class="pdf-val">Singapore</span></div>
+          <div class="pdf-row"><span class="pdf-label">Mode:</span><span class="pdf-val">At Berth</span></div>
+          <div style="display:flex;gap:8px;margin:10px 0;font-size:10px;">
+            <span style="color:#e84b4b;font-weight:700;">NC: 0</span>
+            <span style="color:#f5a623;font-weight:700;">Obs: 3</span>
+            <span style="color:#00b4b4;font-weight:700;">Rec: 1</span>
+            <span style="color:#2ec97f;font-weight:700;">Pos: 2</span>
+          </div>
+          <div class="pdf-section">Observations</div>
+          <div class="pdf-obs">
+            <div class="pdf-obs-title">OBS-01 · IGS Aux Fan Seal Leak <span class="pdf-badge">MEDIUM</span></div>
+            <div style="font-size:10px;">Slight leak observed from IGS Aux fan seal. Check and renew if required.</div>
+            <div style="font-size:9px;color:#666;margin-top:4px;">Due: 10-11-2025 · Status: Completed</div>
+          </div>
+          <div class="pdf-obs">
+            <div class="pdf-obs-title">OBS-02 · FO Supply Pump Pressure Gauge <span class="pdf-badge">LOW</span></div>
+            <div style="font-size:10px;">FO supply pump #1 discharge pressure gauge not working. Renew from spares.</div>
+            <div style="font-size:9px;color:#666;margin-top:4px;">Due: 10-11-2025 · Status: Completed</div>
+          </div>
+          <div class="pdf-section">Sign-Off</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:9px;">
+            <div style="border:1px solid #ddd;padding:6px;border-radius:3px;">
+              <div style="color:#666;">MASTER / CE</div>
+              <div style="font-weight:700;margin-top:4px;">Jude Pereira ✓</div>
+              <div style="color:#666;font-size:8px;">11-Oct-2025</div>
+            </div>
+            <div style="border:1px solid #ddd;padding:6px;border-radius:3px;">
+              <div style="color:#666;">SHORE REVIEW</div>
+              <div style="font-weight:700;margin-top:4px;">Rohit Joshi ✓</div>
+              <div style="color:#666;font-size:8px;">14-Oct-2025</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SPRINTS -->
+  <div class="section" id="sprints">
+    <div class="section-header">
+      <div class="section-num">12</div>
+      <div>
+        <div class="section-title">Sprint Delivery Plan</div>
+        <div class="section-sub">8 sprints across 4 sprint blocks. Assumes 2-week sprints, 2 engineers (Vineeth + Arvindh) + 1 joining mid-build.</div>
+      </div>
+    </div>
+
+    <!-- SPRINT 1 -->
+    <div class="sprint">
+      <div class="sprint-header">
+        <div>
+          <div class="sprint-title">Sprint 1 — Foundation: Data Model + Inspection Master</div>
+          <div style="font-size:11px;color:var(--grey);margin-top:4px;">Engineer: Vineeth (API) + Arvindh (Angular shell)</div>
+        </div>
+        <span class="tag tag-teal sprint-label">SPRINT 1</span>
+      </div>
+      <div class="story"><span class="story-id">VIR-001</span><p>Database migration: Create all VIR tables (Inspection, Observation, CorrectiveAction, Photo, Question, SignOff, ImportSource). Seed inspection type master with all 54 types and categories.</p><span class="story-pts">8 pts</span></div>
+      <div class="story"><span class="story-id">VIR-002</span><p>API: CRUD endpoints for VIR header — Create, Get, List (paginated with vessel/type/date filters), Update, soft-delete.</p><span class="story-pts">5 pts</span></div>
+      <div class="story"><span class="story-id">VIR-003</span><p>Angular: VIR list screen — table view with vessel selector, type filter, date range, status column with RAG colour badges.</p><span class="story-pts">5 pts</span></div>
+      <div class="story"><span class="story-id">VIR-004</span><p>Angular: New VIR form — inspection type dropdown (categorised), vessel picker, date, port, inspector fields. Auto-populate vessel particulars from PMS vessel master.</p><span class="story-pts">5 pts</span></div>
+      <div class="story"><span class="story-id">VIR-005</span><p>JWT auth integration: Map existing PMSLink roles to VIR permission matrix. Vessel-side vs shore-side access gate.</p><span class="story-pts">3 pts</span></div>
+    </div>
+
+    <!-- SPRINT 2 -->
+    <div class="sprint amber">
+      <div class="sprint-header">
+        <div>
+          <div class="sprint-title">Sprint 2 — Questionnaire Engine + CIC Intelligence</div>
+          <div style="font-size:11px;color:var(--grey);margin-top:4px;">Engineer: Vineeth (engine API) + Arvindh (questionnaire UI)</div>
+        </div>
+        <span class="tag tag-amber sprint-label">SPRINT 2</span>
+      </div>
+      <div class="story"><span class="story-id">VIR-006</span><p>API: Question template engine — template per inspection type, section grouping, sequence ordering, answer-type dispatch. Template admin CRUD for QHSE office.</p><span class="story-pts">8 pts</span></div>
+      <div class="story"><span class="story-id">VIR-007</span><p>API: CIC detection service — reads annual CIC topic table, keyword-matches against question bank, sets IsCICItem flag, re-sorts within section (CIC items to top).</p><span class="story-pts">5 pts</span></div>
+      <div class="story"><span class="story-id">VIR-008</span><p>Angular: Questionnaire renderer — section tabs, question cards with all 8 answer types, mandatory badge, risk level colour, CIC amber highlight banner, inline photo capture.</p><span class="story-pts">8 pts</span></div>
+      <div class="story"><span class="story-id">VIR-009</span><p>Angular: Reference image viewer — small thumbnail display on question card; tap for modal with standard image + description. Separate from evidence upload button.</p><span class="story-pts">3 pts</span></div>
+      <div class="story"><span class="story-id">VIR-010</span><p>API: Validate-and-block logic on submit — return list of unanswered mandatory HIGH questions as structured error response (not generic 400).</p><span class="story-pts">3 pts</span></div>
+    </div>
+
+    <!-- SPRINT 3 -->
+    <div class="sprint green">
+      <div class="sprint-header">
+        <div>
+          <div class="sprint-title">Sprint 3 — Observations, Carryover & Corrective Actions</div>
+          <div style="font-size:11px;color:var(--grey);margin-top:4px;">Engineer: Both + third engineer joins (Angular components)</div>
+        </div>
+        <span class="tag tag-green sprint-label">SPRINT 3</span>
+      </div>
+      <div class="story"><span class="story-id">VIR-011</span><p>API: Observation CRUD — create, update, status-change, close (with 2-question confirmation payload required). Supports bulk import from AI parser.</p><span class="story-pts">5 pts</span></div>
+      <div class="story"><span class="story-id">VIR-012</span><p>API: Carryover service — on VIR creation, query previous VIR open findings for same vessel, copy as carryover records, link via CarriedFromObsId. Run as background job.</p><span class="story-pts">5 pts</span></div>
+      <div class="story"><span class="story-id">VIR-013</span><p>Angular: Observations screen — grouped by type (NC/Obs/Rec/Pos), carryover badge, inline CA entry, overdue highlight, status timeline sidebar.</p><span class="story-pts">8 pts</span></div>
+      <div class="story"><span class="story-id">VIR-014</span><p>Angular: Corrective Action form + 2-question close modal. CA status workflow. Remarks + close date mandatory on completion.</p><span class="story-pts">5 pts</span></div>
+      <div class="story"><span class="story-id">VIR-015</span><p>Photo upload service: Angular component with camera capture (Capacitor), file drop zone, progress bar, WebP compression, server upload to Blob. Attach to Observation or Question.</p><span class="story-pts">5 pts</span></div>
+    </div>
+
+    <!-- SPRINT 4 -->
+    <div class="sprint red">
+      <div class="sprint-header">
+        <div>
+          <div class="sprint-title">Sprint 4 — Dual Sign-Off Workflow + Notifications</div>
+          <div style="font-size:11px;color:var(--grey);margin-top:4px;">Engineer: Vineeth (workflow API + SignalR) + Arvindh (workflow UI)</div>
+        </div>
+        <span class="tag tag-red sprint-label">SPRINT 4</span>
+      </div>
+      <div class="story"><span class="story-id">VIR-016</span><p>API: Sign-off state machine — Stage 1 (vessel submit), Stage 2 (shore review: approve or return with comments), Stage 3 (vessel close with acknowledgement). Enforced server-side.</p><span class="story-pts">8 pts</span></div>
+      <div class="story"><span class="story-id">VIR-017</span><p>API: Shore feedback model — per-observation comment thread. Shore reviewer adds comment; vessel sees it highlighted on observation card.</p><span class="story-pts">5 pts</span></div>
+      <div class="story"><span class="story-id">VIR-018</span><p>SignalR hub: Real-time push for VIR status changes — vessel notified on shore return/approval; shore notified on vessel submission. Toast notifications in Angular.</p><span class="story-pts">5 pts</span></div>
+      <div class="story"><span class="story-id">VIR-019</span><p>Angular: Sign-off screen — status tracker (3 stages as timeline), shore feedback display per observation, return reason modal, acknowledge button.</p><span class="story-pts">5 pts</span></div>
+      <div class="story"><span class="story-id">VIR-020</span><p>Email notifications: Vessel submission → shore QHSE email. Shore approval → vessel master email. Overdue CA → daily digest to Fleet Manager.</p><span class="story-pts">3 pts</span></div>
+    </div>
+
+    <!-- SPRINT 5 -->
+    <div class="sprint">
+      <div class="sprint-header">
+        <div>
+          <div class="sprint-title">Sprint 5 — AI PDF Import Engine</div>
+          <div style="font-size:11px;color:var(--grey);margin-top:4px;">Engineer: Vineeth (import API + OpenAI) + third engineer (Angular import UI)</div>
+        </div>
+        <span class="tag tag-teal sprint-label">SPRINT 5</span>
+      </div>
+      <div class="story"><span class="story-id">VIR-021</span><p>API: PDF upload endpoint → Hangfire background job → PdfPig text extraction → text chunking → OpenAI GPT-4o batch API calls → JSON merge → draft VIR save.</p><span class="story-pts">8 pts</span></div>
+      <div class="story"><span class="story-id">VIR-022</span><p>API: Scanned PDF fallback — Azure Form Recognizer OCR pre-processing. Detect if PDF is image-only (no text layer) and route accordingly.</p><span class="story-pts">5 pts</span></div>
+      <div class="story"><span class="story-id">VIR-023</span><p>Angular: Import workflow — PDF upload with preview (PDF.js), progress spinner during AI processing (SSE stream of progress updates), side-by-side review screen.</p><span class="story-pts">8 pts</span></div>
+      <div class="story"><span class="story-id">VIR-024</span><p>Angular: AI review screen — original PDF left, parsed VIR fields right. Confidence score badge (High/Med/Low) per field. Edit inline. Accept/reject per section. Bulk-accept. Commit to draft.</p><span class="story-pts">8 pts</span></div>
+      <div class="story"><span class="story-id">VIR-025</span><p>API: Import audit log — track every field that was AI-suggested vs user-modified. Retain for accuracy improvement. Mark imported records in VIR list with a "📥 Imported" badge.</p><span class="story-pts">3 pts</span></div>
+    </div>
+
+    <!-- SPRINT 6 -->
+    <div class="sprint amber">
+      <div class="sprint-header">
+        <div>
+          <div class="sprint-title">Sprint 6 — Mobile PWA, Offline & Photo Sync</div>
+          <div style="font-size:11px;color:var(--grey);margin-top:4px;">Engineer: Arvindh (PWA + Capacitor) + third engineer (offline Dexie.js layer)</div>
+        </div>
+        <span class="tag tag-amber sprint-label">SPRINT 6</span>
+      </div>
+      <div class="story"><span class="story-id">VIR-026</span><p>Angular PWA: Service Worker setup with ngsw-config. Asset caching (shell, fonts, icons). Data caching for VIR templates and vessel data. Offline fallback route.</p><span class="story-pts">5 pts</span></div>
+      <div class="story"><span class="story-id">VIR-027</span><p>Dexie.js offline layer: Schema for virDrafts, questionResponses, observationDrafts, photoQueue. CRUD wrapper service that writes to IndexedDB when offline, API when online.</p><span class="story-pts">8 pts</span></div>
+      <div class="story"><span class="story-id">VIR-028</span><p>Background Sync: Service Worker intercepts failed POST/PUT requests, queues in sync manager, replays on connectivity. Show pending badge count in app header.</p><span class="story-pts">5 pts</span></div>
+      <div class="story"><span class="story-id">VIR-029</span><p>Capacitor camera: Native camera access on iOS/Android. WebP compression (max 1200px, quality 75) before IndexedDB. Batch upload on sync (10 at a time, exponential backoff).</p><span class="story-pts">5 pts</span></div>
+      <div class="story"><span class="story-id">VIR-030</span><p>Responsive layouts: Tablet questionnaire layout (2-column), phone observation layout (single column). Touch-optimised controls (large tap targets ≥48px). Test on iPad + Samsung Tab S.</p><span class="story-pts">5 pts</span></div>
+    </div>
+
+    <!-- SPRINT 7 -->
+    <div class="sprint green">
+      <div class="sprint-header">
+        <div>
+          <div class="sprint-title">Sprint 7 — Dashboard, Gantt & Reports</div>
+          <div style="font-size:11px;color:var(--grey);margin-top:4px;">Engineer: Vineeth (dashboard API + export) + third engineer (Angular dashboard)</div>
+        </div>
+        <span class="tag tag-green sprint-label">SPRINT 7</span>
+      </div>
+      <div class="story"><span class="story-id">VIR-031</span><p>API: Dashboard aggregation endpoints — fleet inspection schedule (next 90 days), open findings by vessel/type, overdue CAs, inspection score trend (rolling 6-month).</p><span class="story-pts">8 pts</span></div>
+      <div class="story"><span class="story-id">VIR-032</span><p>Angular: Vessel multi-select component with saved views. Persists to user profile. Dashboard re-queries on change with loading skeleton.</p><span class="story-pts">5 pts</span></div>
+      <div class="story"><span class="story-id">VIR-033</span><p>Angular: ECharts Gantt panel — upcoming inspections, colour-coded status bars, hover tooltip, click → VIR drawer. Time axis zoom (7/30/90 days).</p><span class="story-pts">8 pts</span></div>
+      <div class="story"><span class="story-id">VIR-034</span><p>Angular: Open findings bar chart, overdue CA table with RAG, PSC deficiency tracker. Drilldown on click to filtered VIR list.</p><span class="story-pts">5 pts</span></div>
+      <div class="story"><span class="story-id">VIR-035</span><p>Excel export: Every dashboard panel has ↓ Excel button. Server generates xlsx via EPPlus — conditional formatting on overdue, hyperlinks on photos. Fleet summary workbook.</p><span class="story-pts">5 pts</span></div>
+    </div>
+
+    <!-- SPRINT 8 -->
+    <div class="sprint grey">
+      <div class="sprint-header">
+        <div>
+          <div class="sprint-title">Sprint 8 — PDF Export, Polish & UAT</div>
+          <div style="font-size:11px;color:var(--grey);margin-top:4px;">Engineer: All three — PDF (Vineeth), mobile polish (Arvindh), UAT fixes (third)</div>
+        </div>
+        <span class="tag tag-grey sprint-label">SPRINT 8</span>
+      </div>
+      <div class="story"><span class="story-id">VIR-036</span><p>QuestPDF report generator: Full VIR PDF matching Idwal format — cover, preamble sections, condition assessment colour blocks, observations with photos, sign-off page.</p><span class="story-pts">8 pts</span></div>
+      <div class="story"><span class="story-id">VIR-037</span><p>Annex A: Photo gallery pages in PDF — auto-paginated, captioned, full-page 2-up layout. Annex B: Digital signature representation with timestamps and role.</p><span class="story-pts">5 pts</span></div>
+      <div class="story"><span class="story-id">VIR-038</span><p>UAT: Vessel-side testing on iPad with offline cycle (turn off WiFi, fill 20 questions + 5 obs + 10 photos, reconnect, verify sync). Shore sign-off cycle end-to-end test.</p><span class="story-pts">5 pts</span></div>
+      <div class="story"><span class="story-id">VIR-039</span><p>Performance: API response times ≤ 200ms for list queries (indexed on VesselId + InspectionDate). Photo upload streaming (not base64 body). Dashboard cache TTL 60 seconds.</p><span class="story-pts">3 pts</span></div>
+      <div class="story"><span class="story-id">VIR-040</span><p>Documentation: API Swagger annotations complete. Angular component README per module. Deployment guide for VIR module onto existing PMSLink IIS/Docker stack.</p><span class="story-pts">3 pts</span></div>
+    </div>
+  </div>
+
+  <!-- DEMO GUIDE -->
+  <div class="section" id="demo">
+    <div class="section-header">
+      <div class="section-num">13</div>
+      <div>
+        <div class="section-title">Demo Build Guide (VB.NET / ASP.NET)</div>
+        <div class="section-sub">Build a standalone demo using Visual Basic .NET + ASP.NET Web Forms or MVC — no Angular needed for the demo</div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div>
+        <div class="card">
+          <div class="card-title">Demo Scope (What to Build)</div>
+          <ul class="feat">
+            <li><strong style="color:var(--teal)">Demo 1: PDF Import</strong> — Upload the Marine Hope INI-O-854 PDF → call OpenAI API → display parsed VIR header + findings in a grid. Show side-by-side PDF vs extracted data.</li>
+            <li><strong style="color:var(--teal)">Demo 2: VIR Form</strong> — Simple ASP.NET form with vessel, inspection type, date, port fields. Add observation. Add corrective action. Show status.</li>
+            <li><strong style="color:var(--teal)">Demo 3: CIC Highlight</strong> — Select "Port State Control", see questionnaire with 2–3 items highlighted in amber as CIC concentrated.</li>
+            <li><strong style="color:var(--teal)">Demo 4: PDF Export</strong> — Button generates a styled PDF from demo data using iTextSharp in VB.NET.</li>
+          </ul>
+        </div>
+        <div class="alert" style="margin-top:16px;">
+          <strong>Tech Choice:</strong> Use ASP.NET MVC 5 (not Core) with VB.NET code-behind for demo — simplest to run locally. Single project, SQL LocalDB, no Docker needed. OpenAI called from VB.NET using HttpClient with the REST API directly (no SDK needed).
+        </div>
+      </div>
+      <div>
+        <h3>VB.NET OpenAI Call Snippet</h3>
+        <div class="code-block" style="font-size:11px;">
+<span class="cm">' VB.NET — Call OpenAI GPT-4o for PDF parsing</span>
+<span class="kw">Public Async Function</span> <span class="pr">ParsePdfText</span>(pdfText <span class="kw">As String</span>) _
+    <span class="kw">As</span> <span class="ty">Task</span>(<span class="kw">Of String</span>)
+
+    <span class="kw">Dim</span> client = <span class="kw">New</span> <span class="ty">HttpClient</span>()
+    client.DefaultRequestHeaders.Add(
+        <span class="st">"Authorization"</span>, <span class="st">"Bearer "</span> & _apiKey)
+
+    <span class="kw">Dim</span> body = <span class="ty">JsonSerializer</span>.Serialize(<span class="kw">New</span> With {
+        .model = <span class="st">"gpt-4o"</span>,
+        .max_tokens = <span class="st">2000</span>,
+        .messages = <span class="kw">New</span>() {
+          <span class="kw">New</span> With {
+            .role = <span class="st">"system"</span>,
+            .content = VirPrompts.ExtractionPrompt
+          },
+          <span class="kw">New</span> With {
+            .role = <span class="st">"user"</span>,
+            .content = pdfText
+          }
+        }
+    })
+
+    <span class="kw">Dim</span> response = <span class="kw">Await</span> client.PostAsync(
+        <span class="st">"https://api.openai.com/v1/chat/completions"</span>,
+        <span class="kw">New</span> <span class="ty">StringContent</span>(body, Encoding.UTF8, <span class="st">"application/json"</span>))
+
+    <span class="kw">Dim</span> json = <span class="kw">Await</span> response.Content.ReadAsStringAsync()
+    <span class="kw">Dim</span> result = <span class="ty">JsonDocument</span>.Parse(json)
+    <span class="kw">Return</span> result.RootElement
+        .GetProperty(<span class="st">"choices"</span>)(0)
+        .GetProperty(<span class="st">"message"</span>)
+        .GetProperty(<span class="st">"content"</span>)
+        .GetString()
+<span class="kw">End Function</span>
+        </div>
+        <div class="code-block" style="font-size:11px; margin-top:8px;">
+<span class="cm">' iTextSharp PDF export in VB.NET</span>
+<span class="kw">Dim</span> doc = <span class="kw">New</span> <span class="ty">Document</span>(<span class="ty">PageSize</span>.A4, 40, 40, 60, 40)
+<span class="kw">Dim</span> writer = <span class="ty">PdfWriter</span>.GetInstance(doc, Response.OutputStream)
+doc.Open()
+
+<span class="cm">' Header table</span>
+<span class="kw">Dim</span> hdr = <span class="kw">New</span> <span class="ty">PdfPTable</span>(2)
+hdr.AddCell(<span class="kw">New</span> <span class="ty">PdfPCell</span>(<span class="kw">New</span> <span class="ty">Phrase</span>(<span class="st">"PMSLink VIR"</span>, titleFont)))
+hdr.AddCell(dateCell)
+doc.Add(hdr)
+
+<span class="cm">' Add finding paragraphs</span>
+<span class="kw">For Each</span> obs <span class="kw">In</span> findings
+    doc.Add(<span class="kw">New</span> <span class="ty">Paragraph</span>(obs.Title, boldFont))
+    doc.Add(<span class="kw">New</span> <span class="ty">Paragraph</span>(obs.Description, bodyFont))
+<span class="kw">Next</span>
+doc.Close()
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <div class="card-title">Demo Walkthrough Script (for stakeholder presentation)</div>
+      <table>
+        <tr><th>#</th><th>Step</th><th>What you show</th><th>Talking Point</th></tr>
+        <tr><td>1</td><td>Open demo app</td><td>VIR list — 3 vessels, mixed statuses</td><td>"This is the VIR register. Every inspection for every vessel, one place."</td></tr>
+        <tr><td>2</td><td>Click "Import PDF"</td><td>Upload Marine Hope INI-O-854 PDF</td><td>"I'll drop in the Idwal report Anglo-Eastern sent us."</td></tr>
+        <tr><td>3</td><td>Wait 10s</td><td>Spinner → parsed data appears alongside PDF</td><td>"GPT-4o read all 60 pages. It found the 6 observations automatically."</td></tr>
+        <tr><td>4</td><td>Review + Confirm</td><td>Side-by-side, accept fields, commit</td><td>"I can edit any field AI got wrong before saving."</td></tr>
+        <tr><td>5</td><td>Open questionnaire</td><td>PSC type → CIC items highlighted amber</td><td>"For PSC, it auto-flags this year's concentrated inspection items."</td></tr>
+        <tr><td>6</td><td>Add observation</td><td>Fill finding, attach photo from device</td><td>"Vessel inspector takes photo on tablet — syncs to office automatically."</td></tr>
+        <tr><td>7</td><td>Submit → Shore Review</td><td>Status changes, shore reviewer gets notification</td><td>"Shore must review before vessel can close. No bypassing."</td></tr>
+        <tr><td>8</td><td>Export PDF</td><td>Click PDF button → download formatted report</td><td>"Same format as the Idwal report — ready to file or email charterer."</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <hr class="divider">
+  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; padding-top:16px;">
+    <div>
+      <div style="font-family:var(--font-mono); font-size:12px; color:var(--teal);">PMSLink · VIR Module Specification v1.0</div>
+      <div style="font-size:11px; color:var(--grey); margin-top:4px;">Atlantas Ship Management Ltd · April 2026 · CONFIDENTIAL</div>
+    </div>
+    <div style="text-align:right; font-size:11px; color:var(--grey);">
+      <div>8 Sprints · ~40 Stories · 3 Engineers</div>
+      <div style="margin-top:2px;">Angular 17 · .NET 8 · GPT-4o · PWA Offline</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

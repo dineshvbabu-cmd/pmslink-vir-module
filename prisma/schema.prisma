@@ -1,0 +1,396 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum VirInspectionTypeCategory {
+  VETTING
+  PSC
+  CLASS
+  INTERNAL
+  AUDIT
+}
+
+enum VirInspectionStatus {
+  DRAFT
+  SUBMITTED
+  RETURNED
+  SHORE_REVIEWED
+  CLOSED
+  IMPORT_REVIEW
+  ARCHIVED
+}
+
+enum VirQuestionResponseType {
+  YES_NO_NA
+  TEXT
+  NUMBER
+  DATE
+  SINGLE_SELECT
+  MULTI_SELECT
+  SCORE
+}
+
+enum VirRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum VirFindingType {
+  NON_CONFORMITY
+  OBSERVATION
+  RECOMMENDATION
+  POSITIVE
+}
+
+enum VirFindingStatus {
+  OPEN
+  IN_PROGRESS
+  READY_FOR_REVIEW
+  CLOSED
+  CARRIED_OVER
+}
+
+enum VirCorrectiveActionStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  VERIFIED
+  REJECTED
+}
+
+enum VirSignOffStage {
+  VESSEL_SUBMISSION
+  SHORE_REVIEW
+  FINAL_ACKNOWLEDGEMENT
+}
+
+enum VirImportStatus {
+  QUEUED
+  PROCESSING
+  REVIEW
+  READY
+  COMMITTED
+  FAILED
+}
+
+model Vessel {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  imoNumber   String?  @unique
+  vesselType  String?
+  fleet       String?
+  flag        String?
+  manager     String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  inspections    VirInspection[]
+  importSessions VirImportSession[]
+
+  @@index([name])
+  @@index([fleet])
+}
+
+model VirInspectionType {
+  id          String                    @id @default(cuid())
+  code        String                    @unique
+  name        String
+  category    VirInspectionTypeCategory
+  description String?                   @db.Text
+  isActive    Boolean                   @default(true)
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  templates      VirTemplate[]
+  inspections    VirInspection[]
+  importSessions VirImportSession[]
+
+  @@index([category])
+  @@index([name])
+}
+
+model VirTemplate {
+  id               String   @id @default(cuid())
+  inspectionTypeId String
+  name             String
+  version          String
+  description      String?  @db.Text
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  inspectionType VirInspectionType   @relation(fields: [inspectionTypeId], references: [id], onDelete: Cascade)
+  sections       VirTemplateSection[]
+  inspections    VirInspection[]
+
+  @@unique([inspectionTypeId, version])
+}
+
+model VirTemplateSection {
+  id         String   @id @default(cuid())
+  templateId String
+  code       String?
+  title      String
+  guidance   String?  @db.Text
+  sortOrder  Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  template  VirTemplate           @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  questions VirTemplateQuestion[]
+
+  @@unique([templateId, sortOrder])
+}
+
+model VirTemplateQuestion {
+  id                String                  @id @default(cuid())
+  sectionId         String
+  code              String
+  prompt            String                  @db.Text
+  responseType      VirQuestionResponseType
+  riskLevel         VirRiskLevel            @default(LOW)
+  isMandatory       Boolean                 @default(false)
+  allowsObservation Boolean                 @default(true)
+  allowsPhoto       Boolean                 @default(true)
+  isCicCandidate    Boolean                 @default(false)
+  cicTopic          String?
+  helpText          String?                 @db.Text
+  referenceImageUrl String?
+  sortOrder         Int
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  section  VirTemplateSection         @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  options  VirTemplateQuestionOption[]
+  answers  VirAnswer[]
+  findings VirFinding[]
+
+  @@unique([sectionId, code])
+  @@unique([sectionId, sortOrder])
+}
+
+model VirTemplateQuestionOption {
+  id         String @id @default(cuid())
+  questionId String
+  value      String
+  label      String
+  score      Int?
+  sortOrder  Int    @default(0)
+
+  question VirTemplateQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, value])
+  @@unique([questionId, sortOrder])
+}
+
+model VirInspection {
+  id                   String              @id @default(cuid())
+  vesselId             String
+  inspectionTypeId     String
+  templateId           String?
+  title                String
+  externalReference    String?
+  inspectionDate       DateTime
+  port                 String?
+  country              String?
+  inspectorName        String?
+  inspectorCompany     String?
+  summary              String?             @db.Text
+  status               VirInspectionStatus @default(DRAFT)
+  previousInspectionId String?
+  posCount             Int                 @default(0)
+  obsCount             Int                 @default(0)
+  ncCount              Int                 @default(0)
+  recCount             Int                 @default(0)
+  shoreReviewedBy      String?
+  shoreReviewDate      DateTime?
+  closedAt             DateTime?
+  importSessionId      String?
+  metadata             Json?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  vessel             Vessel            @relation(fields: [vesselId], references: [id], onDelete: Cascade)
+  inspectionType     VirInspectionType @relation(fields: [inspectionTypeId], references: [id])
+  template           VirTemplate?      @relation(fields: [templateId], references: [id])
+  previousInspection VirInspection?    @relation("VirPreviousInspection", fields: [previousInspectionId], references: [id])
+  nextInspections    VirInspection[]   @relation("VirPreviousInspection")
+  importSession      VirImportSession? @relation(fields: [importSessionId], references: [id])
+  answers            VirAnswer[]
+  findings           VirFinding[]
+  signOffs           VirSignOff[]
+  photos             VirPhoto[]
+
+  @@index([vesselId, inspectionDate])
+  @@index([inspectionTypeId, inspectionDate])
+  @@index([status])
+}
+
+model VirAnswer {
+  id              String    @id @default(cuid())
+  inspectionId    String
+  questionId      String
+  answerText      String?   @db.Text
+  answerNumber    Float?
+  answerBoolean   Boolean?
+  answerDate      DateTime?
+  selectedOptions Json?
+  comment         String?   @db.Text
+  answeredBy      String?
+  answeredAt      DateTime?
+  evidenceCount   Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  inspection VirInspection       @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  question   VirTemplateQuestion @relation(fields: [questionId], references: [id])
+  photos     VirPhoto[]
+
+  @@unique([inspectionId, questionId])
+}
+
+model VirFinding {
+  id                   String           @id @default(cuid())
+  inspectionId         String
+  questionId           String?
+  findingType          VirFindingType
+  severity             VirRiskLevel     @default(MEDIUM)
+  status               VirFindingStatus @default(OPEN)
+  priority             Int              @default(0)
+  title                String
+  description          String           @db.Text
+  dueDate              DateTime?
+  vesselResponse       String?          @db.Text
+  shoreFeedback        String?          @db.Text
+  isCarriedOver        Boolean          @default(false)
+  carriedFromFindingId String?
+  ownerName            String?
+  closedBy             String?
+  closedAt             DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  inspection         VirInspection        @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  question           VirTemplateQuestion? @relation(fields: [questionId], references: [id])
+  carriedFromFinding VirFinding?          @relation("VirFindingCarryover", fields: [carriedFromFindingId], references: [id])
+  carriedFindings    VirFinding[]         @relation("VirFindingCarryover")
+  correctiveActions  VirCorrectiveAction[]
+  photos             VirPhoto[]
+
+  @@index([inspectionId, status])
+  @@index([findingType, severity])
+}
+
+model VirPhoto {
+  id           String    @id @default(cuid())
+  inspectionId String?
+  findingId    String?
+  answerId     String?
+  url          String    @db.Text
+  storageKey   String?
+  caption      String?
+  fileName     String?
+  contentType  String?
+  fileSizeKb   Int?
+  takenAt      DateTime?
+  uploadedBy   String?
+  createdAt    DateTime  @default(now())
+
+  inspection VirInspection? @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  finding    VirFinding?    @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  answer     VirAnswer?     @relation(fields: [answerId], references: [id], onDelete: Cascade)
+
+  @@index([inspectionId])
+  @@index([findingId])
+  @@index([answerId])
+}
+
+model VirCorrectiveAction {
+  id                 String                    @id @default(cuid())
+  findingId          String
+  actionText         String                    @db.Text
+  ownerName          String?
+  targetDate         DateTime?
+  completedAt        DateTime?
+  status             VirCorrectiveActionStatus @default(OPEN)
+  completionRemark   String?                   @db.Text
+  verificationRemark String?                   @db.Text
+  verifiedBy         String?
+  verifiedAt         DateTime?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  finding VirFinding @relation(fields: [findingId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([targetDate])
+}
+
+model VirSignOff {
+  id           String         @id @default(cuid())
+  inspectionId String
+  stage        VirSignOffStage
+  approved     Boolean        @default(false)
+  actorName    String?
+  actorRole    String?
+  comment      String?        @db.Text
+  signedAt     DateTime       @default(now())
+
+  inspection VirInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  @@index([inspectionId, stage])
+}
+
+model VirImportSession {
+  id               String          @id @default(cuid())
+  vesselId         String?
+  inspectionTypeId String?
+  sourceFileName   String
+  sourceUrl        String?         @db.Text
+  sourceSystem     String?
+  sourceType       String          @default("PDF")
+  status           VirImportStatus @default(QUEUED)
+  modelName        String?         @default("gpt-4o")
+  extractedAt      DateTime?
+  confidenceAvg    Float?
+  rawTextHash      String?
+  payload          Json?
+  createdBy        String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  vessel         Vessel?            @relation(fields: [vesselId], references: [id], onDelete: SetNull)
+  inspectionType VirInspectionType? @relation(fields: [inspectionTypeId], references: [id], onDelete: SetNull)
+  fieldReviews   VirImportFieldReview[]
+  inspections    VirInspection[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model VirImportFieldReview {
+  id              String   @id @default(cuid())
+  importSessionId String
+  entityType      String
+  fieldPath       String
+  aiValue         String?  @db.Text
+  finalValue      String?  @db.Text
+  confidence      Float?
+  accepted        Boolean?
+  reviewerName    String?
+  reviewedAt      DateTime?
+  createdAt       DateTime @default(now())
+
+  importSession VirImportSession @relation(fields: [importSessionId], references: [id], onDelete: Cascade)
+
+  @@index([importSessionId, fieldPath])
+}
