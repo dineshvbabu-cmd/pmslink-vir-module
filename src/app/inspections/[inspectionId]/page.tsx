@@ -82,6 +82,7 @@ export default async function InspectionDetailPage({ params }: { params: Promise
   const pendingCorrectiveActions = inspection.findings
     .flatMap((finding) => finding.correctiveActions)
     .filter((action) => ["OPEN", "IN_PROGRESS", "REJECTED"].includes(action.status)).length;
+  const concentratedQuestions = questions.filter((question) => question.isCicCandidate);
 
   const saveAnswers = saveInspectionAnswersAction.bind(null, inspection.id);
   const addFinding = addFindingAction.bind(null, inspection.id);
@@ -181,19 +182,40 @@ export default async function InspectionDetailPage({ params }: { params: Promise
               <div className="empty-state">This inspection does not have a questionnaire template attached yet.</div>
             ) : (
               <form action={saveAnswers} className="page-stack">
+                {concentratedQuestions.length > 0 ? (
+                  <div className="focus-banner">
+                    <div>
+                      <strong>Concentrated inspection focus active</strong>
+                      <div className="small-text" style={{ marginTop: "0.25rem" }}>
+                        {concentratedQuestions.length} concentrated questions were detected from the imported template
+                        and are highlighted below for fast review.
+                      </div>
+                    </div>
+                    <div className="meta-row">
+                      {concentratedQuestions.slice(0, 4).map((question) => (
+                        <span className="chip chip-warning" key={question.id}>
+                          {question.code}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 {inspection.template.sections.map((section) => (
                   <div className="question-section" key={section.id}>
                     <h4 className="section-title">{section.title}</h4>
                     {section.guidance ? <p className="small-text">{section.guidance}</p> : null}
 
-                    {section.questions.map((question) => {
+                    {[...section.questions]
+                      .sort((a, b) => Number(b.isCicCandidate) - Number(a.isCicCandidate) || a.sortOrder - b.sortOrder)
+                      .map((question) => {
                       const answer = answerMap.get(question.id);
                       const selectedOptions = Array.isArray(answer?.selectedOptions)
                         ? answer.selectedOptions.filter((item): item is string => typeof item === "string")
                         : [];
 
                       return (
-                        <div className="question-card" key={question.id}>
+                        <div className={`question-card ${question.isCicCandidate ? "question-card-focus" : ""}`} key={question.id}>
                           <div className="question-header">
                             <div>
                               <div className="question-code">{question.code}</div>
@@ -201,7 +223,11 @@ export default async function InspectionDetailPage({ params }: { params: Promise
                               <div className="meta-row">
                                 <span className={`chip ${toneForRisk(question.riskLevel)}`}>{riskLabel[question.riskLevel]}</span>
                                 {question.isMandatory ? <span className="chip chip-warning">Mandatory</span> : null}
-                                {question.isCicCandidate ? <span className="chip chip-info">CIC topic</span> : null}
+                                {question.isCicCandidate ? (
+                                  <span className="chip chip-danger">
+                                    {question.cicTopic ? `Concentrated / ${question.cicTopic}` : "Concentrated topic"}
+                                  </span>
+                                ) : null}
                               </div>
                             </div>
                             {question.referenceImageUrl ? (

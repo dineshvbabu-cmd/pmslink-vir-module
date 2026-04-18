@@ -55,7 +55,8 @@ export default async function ImportsPage({
             <div className="eyebrow">Office governance</div>
             <h2 className="panel-title">Import session history</h2>
             <p className="panel-subtitle">
-              Review and commit trail for questionnaire imports, with confidence and payload capture.
+              Audit trail for checklist and questionnaire normalization across PSC, TMSA, RightShip, CID, SIRE 2.0,
+              internal audits, and external audits.
             </p>
           </div>
         </div>

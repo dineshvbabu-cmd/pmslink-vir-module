@@ -1,5 +1,5 @@
 import { createInspectionAction } from "@/app/actions";
-import { SubmitButton } from "@/components/submit-button";
+import { InspectionLaunchForm } from "@/components/inspection-launch-form";
 import { prisma } from "@/lib/prisma";
 import { isOfficeSession, requireVirSession } from "@/lib/vir/session";
 
@@ -15,7 +15,19 @@ export default async function NewInspectionPage() {
     prisma.virInspectionType.findMany({ where: { isActive: true }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
     prisma.virTemplate.findMany({
       where: { isActive: true },
-      include: { inspectionType: { select: { name: true } } },
+      include: {
+        inspectionType: { select: { name: true } },
+        sections: {
+          include: {
+            questions: {
+              select: {
+                id: true,
+                isCicCandidate: true,
+              },
+            },
+          },
+        },
+      },
       orderBy: [{ createdAt: "desc" }],
     }),
   ]);
@@ -35,91 +47,33 @@ export default async function NewInspectionPage() {
           </div>
         </div>
 
-        <form action={createInspectionAction} className="form-grid">
-          <div className="field">
-            <label htmlFor="vesselId">Vessel</label>
-            <select defaultValue={isOfficeSession(session) ? "" : session.vesselId ?? ""} id="vesselId" name="vesselId" required>
-              <option value="">Select vessel</option>
-              {vessels.map((vessel) => (
-                <option key={vessel.id} value={vessel.id}>
-                  {vessel.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="field">
-            <label htmlFor="inspectionTypeId">Inspection type</label>
-            <select id="inspectionTypeId" name="inspectionTypeId" required>
-              <option value="">Select type</option>
-              {inspectionTypes.map((type) => (
-                <option key={type.id} value={type.id}>
-                  {type.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="field-wide">
-            <label htmlFor="title">Inspection title</label>
-            <input id="title" name="title" placeholder="PSC Self Assessment - Singapore" required />
-          </div>
-
-          <div className="field">
-            <label htmlFor="inspectionDate">Inspection date</label>
-            <input id="inspectionDate" name="inspectionDate" type="date" required />
-          </div>
-
-          <div className="field">
-            <label htmlFor="templateId">Template</label>
-            <select id="templateId" name="templateId">
-              <option value="">Auto-select latest matching template</option>
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.inspectionType.name} / {template.name} / v{template.version}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="field">
-            <label htmlFor="port">Port</label>
-            <input id="port" name="port" placeholder="Singapore" />
-          </div>
-
-          <div className="field">
-            <label htmlFor="country">Country / MoU area</label>
-            <input id="country" name="country" placeholder="Singapore / Tokyo MoU" />
-          </div>
-
-          <div className="field">
-            <label htmlFor="inspectorName">Inspector / operator</label>
-            <input defaultValue={session.actorName} id="inspectorName" name="inspectorName" placeholder="Operator name" />
-          </div>
-
-          <div className="field">
-            <label htmlFor="inspectorCompany">Company / authority</label>
-            <input
-              id="inspectorCompany"
-              name="inspectorCompany"
-              placeholder={isOfficeSession(session) ? "Union Maritime QHSE" : "Onboard inspection team"}
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="externalReference">Reference number</label>
-            <input id="externalReference" name="externalReference" placeholder="PSC-SIN-2026-0042" />
-          </div>
-
-          <div className="field-wide">
-            <label htmlFor="summary">Inspection summary</label>
-            <textarea id="summary" name="summary" placeholder="Purpose, pre-arrival context, planned scope, and notes." />
-          </div>
-
-          <div className="field-wide">
-            <SubmitButton className="btn">Create inspection</SubmitButton>
-          </div>
-        </form>
+        <InspectionLaunchForm
+          action={createInspectionAction}
+          defaultVesselId={isOfficeSession(session) ? undefined : session.vesselId ?? undefined}
+          inspectionTypes={inspectionTypes.map((type) => ({
+            id: type.id,
+            name: type.name,
+            category: type.category,
+          }))}
+          isOffice={isOfficeSession(session)}
+          sessionActorName={session.actorName}
+          templates={templates.map((template) => ({
+            id: template.id,
+            name: template.name,
+            version: template.version,
+            inspectionTypeId: template.inspectionTypeId,
+            inspectionTypeName: template.inspectionType.name,
+            focusCount: template.sections.reduce(
+              (sum, section) => sum + section.questions.filter((question) => question.isCicCandidate).length,
+              0
+            ),
+            questionCount: template.sections.reduce((sum, section) => sum + section.questions.length, 0),
+          }))}
+          vessels={vessels.map((vessel) => ({
+            id: vessel.id,
+            name: vessel.name,
+          }))}
+        />
       </section>
     </div>
   );

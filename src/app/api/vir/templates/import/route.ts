@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { normalizeVirTemplateImport } from "@/lib/vir/import";
+import { normalizeVirTemplateEngineInput } from "@/lib/vir/import";
 import { isOfficeSession, parseVirSession, VIR_SESSION_COOKIE } from "@/lib/vir/session";
 
 export async function POST(request: NextRequest) {
@@ -11,16 +12,57 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Office workspace required." }, { status: 403 });
     }
 
-    const { normalized, summary, warnings } = normalizeVirTemplateImport(await request.json());
+    const { request: importRequest, normalized, summary, warnings, fieldReviews } = normalizeVirTemplateEngineInput(
+      await request.json()
+    );
     const commit = request.nextUrl.searchParams.get("commit") === "true";
+    const rawTextHash = createHash("sha256").update(importRequest.content).digest("hex");
 
     if (!commit) {
+      const reviewSession = await prisma.virImportSession.create({
+        data: {
+          sourceFileName: `${normalized.templateName}.${importRequest.inputFormat.toLowerCase()}`,
+          sourceSystem: `${importRequest.sourceStandard} template import`,
+          sourceType: importRequest.inputFormat,
+          status: "REVIEW",
+          payload: {
+            request: importRequest,
+            normalized,
+            summary,
+            warnings,
+          },
+          rawTextHash,
+          confidenceAvg: 0.89,
+          extractedAt: new Date(),
+          createdBy: session.actorName,
+        },
+        select: { id: true },
+      });
+
+      if (fieldReviews.length > 0) {
+        await prisma.virImportFieldReview.createMany({
+          data: fieldReviews.map((review) => ({
+            importSessionId: reviewSession.id,
+            entityType: review.entityType,
+            fieldPath: review.fieldPath,
+            aiValue: review.aiValue,
+            finalValue: review.finalValue,
+            confidence: review.confidence,
+            accepted: review.accepted,
+            reviewerName: session.actorName,
+            reviewedAt: new Date(),
+          })),
+        });
+      }
+
       return NextResponse.json({
         ok: true,
         mode: "dry-run",
         summary,
         warnings,
         template: normalized,
+        sessionId: reviewSession.id,
+        fieldReviews,
       });
     }
 
@@ -101,6 +143,43 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const importSession = await prisma.virImportSession.create({
+      data: {
+        inspectionTypeId: inspectionType.id,
+        sourceFileName: `${normalized.templateName}.${importRequest.inputFormat.toLowerCase()}`,
+        sourceSystem: `${importRequest.sourceStandard} template import`,
+        sourceType: importRequest.inputFormat,
+        status: "COMMITTED",
+        payload: {
+          request: importRequest,
+          normalized,
+          summary,
+          warnings,
+        },
+        rawTextHash,
+        confidenceAvg: 0.93,
+        extractedAt: new Date(),
+        createdBy: session.actorName,
+      },
+      select: { id: true },
+    });
+
+    if (fieldReviews.length > 0) {
+      await prisma.virImportFieldReview.createMany({
+        data: fieldReviews.map((review) => ({
+          importSessionId: importSession.id,
+          entityType: review.entityType,
+          fieldPath: review.fieldPath,
+          aiValue: review.aiValue,
+          finalValue: review.finalValue,
+          confidence: review.confidence,
+          accepted: review.accepted,
+          reviewerName: session.actorName,
+          reviewedAt: new Date(),
+        })),
+      });
+    }
+
     return NextResponse.json({
       ok: true,
       mode: "commit",
@@ -112,6 +191,8 @@ export async function POST(request: NextRequest) {
         name: inspectionType.name,
       },
       template,
+      sessionId: importSession.id,
+      fieldReviews,
     });
   } catch (error) {
     console.error("[vir/templates/import]", error);

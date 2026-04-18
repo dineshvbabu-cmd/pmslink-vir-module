@@ -45,12 +45,13 @@ export default async function LoginPage() {
             <input name="workspace" type="hidden" value="OFFICE" />
 
             <div className="field-wide">
-              <label htmlFor="officeRole">Office role</label>
-              <select id="officeRole" name="actorRole">
-                <option value="QHSE Superintendent">QHSE Superintendent</option>
-                <option value="Marine Superintendent">Marine Superintendent</option>
-                <option value="Technical Superintendent">Technical Superintendent</option>
-              </select>
+              <label htmlFor="officeUsername">Username</label>
+              <input defaultValue="office.qhse" id="officeUsername" name="username" placeholder="office.qhse" />
+            </div>
+
+            <div className="field-wide">
+              <label htmlFor="officePassword">Password</label>
+              <input defaultValue="PMSLink@2026" id="officePassword" name="password" type="password" />
             </div>
 
             <div className="field-wide">
@@ -72,6 +73,16 @@ export default async function LoginPage() {
             <input name="workspace" type="hidden" value="VESSEL" />
 
             <div className="field-wide">
+              <label htmlFor="vesselUsername">Username</label>
+              <input defaultValue="master" id="vesselUsername" name="username" placeholder="master" />
+            </div>
+
+            <div className="field-wide">
+              <label htmlFor="vesselPassword">Password</label>
+              <input defaultValue="Vessel@2026" id="vesselPassword" name="password" type="password" />
+            </div>
+
+            <div className="field-wide">
               <label htmlFor="vesselId">Vessel</label>
               <select id="vesselId" name="vesselId" required>
                 <option value="">Select vessel</option>
@@ -86,11 +97,11 @@ export default async function LoginPage() {
             </div>
 
             <div className="field-wide">
-              <label htmlFor="vesselRole">Vessel role</label>
-              <select id="vesselRole" name="actorRole">
-                <option value="Master">Master</option>
-                <option value="Chief Engineer">Chief Engineer</option>
-                <option value="Chief Officer">Chief Officer</option>
+              <label htmlFor="vesselRoleHint">Role credential</label>
+              <select defaultValue="master" disabled id="vesselRoleHint">
+                <option value="master">master</option>
+                <option value="chief.engineer">chief.engineer</option>
+                <option value="chief.officer">chief.officer</option>
               </select>
             </div>
 
