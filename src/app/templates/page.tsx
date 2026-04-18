@@ -1,8 +1,29 @@
 import { prisma } from "@/lib/prisma";
+import { isOfficeSession, requireVirSession } from "@/lib/vir/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function TemplatesPage() {
+  const session = await requireVirSession();
+
+  if (!isOfficeSession(session)) {
+    return (
+      <div className="page-stack">
+        <section className="panel panel-elevated">
+          <div className="section-header">
+            <div>
+              <h2 className="panel-title">Template library</h2>
+              <p className="panel-subtitle">This module is available only from the office workspace.</p>
+            </div>
+          </div>
+          <div className="empty-state">
+            Vessel users can execute live questionnaires but cannot govern the underlying template catalogue.
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   const templates = await prisma.virTemplate.findMany({
     where: { isActive: true },
     orderBy: [{ createdAt: "desc" }],
@@ -26,59 +47,59 @@ export default async function TemplatesPage() {
 
   return (
     <div className="page-stack">
-      <section className="panel">
+      <section className="panel panel-elevated">
         <div className="section-header">
           <div>
-            <h2 className="panel-title">Template Library</h2>
+            <div className="eyebrow">Office governance</div>
+            <h2 className="panel-title">Template library</h2>
             <p className="panel-subtitle">
-              Review and validate questionnaire templates before they are used in vessel inspections and imports.
+              Review the live questionnaire set before it is used in vessel inspections and imports.
             </p>
           </div>
         </div>
-        <div className="list">
+
+        <div className="stack-list">
           {templates.map((template) => {
             const questionCount = template.sections.reduce((sum, section) => sum + section.questions.length, 0);
-            const referenceImageCount = template.sections.reduce(
-              (sum, section) => sum + section.questions.filter((question) => question.referenceImageUrl).length,
+            const mandatoryCount = template.sections.reduce(
+              (sum, section) => sum + section.questions.filter((question) => question.isMandatory).length,
               0
             );
 
             return (
               <div className="list-card" key={template.id}>
-                <div className="section-header" style={{ marginBottom: "0.65rem" }}>
+                <div className="section-header">
                   <div>
                     <div className="meta-row">
                       <span className="chip chip-info">{template.inspectionType.name}</span>
                       <span className="chip chip-warning">v{template.version}</span>
                     </div>
-                    <div style={{ fontWeight: 800, marginTop: "0.65rem" }}>{template.name}</div>
+                    <div className="list-card-title">{template.name}</div>
                     <div className="small-text">
-                      {template.sections.length} sections · {questionCount} questions · {referenceImageCount} reference image links
+                      {template.sections.length} sections / {questionCount} questions / {mandatoryCount} mandatory
                     </div>
-                    {template.description ? <p className="small-text" style={{ marginTop: "0.35rem" }}>{template.description}</p> : null}
+                    {template.description ? <p className="small-text">{template.description}</p> : null}
                   </div>
                 </div>
 
-                <div className="list">
+                <div className="stack-list">
                   {template.sections.map((section) => (
                     <div className="question-section" key={section.id}>
                       <strong>{section.title}</strong>
-                      {section.guidance ? <p className="small-text" style={{ marginTop: "0.25rem" }}>{section.guidance}</p> : null}
-                      <div className="list" style={{ marginTop: "0.7rem" }}>
+                      {section.guidance ? <p className="small-text">{section.guidance}</p> : null}
+                      <div className="stack-list" style={{ marginTop: "0.75rem" }}>
                         {section.questions.map((question) => (
                           <div className="question-card" key={question.id}>
                             <div className="question-code">{question.code}</div>
                             <p className="question-prompt">{question.prompt}</p>
-                            <div className="meta-row" style={{ marginTop: "0.45rem" }}>
+                            <div className="meta-row">
                               <span className="chip chip-info">{question.responseType}</span>
                               {question.isMandatory ? <span className="chip chip-warning">Mandatory</span> : null}
-                              {question.referenceImageUrl ? <span className="chip chip-success">Reference Image</span> : null}
-                              {question.isCicCandidate ? <span className="chip chip-info">CIC Topic</span> : null}
+                              {question.referenceImageUrl ? <span className="chip chip-success">Reference image</span> : null}
+                              {question.isCicCandidate ? <span className="chip chip-info">CIC topic</span> : null}
                             </div>
                             {question.options.length > 0 ? (
-                              <div className="small-text" style={{ marginTop: "0.45rem" }}>
-                                Options: {question.options.map((option) => option.label).join(", ")}
-                              </div>
+                              <div className="small-text">Options: {question.options.map((option) => option.label).join(", ")}</div>
                             ) : null}
                           </div>
                         ))}

@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { normalizeVirTemplateImport } from "@/lib/vir/import";
+import { isOfficeSession, parseVirSession, VIR_SESSION_COOKIE } from "@/lib/vir/session";
 
 export async function POST(request: NextRequest) {
   try {
+    const session = parseVirSession(request.cookies.get(VIR_SESSION_COOKIE)?.value);
+
+    if (!isOfficeSession(session)) {
+      return NextResponse.json({ error: "Office workspace required." }, { status: 403 });
+    }
+
     const { normalized, summary, warnings } = normalizeVirTemplateImport(await request.json());
     const commit = request.nextUrl.searchParams.get("commit") === "true";
 

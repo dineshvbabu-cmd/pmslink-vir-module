@@ -1,51 +1,91 @@
 import Link from "next/link";
 import "./globals.css";
+import { logoutAction } from "@/app/session-actions";
+import { WorkspaceNav } from "@/components/workspace-nav";
+import {
+  getVirSession,
+  workspaceAccent,
+  workspaceLabel,
+  workspaceNavigation,
+  workspaceShortLabel,
+} from "@/lib/vir/session";
 
 export const metadata = {
   title: "PMSLink VIR Module",
-  description: "Operational vessel inspection module with questionnaire execution, findings workflow, import operations, and dashboards.",
+  description: "ERP-style vessel inspection platform with office and vessel workspaces, questionnaire execution, findings workflow, imports, and dashboards.",
 };
 
-const navigation = [
-  { href: "/", label: "Dashboard" },
-  { href: "/inspections", label: "Inspections" },
-  { href: "/inspections/new", label: "Create VIR" },
-  { href: "/templates", label: "Templates" },
-  { href: "/imports", label: "Import Engine" },
-  { href: "/PMSLink_VIR_Module_Spec_v1.html", label: "Original Spec" },
-];
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const session = await getVirSession();
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <div className="app-shell">
-          <header className="topbar">
-            <div>
-              <div className="eyebrow">QHSE Link / PMSLink</div>
-              <h1 className="app-title">VIR Inspection Operations</h1>
-              <p className="app-subtitle">
-                Live vessel inspection workspace with questionnaire execution, findings, CAR tracking, sign-off, and template import operations.
-              </p>
-            </div>
-            <div className="topbar-status">
-              <span className="chip chip-info">Operational MVP</span>
-              <span className="chip chip-warning">Spec-Aligned</span>
-            </div>
-          </header>
+        {session ? (
+          <div className="erp-shell">
+            <aside className="erp-sidebar">
+              <div className="brand-block">
+                <div className="brand-mark">PL</div>
+                <div>
+                  <div className="eyebrow eyebrow-dark">PMSLink QHSE</div>
+                  <div className="brand-title">VIR Operations</div>
+                </div>
+              </div>
 
-          <nav className="sidebar">
-            {navigation.map((item) => (
-              <Link key={item.href} className="nav-link" href={item.href}>
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+              <div className="workspace-card">
+                <span className={`chip ${workspaceAccent(session.workspace)}`}>{workspaceShortLabel(session.workspace)}</span>
+                <h2 className="workspace-title">{workspaceLabel(session.workspace)}</h2>
+                <div className="workspace-actor">{session.actorName}</div>
+                <div className="workspace-meta">
+                  {session.actorRole}
+                  {session.vesselName ? ` / ${session.vesselName}` : ""}
+                </div>
+              </div>
 
-          <main className="content">{children}</main>
-        </div>
+              <WorkspaceNav items={workspaceNavigation(session.workspace)} />
+
+              <div className="sidebar-footer">
+                <Link className="nav-secondary-link" href="/PMSLink_VIR_Module_Spec_v1.html">
+                  Original VIR spec
+                </Link>
+                <Link className="nav-secondary-link" href="/login">
+                  Switch workspace
+                </Link>
+              </div>
+            </aside>
+
+            <div className="erp-main">
+              <header className="erp-topbar">
+                <div>
+                  <div className="eyebrow">Enterprise workspace</div>
+                  <h1 className="app-title">Vessel inspection execution and review</h1>
+                  <p className="app-subtitle">
+                    Role-based workflow for vessel execution, shore review, corrective closure, and import governance.
+                  </p>
+                </div>
+
+                <div className="erp-topbar-actions">
+                  <Link className="btn-secondary" href="/inspections">
+                    Open register
+                  </Link>
+                  <Link className="btn" href="/inspections/new">
+                    New VIR
+                  </Link>
+                  <form action={logoutAction}>
+                    <button className="btn-danger" type="submit">
+                      Logout
+                    </button>
+                  </form>
+                </div>
+              </header>
+
+              <main className="content">{children}</main>
+            </div>
+          </div>
+        ) : (
+          <main className="login-shell">{children}</main>
+        )}
       </body>
     </html>
   );
 }
-
