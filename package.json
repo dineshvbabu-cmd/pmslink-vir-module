@@ -1,11 +1,11 @@
-﻿{
+{
   "name": "pmslink-vir-module",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
-    "start": "prisma migrate deploy && next start -H 0.0.0.0 -p 3000",
+    "build": "prisma generate && next build && node scripts/prepare-standalone.mjs",
+    "start": "prisma migrate deploy && node .next/standalone/server.js",
     "lint": "eslint"
   },
   "dependencies": {
@@ -28,4 +28,5 @@
     "typescript": "^5"
   }
 }
+
 
