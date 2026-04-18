@@ -27,7 +27,12 @@ export const virTemplateQuestionImportSchema = z.object({
   isCicCandidate: z.boolean().default(false),
   cicTopic: stringOrNull,
   helpText: stringOrNull,
-  referenceImageUrl: z.string().trim().url().optional().nullable(),
+  referenceImageUrl: z
+    .string()
+    .trim()
+    .refine((value) => value.startsWith("/") || /^https?:\/\//i.test(value), "Reference image must be a relative asset path or full URL.")
+    .optional()
+    .nullable(),
   options: z.array(virTemplateOptionImportSchema).optional().default([]),
 });
 
@@ -269,6 +274,7 @@ export function getImportSample(sourceStandard: VirTemplateSourceStandard, input
                 responseType: "YES_NO_NA",
                 riskLevel: sourceStandard === "PSC" ? "HIGH" : "MEDIUM",
                 isMandatory: true,
+                referenceImageUrl: "/reference-images/certificates-reference.svg",
               },
             ],
           },
@@ -281,20 +287,20 @@ export function getImportSample(sourceStandard: VirTemplateSourceStandard, input
 
   if (inputFormat === "ROW_TABLE") {
     return [
-      "section|section_code|question_code|prompt|response_type|mandatory|risk|options|cic_topic|help_text",
-      "Certificates|CERTS|CERTS_001|Are all statutory certificates valid and readily available?|YES_NO_NA|YES|HIGH|||",
-      "Certificates|CERTS|CERTS_002|How many certificates fall due within the next 30 days?|NUMBER|NO|MEDIUM|||",
-      "Bridge|BRIDGE|BRIDGE_001|What is the status of navigation publications?|SINGLE_SELECT|YES|HIGH|UP_TO_DATE,PARTIAL,GAP||Use latest weekly correction report",
+      "section|section_code|question_code|prompt|response_type|mandatory|risk|options|cic_topic|help_text|reference_image_url",
+      "Certificates|CERTS|CERTS_001|Are all statutory certificates valid and readily available?|YES_NO_NA|YES|HIGH||||/reference-images/certificates-reference.svg",
+      "Certificates|CERTS|CERTS_002|How many certificates fall due within the next 30 days?|NUMBER|NO|MEDIUM||||",
+      "Bridge|BRIDGE|BRIDGE_001|What is the status of navigation publications?|SINGLE_SELECT|YES|HIGH|UP_TO_DATE,PARTIAL,GAP||Use latest weekly correction report|/reference-images/navigation-reference.svg",
     ].join("\n");
   }
 
   return [
     "[SECTION] Certificates and Documentation",
-    "CERTS_001: Are all statutory certificates valid and readily available? | type=YES_NO_NA | mandatory | risk=HIGH",
+    "CERTS_001: Are all statutory certificates valid and readily available? | type=YES_NO_NA | mandatory | risk=HIGH | referenceImageUrl=/reference-images/certificates-reference.svg",
     "CERTS_002: How many certificates fall due within the next 30 days? | type=NUMBER | risk=MEDIUM",
     "",
     "[SECTION] Bridge and Navigation",
-    "BRIDGE_001: What is the status of navigation publications? | type=SINGLE_SELECT | mandatory | risk=HIGH | options=UP_TO_DATE,PARTIAL,GAP",
+    "BRIDGE_001: What is the status of navigation publications? | type=SINGLE_SELECT | mandatory | risk=HIGH | options=UP_TO_DATE,PARTIAL,GAP | referenceImageUrl=/reference-images/navigation-reference.svg",
     "BRIDGE_002: Are bridge team familiarization records current? | type=YES_NO_NA | mandatory | risk=MEDIUM",
   ].join("\n");
 }
@@ -359,7 +365,7 @@ function buildTemplateFromRows(request: VirTemplateEngineRequest): VirTemplateIm
       isCicCandidate: Boolean(row.cic_topic),
       cicTopic: row.cic_topic || null,
       helpText: row.help_text || row.help || null,
-      referenceImageUrl: null,
+      referenceImageUrl: row.reference_image_url || row.referenceimageurl || null,
       options: parseOptions(row.options),
     });
   });
@@ -429,7 +435,7 @@ function buildTemplateFromPlainText(request: VirTemplateEngineRequest): VirTempl
       isCicCandidate: parseFlag(modifierMap.cic) || Boolean(modifierMap.cictopic),
       cicTopic: modifierMap.cictopic ?? null,
       helpText: modifierMap.helptext ?? null,
-      referenceImageUrl: null,
+      referenceImageUrl: modifierMap.referenceimageurl ?? modifierMap.referenceimage ?? null,
       options: parseOptions(modifierMap.options),
     });
   });

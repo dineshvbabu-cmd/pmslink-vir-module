@@ -95,6 +95,9 @@ export default async function ManagementReportPage() {
         </div>
         <div className="actions-row print-hidden">
           <PrintButton />
+          <a className="btn-secondary" href="/api/reports/management/pdf">
+            Download PDF
+          </a>
           <Link className="btn-secondary" href="/schedule">
             Open scheduling board
           </Link>

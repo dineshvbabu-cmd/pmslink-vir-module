@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420" fill="none">
+  <rect width="640" height="420" rx="28" fill="#EEF8F4"/>
+  <rect x="42" y="48" width="556" height="324" rx="26" fill="#10243F"/>
+  <rect x="82" y="88" width="476" height="188" rx="20" fill="#17385D"/>
+  <path d="M116 240c52-54 114-82 186-82 70 0 132 22 220 82" stroke="#4BA1FF" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="320" cy="184" r="34" fill="#DFF8EE"/>
+  <path d="M320 150v70M286 184h68" stroke="#0F9C6A" stroke-width="10" stroke-linecap="round"/>
+  <rect x="116" y="302" width="180" height="22" rx="11" fill="#C7D7EA"/>
+  <rect x="314" y="302" width="144" height="22" rx="11" fill="#7DB7FF"/>
+  <text x="116" y="350" fill="white" font-family="Arial, sans-serif" font-size="28" font-weight="700">Reference bridge / publication arrangement</text>
+</svg>

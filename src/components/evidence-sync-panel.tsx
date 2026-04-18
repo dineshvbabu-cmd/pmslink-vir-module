@@ -2,6 +2,13 @@
 
 import { useEffect, useEffectEvent, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import {
+  addQueuedEvidence,
+  getQueuedEvidenceForInspection,
+  type QueuedEvidence,
+  registerEvidenceBackgroundSync,
+  removeQueuedEvidence,
+} from "@/lib/vir/evidence-queue";
 
 type SelectOption = {
   id: string;
@@ -17,23 +24,7 @@ type ExistingEvidence = {
   createdAt: string;
 };
 
-type QueuedEvidence = {
-  id: string;
-  questionId: string | null;
-  findingId: string | null;
-  caption: string | null;
-  fileName: string;
-  contentType: string;
-  fileSizeKb: number | null;
-  takenAt: string;
-  dataUrl: string;
-};
-
 const MAX_LOCAL_QUEUE = 30;
-
-function queueStorageKey(inspectionId: string) {
-  return `vir-evidence-queue:${inspectionId}`;
-}
 
 async function compressImage(file: File) {
   const imageBitmap = await createImageBitmap(file);
@@ -98,30 +89,19 @@ export function EvidenceSyncPanel({
   const [isSyncing, startSyncTransition] = useTransition();
 
   useEffect(() => {
-    const storedQueue = localStorage.getItem(queueStorageKey(inspectionId));
-
-    if (!storedQueue) {
-      setQueue([]);
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(storedQueue) as QueuedEvidence[];
-      setQueue(Array.isArray(parsed) ? parsed : []);
-    } catch {
-      setQueue([]);
-    }
+    void getQueuedEvidenceForInspection(inspectionId)
+      .then((items) => setQueue(items))
+      .catch(() => setQueue([]));
   }, [inspectionId]);
 
   useEffect(() => {
-    localStorage.setItem(queueStorageKey(inspectionId), JSON.stringify(queue));
     if (queue.length === 0) {
       setStatusMessage("No pending evidence in offline queue.");
       return;
     }
 
     setStatusMessage(`${queue.length} evidence item${queue.length > 1 ? "s" : ""} waiting for sync.`);
-  }, [inspectionId, queue]);
+  }, [queue]);
 
   const visibleQueue = useMemo(() => queue.slice(0, 6), [queue]);
 
@@ -153,6 +133,7 @@ export function EvidenceSyncPanel({
         throw new Error(payload?.error ?? "Sync request failed.");
       }
 
+      await removeQueuedEvidence(batch.map((item) => item.id));
       synced += batch.length;
       remaining = remaining.slice(batch.length);
       setQueue([...remaining]);
@@ -174,6 +155,18 @@ export function EvidenceSyncPanel({
     window.addEventListener("online", handleOnline);
     return () => window.removeEventListener("online", handleOnline);
   }, [syncPendingQueue]);
+
+  useEffect(() => {
+    function handleServiceWorkerMessage(event: MessageEvent) {
+      if (event.data?.type === "VIR_EVIDENCE_SYNCED") {
+        void getQueuedEvidenceForInspection(inspectionId).then((items) => setQueue(items));
+        router.refresh();
+      }
+    }
+
+    navigator.serviceWorker?.addEventListener("message", handleServiceWorkerMessage);
+    return () => navigator.serviceWorker?.removeEventListener("message", handleServiceWorkerMessage);
+  }, [inspectionId, router]);
 
   async function handleFileSelection(event: React.ChangeEvent<HTMLInputElement>) {
     const fileList = event.target.files;
@@ -197,6 +190,7 @@ export function EvidenceSyncPanel({
       const compressed = await compressImage(file);
       nextItems.push({
         id: crypto.randomUUID(),
+        inspectionId,
         questionId: selectedQuestionId || null,
         findingId: selectedFindingId || null,
         caption: caption.trim() || null,
@@ -208,7 +202,9 @@ export function EvidenceSyncPanel({
       });
     }
 
-    setQueue((currentQueue) => [...currentQueue, ...nextItems]);
+    await addQueuedEvidence(nextItems);
+    const refreshedQueue = await getQueuedEvidenceForInspection(inspectionId);
+    setQueue(refreshedQueue);
     setStatusMessage(
       navigator.onLine
         ? `${nextItems.length} image${nextItems.length > 1 ? "s" : ""} queued. Sync will start automatically.`
@@ -216,12 +212,17 @@ export function EvidenceSyncPanel({
     );
     event.target.value = "";
 
-    if (navigator.onLine) {
+    const backgroundSyncRegistered = await registerEvidenceBackgroundSync().catch(() => false);
+
+    if (navigator.onLine && !backgroundSyncRegistered) {
       startSyncTransition(() => {
         void syncPendingQueue().catch((error: unknown) => {
           setStatusMessage(error instanceof Error ? error.message : "Sync failed.");
         });
       });
+    } else if ("serviceWorker" in navigator) {
+      const registration = await navigator.serviceWorker.ready;
+      registration.active?.postMessage({ type: "VIR_SYNC_NOW" });
     }
   }
 
@@ -306,13 +307,13 @@ export function EvidenceSyncPanel({
             <button
               className="btn-secondary"
               disabled={isSyncing || queue.length === 0}
-              onClick={() =>
+              onClick={() => {
                 startSyncTransition(() => {
                   void syncPendingQueue().catch((error: unknown) => {
                     setStatusMessage(error instanceof Error ? error.message : "Sync failed.");
                   });
-                })
-              }
+                });
+              }}
               type="button"
             >
               {isSyncing ? "Syncing..." : "Sync queue now"}

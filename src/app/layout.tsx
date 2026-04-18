@@ -1,6 +1,7 @@
 import Link from "next/link";
 import "./globals.css";
 import { logoutAction } from "@/app/session-actions";
+import { VirSyncRegistrar } from "@/components/vir-sync-registrar";
 import { WorkspaceNav } from "@/components/workspace-nav";
 import {
   getVirSession,
@@ -21,6 +22,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en">
       <body>
+        <VirSyncRegistrar />
         {session ? (
           <div className="erp-shell">
             <aside className="erp-sidebar">

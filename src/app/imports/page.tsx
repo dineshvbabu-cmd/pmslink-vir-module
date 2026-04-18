@@ -1,3 +1,4 @@
+import { ExternalReportConsole } from "@/app/imports/external-report-console";
 import { TemplateImportConsole } from "@/app/imports/template-import-console";
 import { prisma } from "@/lib/prisma";
 import { isOfficeSession, requireVirSession } from "@/lib/vir/session";
@@ -48,6 +49,7 @@ export default async function ImportsPage({
   return (
     <div className="page-stack">
       <TemplateImportConsole />
+      <ExternalReportConsole />
 
       <section className="panel panel-elevated">
         <div className="section-header">

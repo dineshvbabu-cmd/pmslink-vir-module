@@ -63,7 +63,13 @@ export default async function InspectionDetailPage({ params }: { params: Promise
           },
         },
       },
-      answers: true,
+      answers: {
+        include: {
+          photos: {
+            orderBy: { createdAt: "desc" },
+          },
+        },
+      },
       findings: {
         orderBy: [{ severity: "desc" }, { createdAt: "desc" }],
         include: {
@@ -147,6 +153,9 @@ export default async function InspectionDetailPage({ params }: { params: Promise
           <Link className="btn-secondary" href={`/reports/inspection/${inspection.id}`}>
             Printable pack
           </Link>
+          <a className="btn-secondary" href={`/api/reports/inspection/${inspection.id}/pdf`}>
+            PDF
+          </a>
           {isVesselSession(session) ? (
             <form action={updateInspectionStatusAction.bind(null, inspection.id, "SUBMITTED")}>
               <SubmitButton className="btn">Submit to office</SubmitButton>
@@ -290,6 +299,42 @@ export default async function InspectionDetailPage({ params }: { params: Promise
                               placeholder="Record narrative, evidence note, or inspector observation."
                             />
                           </div>
+
+                          {question.referenceImageUrl || answer?.photos.length ? (
+                            <div className="question-visual-lane">
+                              {question.referenceImageUrl ? (
+                                <div className="reference-panel">
+                                  <div className="small-text visual-label">Reference standard</div>
+                                  <div className="reference-thumb">
+                                    <img alt={`${question.code} reference`} src={question.referenceImageUrl} />
+                                  </div>
+                                  <div className="small-text">
+                                    Smaller guidance image so inspectors can compare against actual onboard condition.
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              <div className="evidence-panel">
+                                <div className="small-text visual-label">Actual vessel evidence</div>
+                                {answer?.photos.length ? (
+                                  <div className="question-evidence-gallery">
+                                    {answer.photos.map((photo) => (
+                                      <div className="question-evidence-card" key={photo.id}>
+                                        <img alt={photo.caption ?? photo.fileName ?? "Vessel evidence"} src={photo.url} />
+                                        <div className="small-text">
+                                          {photo.caption ?? photo.fileName ?? "Uploaded evidence"}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="empty-state">
+                                    No linked vessel image yet. Upload one from the evidence sync lane below and tie it to this question.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
                       );
                     })}

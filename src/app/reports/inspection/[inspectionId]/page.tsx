@@ -94,6 +94,9 @@ export default async function InspectionReportPage({ params }: { params: Promise
         </div>
         <div className="actions-row print-hidden">
           <PrintButton />
+          <a className="btn-secondary" href={`/api/reports/inspection/${inspection.id}/pdf`}>
+            Download PDF
+          </a>
           <Link className="btn-secondary" href={`/inspections/${inspection.id}`}>
             Back to workflow
           </Link>

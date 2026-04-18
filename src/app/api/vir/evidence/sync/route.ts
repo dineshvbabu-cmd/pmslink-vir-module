@@ -72,7 +72,32 @@ export async function POST(request: Request) {
   const answerMap = new Map(answers.map((answer) => [answer.questionId, answer.id]));
 
   for (const item of payload.data.items) {
-    const answerId = item.questionId ? answerMap.get(item.questionId) ?? null : null;
+    let answerId = item.questionId ? answerMap.get(item.questionId) ?? null : null;
+
+    if (!answerId && item.questionId) {
+      const createdAnswer = await prisma.virAnswer.upsert({
+        where: {
+          inspectionId_questionId: {
+            inspectionId: inspection.id,
+            questionId: item.questionId,
+          },
+        },
+        update: {},
+        create: {
+          inspectionId: inspection.id,
+          questionId: item.questionId,
+          comment: "Evidence uploaded before answer text entry.",
+          answeredBy: session.actorName,
+          answeredAt: new Date(),
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      answerId = createdAnswer.id;
+      answerMap.set(item.questionId, createdAnswer.id);
+    }
 
     await prisma.virPhoto.create({
       data: {

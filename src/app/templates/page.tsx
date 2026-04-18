@@ -101,6 +101,14 @@ export default async function TemplatesPage() {
                             {question.options.length > 0 ? (
                               <div className="small-text">Options: {question.options.map((option) => option.label).join(", ")}</div>
                             ) : null}
+                            {question.referenceImageUrl ? (
+                              <div className="template-reference-preview">
+                                <img alt={`${question.code} reference`} src={question.referenceImageUrl} />
+                                <div className="small-text">
+                                  Standard reference image stored against this questionnaire item.
+                                </div>
+                              </div>
+                            ) : null}
                           </div>
                         ))}
                       </div>
