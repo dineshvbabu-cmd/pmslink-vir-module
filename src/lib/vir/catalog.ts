@@ -1,4 +1,4 @@
-import type { VirInspectionTypeCategory } from "@prisma/client";
+﻿import type { VirInspectionTypeCategory } from "@prisma/client";
 import type { VirTemplateImport } from "@/lib/vir/import";
 
 export type VirInspectionTypeSeed = {
@@ -131,6 +131,7 @@ export const VIR_SAMPLE_TEMPLATE_PAYLOAD: VirTemplateImport = {
           isMandatory: true,
           allowsObservation: true,
           allowsPhoto: false,
+          isCicCandidate: false,
           options: [],
         },
       ],
@@ -148,6 +149,7 @@ export const VIR_SAMPLE_TEMPLATE_PAYLOAD: VirTemplateImport = {
           isMandatory: true,
           allowsObservation: true,
           allowsPhoto: true,
+          isCicCandidate: false,
           options: [
             { value: "SATISFACTORY", label: "Satisfactory", score: 100 },
             { value: "MINOR_ISSUE", label: "Minor issue", score: 60 },
@@ -193,6 +195,7 @@ export const VIR_SAMPLE_TEMPLATE_PAYLOAD: VirTemplateImport = {
           isMandatory: false,
           allowsObservation: false,
           allowsPhoto: false,
+          isCicCandidate: false,
           options: [],
         },
         {
@@ -203,6 +206,7 @@ export const VIR_SAMPLE_TEMPLATE_PAYLOAD: VirTemplateImport = {
           isMandatory: false,
           allowsObservation: true,
           allowsPhoto: true,
+          isCicCandidate: false,
           options: [
             { value: "ECDIS", label: "ECDIS" },
             { value: "RADAR", label: "RADAR" },
@@ -214,3 +218,5 @@ export const VIR_SAMPLE_TEMPLATE_PAYLOAD: VirTemplateImport = {
     },
   ],
 };
+
+
