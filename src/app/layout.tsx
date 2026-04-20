@@ -58,9 +58,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
               <div className="sidebar-footer">
                 <div className="sync-stamp">Last synced 20/04/2026</div>
-                <Link className="nav-secondary-link" href="/PMSLink_VIR_Module_Spec_v1.html">
-                  Reference scope
-                </Link>
                 <Link className="nav-secondary-link" href="/login">
                   Switch workspace
                 </Link>

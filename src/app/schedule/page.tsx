@@ -112,9 +112,6 @@ export default async function SchedulePage() {
           <Link className="btn-secondary btn-compact" href="/inspections?scope=history">
             Open history
           </Link>
-          <Link className="btn-secondary btn-compact" href="/reports/management">
-            Open management pack
-          </Link>
         </div>
       </section>
 

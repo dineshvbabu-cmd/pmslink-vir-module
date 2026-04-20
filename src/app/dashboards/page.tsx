@@ -289,9 +289,6 @@ export default async function DashboardBoardsPage({
           <Link className="btn btn-compact" href="/schedule">
             Open scheduler
           </Link>
-          <Link className="btn-secondary btn-compact" href="/reports/management">
-            Management pack
-          </Link>
         </div>
       </section>
 

@@ -27,7 +27,6 @@ function revalidateVirPaths(inspectionId?: string) {
   revalidatePath("/inspections/new");
   revalidatePath("/templates");
   revalidatePath("/imports");
-  revalidatePath("/reports/management");
 
   if (inspectionId) {
     revalidatePath(`/inspections/${inspectionId}`);

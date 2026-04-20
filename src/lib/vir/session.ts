@@ -36,7 +36,6 @@ const officeNavigation: WorkspaceNavItem[] = [
   { href: "/inspections/new", label: "Create VIR", note: "Schedule or launch" },
   { href: "/templates", label: "Template Library", note: "Questionnaires" },
   { href: "/imports", label: "Import Engine", note: "Checklist normalization" },
-  { href: "/reports/management", label: "Management Pack", note: "Printable review" },
 ];
 
 const vesselNavigation: WorkspaceNavItem[] = [
