@@ -6,11 +6,28 @@ import { prisma } from "@/lib/prisma";
 import { createSessionToken, VIR_SESSION_COOKIE, type VirSession } from "@/lib/vir/session";
 import { toStringOrNull } from "@/lib/vir/workflow";
 
-const OFFICE_USERS = [
+type OfficeUser = {
+  username: string;
+  password: string;
+  actorName: string;
+  actorRole: string;
+  dashboardVesselCodes?: string[];
+  dashboardScopeLabel?: string;
+};
+
+const OFFICE_USERS: OfficeUser[] = [
   { username: "office.qhse", password: "PMSLink@2026", actorName: "Office QHSE Desk", actorRole: "QHSE Superintendent" },
   { username: "office.marine", password: "PMSLink@2026", actorName: "Office Marine Desk", actorRole: "Marine Superintendent" },
   { username: "office.tech", password: "PMSLink@2026", actorName: "Office Technical Desk", actorRole: "Technical Superintendent" },
-] as const;
+  {
+    username: "office.tsi",
+    password: "PMSLink@2026",
+    actorName: "TSI Control Desk",
+    actorRole: "TSI Superintendent",
+    dashboardVesselCodes: ["UM-DMO-001", "UM-DMO-002"],
+    dashboardScopeLabel: "TSI assigned vessels",
+  },
+];
 
 const VESSEL_USERS = [
   { username: "master", password: "Vessel@2026", actorRole: "Master" },
@@ -52,6 +69,8 @@ export async function loginAction(formData: FormData) {
       vesselId: null,
       vesselName: null,
       username: matchedUser.username,
+      dashboardVesselCodes: matchedUser.dashboardVesselCodes ?? null,
+      dashboardScopeLabel: matchedUser.dashboardScopeLabel ?? null,
     };
   }
 
@@ -69,7 +88,7 @@ export async function loginAction(formData: FormData) {
 
     const vessel = await prisma.vessel.findUnique({
       where: { id: vesselId },
-      select: { id: true, name: true },
+      select: { id: true, code: true, name: true },
     });
 
     if (!vessel) {
@@ -83,6 +102,8 @@ export async function loginAction(formData: FormData) {
       vesselId: vessel.id,
       vesselName: vessel.name,
       username: matchedUser.username,
+      dashboardVesselCodes: [vessel.code],
+      dashboardScopeLabel: vessel.name,
     };
   }
 

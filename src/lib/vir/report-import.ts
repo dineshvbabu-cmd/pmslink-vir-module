@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { extractStructuredReportWithLlm, extractTextWithOcr } from "@/lib/vir/report-import-ai";
 
 const reportImportRequestSchema = z.object({
   fileName: z.string().trim().min(1),
@@ -42,22 +43,52 @@ const sourcePatterns: Array<{ inspectionType: ParsedInspectionType; keywords: st
   },
 ];
 
-export function normalizeReportImportInput(input: unknown) {
+export async function normalizeReportImportInput(input: unknown) {
   const request = reportImportRequestSchema.parse(input);
   const { base64Payload, binaryBuffer } = decodeBase64Payload(request.contentBase64);
-  const extractedText = extractReportText({
+  const heuristicText = extractReportText({
     binaryBuffer,
     contentType: request.contentType,
     fileName: request.fileName,
   });
+  const reviewNotes: string[] = [];
+  let extractedText = heuristicText;
+
+  if (heuristicText.requiresOcrReview) {
+    try {
+      const ocrResult = await extractTextWithOcr({
+        binaryBuffer,
+        contentType: request.contentType,
+        fileName: request.fileName,
+      });
+
+      if (ocrResult.text && ocrResult.text.length > heuristicText.normalizedText.length) {
+        extractedText = buildExtractedText(ocrResult.text);
+      }
+
+      reviewNotes.push(...ocrResult.notes);
+    } catch (error) {
+      reviewNotes.push(error instanceof Error ? error.message : "OCR extraction failed.");
+    }
+  }
+
   const inspectionType = classifyInspectionType(extractedText.normalizedText);
-  const findings = extractFindings(extractedText.lines);
-  const vesselName = extractSingleValue(extractedText.lines, ["vessel", "ship name", "name of ship"]);
-  const reportDate = extractDate(extractedText.normalizedText);
+  const heuristicFindings = extractFindings(extractedText.lines);
+  const llmExtraction = await extractStructuredReportWithLlm({
+    fileName: request.fileName,
+    normalizedText: extractedText.normalizedText,
+  }).catch((error) => {
+    reviewNotes.push(error instanceof Error ? error.message : "LLM extraction failed.");
+    return null;
+  });
+  const findings = llmExtraction?.findings.length ? llmExtraction.findings : heuristicFindings;
+  const vesselName =
+    llmExtraction?.vesselName ?? extractSingleValue(extractedText.lines, ["vessel", "ship name", "name of ship"]);
+  const reportDate = llmExtraction?.reportDate ?? extractDate(extractedText.normalizedText);
   const externalReference =
+    llmExtraction?.externalReference ??
     extractSingleValue(extractedText.lines, ["report no", "report number", "reference", "inspection no"]) ??
     createHash("sha256").update(base64Payload).digest("hex").slice(0, 12).toUpperCase();
-  const reviewNotes: string[] = [];
 
   if (extractedText.requiresOcrReview) {
     reviewNotes.push("Document appears to be scanned or image-heavy. OCR review is recommended for higher-confidence extraction.");
@@ -67,17 +98,27 @@ export function normalizeReportImportInput(input: unknown) {
     reviewNotes.push("No structured findings were detected automatically. Review extracted text and map findings manually if required.");
   }
 
+  if (llmExtraction?.notes.length) {
+    reviewNotes.push(...llmExtraction.notes);
+  }
+
   const fieldReviews = [
-    buildFieldReview("VirReport", "vesselName", vesselName, vesselName, vesselName ? 0.82 : 0.28),
-    buildFieldReview("VirReport", "inspectionType", inspectionType.name, inspectionType.name, 0.86),
-    buildFieldReview("VirReport", "externalReference", externalReference, externalReference, 0.77),
-    buildFieldReview("VirReport", "reportDate", reportDate ?? null, reportDate ?? null, reportDate ? 0.72 : 0.31),
+    buildFieldReview("VirReport", "vesselName", llmExtraction?.vesselName ?? vesselName, vesselName, vesselName ? 0.88 : 0.28),
+    buildFieldReview(
+      "VirReport",
+      "inspectionType",
+      llmExtraction?.inspectionTypeName ?? inspectionType.name,
+      llmExtraction?.inspectionTypeName ?? inspectionType.name,
+      llmExtraction?.inspectionTypeName ? 0.9 : 0.86
+    ),
+    buildFieldReview("VirReport", "externalReference", llmExtraction?.externalReference ?? externalReference, externalReference, llmExtraction?.externalReference ? 0.84 : 0.77),
+    buildFieldReview("VirReport", "reportDate", llmExtraction?.reportDate ?? reportDate ?? null, reportDate ?? null, reportDate ? 0.82 : 0.31),
     buildFieldReview(
       "VirReport",
       "findingCount",
       String(findings.length),
       String(findings.length),
-      findings.length > 0 ? 0.83 : 0.22
+      llmExtraction?.findings.length ? 0.9 : findings.length > 0 ? 0.83 : 0.22
     ),
   ];
 
@@ -99,6 +140,8 @@ export function normalizeReportImportInput(input: unknown) {
       findingsDetected: findings.length,
       requiresOcrReview: extractedText.requiresOcrReview,
       sourceSystem: inspectionType.sourceSystem,
+      ocrProvider: extractedText.requiresOcrReview ? "Azure Document Intelligence or heuristic fallback" : "Heuristic text extraction",
+      aiProvider: llmExtraction?.provider ?? "Heuristic mapping",
     },
     fieldReviews,
   };

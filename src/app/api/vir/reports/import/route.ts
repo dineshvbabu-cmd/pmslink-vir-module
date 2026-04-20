@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Office workspace required." }, { status: 403 });
     }
 
-    const parsed = normalizeReportImportInput(await request.json());
+    const parsed = await normalizeReportImportInput(await request.json());
 
     const inspectionType = await prisma.virInspectionType.upsert({
       where: { code: parsed.inspectionType.code },

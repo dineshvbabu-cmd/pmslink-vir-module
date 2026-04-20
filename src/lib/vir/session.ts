@@ -13,6 +13,8 @@ export type VirSession = {
   vesselId: string | null;
   vesselName: string | null;
   username: string;
+  dashboardVesselCodes?: string[] | null;
+  dashboardScopeLabel?: string | null;
   exp: number;
 };
 
@@ -24,6 +26,7 @@ export type WorkspaceNavItem = {
 
 const officeNavigation: WorkspaceNavItem[] = [
   { href: "/", label: "Control Tower", note: "Fleet dashboard" },
+  { href: "/dashboards", label: "Analytics Boards", note: "Fleet, TMSA, PSC, class" },
   { href: "/schedule", label: "Scheduling Board", note: "Calendar and gantt" },
   { href: "/inspections?scope=shore-review", label: "Review Queue", note: "Office actions" },
   { href: "/inspections", label: "Inspection Register", note: "Fleet-wide" },
@@ -35,6 +38,7 @@ const officeNavigation: WorkspaceNavItem[] = [
 
 const vesselNavigation: WorkspaceNavItem[] = [
   { href: "/", label: "My Workspace", note: "Vessel dashboard" },
+  { href: "/dashboards", label: "Analytics Boards", note: "My vessel boards" },
   { href: "/schedule", label: "Schedule", note: "My upcoming plan" },
   { href: "/inspections?scope=my-drafts", label: "My VIR Queue", note: "Draft and return" },
   { href: "/inspections", label: "Inspection Register", note: "Assigned to vessel" },
@@ -115,6 +119,10 @@ export function parseVirSession(token: string | undefined | null): VirSession | 
       vesselId: typeof parsed.vesselId === "string" ? parsed.vesselId : null,
       vesselName: typeof parsed.vesselName === "string" ? parsed.vesselName : null,
       username: parsed.username,
+      dashboardVesselCodes: Array.isArray(parsed.dashboardVesselCodes)
+        ? parsed.dashboardVesselCodes.filter((value): value is string => typeof value === "string" && value.length > 0)
+        : null,
+      dashboardScopeLabel: typeof parsed.dashboardScopeLabel === "string" ? parsed.dashboardScopeLabel : null,
       exp: parsed.exp,
     };
   } catch {
@@ -145,8 +153,24 @@ export function isVesselSession(session: VirSession | null): session is VirSessi
   return session?.workspace === "VESSEL";
 }
 
+export function isTsiSession(session: VirSession | null) {
+  return Boolean(session && session.workspace === "OFFICE" && session.actorRole.toUpperCase().includes("TSI"));
+}
+
 export function canAccessVessel(session: VirSession, vesselId: string) {
   return session.workspace === "OFFICE" || session.vesselId === vesselId;
+}
+
+export function defaultDashboardScopedVesselCodes(session: VirSession | null) {
+  if (!session) {
+    return [];
+  }
+
+  if (session.workspace === "VESSEL" || isTsiSession(session)) {
+    return session.dashboardVesselCodes ?? [];
+  }
+
+  return [];
 }
 
 export function workspaceLabel(workspace: VirWorkspace) {

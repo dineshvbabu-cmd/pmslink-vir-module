@@ -83,6 +83,7 @@ export function EvidenceSyncPanel({
   const router = useRouter();
   const [queue, setQueue] = useState<QueuedEvidence[]>([]);
   const [caption, setCaption] = useState("");
+  const [conflicts, setConflicts] = useState<Record<string, string>>({});
   const [selectedQuestionId, setSelectedQuestionId] = useState("");
   const [selectedFindingId, setSelectedFindingId] = useState("");
   const [statusMessage, setStatusMessage] = useState("No pending evidence in offline queue.");
@@ -133,9 +134,26 @@ export function EvidenceSyncPanel({
         throw new Error(payload?.error ?? "Sync request failed.");
       }
 
-      await removeQueuedEvidence(batch.map((item) => item.id));
-      synced += batch.length;
-      remaining = remaining.slice(batch.length);
+      const payload = (await response.json()) as {
+        ok: boolean;
+        synced: number;
+        syncedIds: string[];
+        conflicts?: Array<{ id: string; reason: string }>;
+      };
+
+      if (payload.syncedIds.length > 0) {
+        await removeQueuedEvidence(payload.syncedIds);
+      }
+
+      if (payload.conflicts?.length) {
+        setConflicts((current) => ({
+          ...current,
+          ...Object.fromEntries(payload.conflicts!.map((conflict) => [conflict.id, conflict.reason])),
+        }));
+      }
+
+      synced += payload.syncedIds.length;
+      remaining = remaining.filter((item) => !payload.syncedIds.includes(item.id));
       setQueue([...remaining]);
     }
 
@@ -224,6 +242,17 @@ export function EvidenceSyncPanel({
       const registration = await navigator.serviceWorker.ready;
       registration.active?.postMessage({ type: "VIR_SYNC_NOW" });
     }
+  }
+
+  async function dismissQueuedItem(id: string) {
+    await removeQueuedEvidence([id]);
+    const refreshedQueue = await getQueuedEvidenceForInspection(inspectionId);
+    setQueue(refreshedQueue);
+    setConflicts((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
   }
 
   return (
@@ -338,13 +367,45 @@ export function EvidenceSyncPanel({
           {visibleQueue.map((item) => (
             <div className="list-card" key={item.id}>
               <div className="meta-row">
-                <span className="chip chip-warning">Queued</span>
+                <span className={`chip ${conflicts[item.id] ? "chip-danger" : "chip-warning"}`}>
+                  {conflicts[item.id] ? "Conflict" : "Queued"}
+                </span>
                 {item.fileSizeKb ? <span className="chip chip-muted">{item.fileSizeKb} KB</span> : null}
               </div>
               <div className="list-card-title">{item.fileName}</div>
               <div className="small-text">{item.caption ?? "No caption"}</div>
+              {conflicts[item.id] ? (
+                <div className="small-text" style={{ marginTop: "0.45rem" }}>
+                  {conflicts[item.id]}
+                </div>
+              ) : null}
+              <div className="actions-row" style={{ marginTop: "0.65rem" }}>
+                <button
+                  className="btn-secondary btn-compact"
+                  onClick={() => {
+                    void dismissQueuedItem(item.id);
+                  }}
+                  type="button"
+                >
+                  Discard
+                </button>
+              </div>
             </div>
           ))}
+        </div>
+      ) : null}
+
+      {Object.keys(conflicts).length > 0 ? (
+        <div className="sync-conflict-list">
+          <div className="focus-banner">
+            <div>
+              <strong>Offline conflict handling active</strong>
+              <div className="small-text" style={{ marginTop: "0.25rem" }}>
+                Queue conflicts stay visible until the vessel user dismisses them, so ship and shore remain aligned on the shared evidence log.
+              </div>
+            </div>
+            <span className="chip chip-danger">{Object.keys(conflicts).length} conflict items</span>
+          </div>
         </div>
       ) : null}
 

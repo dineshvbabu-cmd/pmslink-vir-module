@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ScheduleBoard } from "@/components/schedule-board";
 import { prisma } from "@/lib/prisma";
 import { isOfficeSession, requireVirSession } from "@/lib/vir/session";
 import { inspectionStatusLabel, toneForInspectionStatus } from "@/lib/vir/workflow";
@@ -64,7 +65,17 @@ export default async function SchedulePage() {
   const vesselRows = [...new Map(timelineInspections.map((inspection) => [inspection.vessel.id, inspection.vessel])).values()]
     .map((vessel) => ({
       ...vessel,
-      inspections: timelineInspections.filter((inspection) => inspection.vessel.id === vessel.id),
+      inspections: timelineInspections
+        .filter((inspection) => inspection.vessel.id === vessel.id)
+        .map((inspection) => ({
+          id: inspection.id,
+          title: inspection.title,
+          vesselId: inspection.vessel.id,
+          vesselName: inspection.vessel.name,
+          inspectionTypeName: inspection.inspectionType.name,
+          inspectionDate: inspection.inspectionDate.toISOString(),
+          status: inspection.status,
+        })),
     }))
     .sort((left, right) => left.name.localeCompare(right.name));
 
@@ -94,10 +105,10 @@ export default async function SchedulePage() {
           </p>
         </div>
         <div className="actions-row">
-          <Link className="btn" href="/inspections/new">
+          <Link className="btn btn-compact" href="/inspections/new">
             Schedule VIR
           </Link>
-          <Link className="btn-secondary" href="/reports/management">
+          <Link className="btn-secondary btn-compact" href="/reports/management">
             Open management pack
           </Link>
         </div>
@@ -129,45 +140,7 @@ export default async function SchedulePage() {
             </div>
           </div>
 
-          <div className="timeline-board">
-            <div className="timeline-axis">
-              {Array.from({ length: 8 }, (_, index) => addDays(windowStart, index * 7)).map((date) => (
-                <div className="timeline-axis-cell" key={date.toISOString()}>
-                  {fmt.format(date)}
-                </div>
-              ))}
-            </div>
-
-            <div className="stack-list">
-              {vesselRows.map((row) => (
-                <div className="timeline-row" key={row.id}>
-                  <div className="timeline-row-label">
-                    <strong>{row.name}</strong>
-                    <div className="small-text">{row.inspections.length} inspections in horizon</div>
-                  </div>
-                  <div className="timeline-track-surface">
-                    {row.inspections.map((inspection) => {
-                      const totalMs = windowEnd.getTime() - windowStart.getTime();
-                      const offsetMs = inspection.inspectionDate.getTime() - windowStart.getTime();
-                      const left = Math.max(0, Math.min(96, (offsetMs / totalMs) * 100));
-
-                      return (
-                        <Link
-                          className={`timeline-pill ${toneForInspectionStatus(inspection.status)}`}
-                          href={`/inspections/${inspection.id}`}
-                          key={inspection.id}
-                          style={{ left: `${left}%` }}
-                        >
-                          <span>{inspection.inspectionType.name}</span>
-                          <small>{fmt.format(inspection.inspectionDate)}</small>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <ScheduleBoard isOffice={isOffice} rows={vesselRows} windowStart={windowStart.toISOString()} />
         </section>
 
         <section className="panel panel-elevated">

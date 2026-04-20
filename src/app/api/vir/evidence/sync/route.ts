@@ -71,7 +71,42 @@ export async function POST(request: Request) {
 
   const answerMap = new Map(answers.map((answer) => [answer.questionId, answer.id]));
 
+  const syncedIds: string[] = [];
+  const conflicts: Array<{ id: string; reason: string }> = [];
+
   for (const item of payload.data.items) {
+    if (item.findingId) {
+      const finding = await prisma.virFinding.findUnique({
+        where: { id: item.findingId },
+        select: { id: true, status: true },
+      });
+
+      if (finding && finding.status === "CLOSED") {
+        conflicts.push({
+          id: item.id,
+          reason: "Target finding is already closed in the shared record. Re-link the photo to another finding or discard it.",
+        });
+        continue;
+      }
+    }
+
+    const existingPhoto = await prisma.virPhoto.findFirst({
+      where: {
+        inspectionId: inspection.id,
+        fileName: item.fileName,
+        caption: item.caption ?? null,
+      },
+      select: { id: true },
+    });
+
+    if (existingPhoto) {
+      conflicts.push({
+        id: item.id,
+        reason: "A matching evidence item already exists in the shared inspection log. Server copy kept to avoid duplication.",
+      });
+      continue;
+    }
+
     let answerId = item.questionId ? answerMap.get(item.questionId) ?? null : null;
 
     if (!answerId && item.questionId) {
@@ -124,10 +159,14 @@ export async function POST(request: Request) {
         },
       });
     }
+
+    syncedIds.push(item.id);
   }
 
   return NextResponse.json({
     ok: true,
-    synced: payload.data.items.length,
+    synced: syncedIds.length,
+    syncedIds,
+    conflicts,
   });
 }

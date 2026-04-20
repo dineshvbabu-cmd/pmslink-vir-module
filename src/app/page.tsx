@@ -141,16 +141,19 @@ async function OfficeDashboard() {
           </p>
         </div>
         <div className="actions-row">
-          <Link className="btn" href="/inspections/new">
+          <Link className="btn btn-compact" href="/inspections/new">
             Launch VIR
           </Link>
-          <Link className="btn-secondary" href="/schedule">
+          <Link className="btn-secondary btn-compact" href="/dashboards">
+            Analytics boards
+          </Link>
+          <Link className="btn-secondary btn-compact" href="/schedule">
             Scheduling board
           </Link>
-          <Link className="btn-secondary" href="/imports">
+          <Link className="btn-secondary btn-compact" href="/imports">
             Open import engine
           </Link>
-          <Link className="btn-secondary" href="/reports/management">
+          <Link className="btn-secondary btn-compact" href="/reports/management">
             Management pack
           </Link>
         </div>
@@ -431,13 +434,16 @@ async function VesselDashboard({ vesselId, vesselName }: { vesselId: string; ves
           </p>
         </div>
         <div className="actions-row">
-          <Link className="btn" href="/inspections/new">
+          <Link className="btn btn-compact" href="/inspections/new">
             Start VIR
           </Link>
-          <Link className="btn-secondary" href="/schedule">
+          <Link className="btn-secondary btn-compact" href="/dashboards">
+            Analytics boards
+          </Link>
+          <Link className="btn-secondary btn-compact" href="/schedule">
             My schedule
           </Link>
-          <Link className="btn-secondary" href="/inspections?scope=my-drafts">
+          <Link className="btn-secondary btn-compact" href="/inspections?scope=my-drafts">
             Open my queue
           </Link>
         </div>

@@ -76,8 +76,8 @@ export function ExternalReportConsole() {
         <div>
           <h3 className="panel-title">External Report Intake</h3>
           <p className="panel-subtitle">
-            Upload a live PDF or text report to create an import-review session. Text-based PDFs are extracted
-            heuristically and scanned PDFs are flagged for OCR review.
+            Upload a live PDF or text report to create an import-review session. When provider keys are configured,
+            scanned PDFs go through OCR and the extracted text is normalized through an LLM-backed mapping pass.
           </p>
         </div>
         <div className="actions-row">
@@ -110,8 +110,8 @@ export function ExternalReportConsole() {
       </div>
 
       <div className="small-text" style={{ marginTop: "0.75rem" }}>
-        Best for Monday demo: use text PDFs or exported reports. Scanned image-only PDFs will still create a review
-        session but will be marked for OCR follow-up.
+        The fallback path still supports text PDFs immediately. Add Azure Document Intelligence and OpenAI keys in
+        Railway to switch the same intake flow into true OCR and true AI extraction.
       </div>
 
       {result ? (

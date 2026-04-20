@@ -27,7 +27,7 @@ export default async function LoginPage() {
         <p className="login-copy">
           Choose the role you want to operate as. Office users see fleet oversight, shore review, template
           governance, and import control. Vessel users see only their own execution lane, findings, and submission
-          workflow.
+          workflow. For the demo, `office.tsi` opens a superintendent view defaulted to the assigned vessel set.
         </p>
       </section>
 
@@ -47,6 +47,10 @@ export default async function LoginPage() {
             <div className="field-wide">
               <label htmlFor="officeUsername">Username</label>
               <input defaultValue="office.qhse" id="officeUsername" name="username" placeholder="office.qhse" />
+            </div>
+
+            <div className="field-wide">
+              <div className="small-text">Demo users: office.qhse, office.marine, office.tech, office.tsi</div>
             </div>
 
             <div className="field-wide">
