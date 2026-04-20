@@ -6,8 +6,7 @@ import { inspectionStatusLabel, toneForInspectionStatus } from "@/lib/vir/workfl
 
 export const dynamic = "force-dynamic";
 
-const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short" });
-const fullFmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+const fullFmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
 
 function startOfDay(date: Date) {
   const next = new Date(date);
@@ -24,89 +23,94 @@ function addDays(date: Date, days: number) {
 export default async function SchedulePage() {
   const session = await requireVirSession();
   const isOffice = isOfficeSession(session);
-  const windowStart = addDays(startOfDay(new Date()), -7);
-  const windowEnd = addDays(windowStart, 56);
+  const windowStart = addDays(startOfDay(new Date()), -14);
 
   const inspections = await prisma.virInspection.findMany({
     where: {
       status: { not: "ARCHIVED" },
       ...(isOffice ? {} : { vesselId: session.vesselId ?? "" }),
     },
-    orderBy: [{ inspectionDate: "asc" }, { createdAt: "asc" }],
+    orderBy: [{ inspectionDate: "desc" }, { createdAt: "desc" }],
     include: {
-      vessel: { select: { id: true, name: true } },
-      inspectionType: { select: { name: true } },
-      findings: {
-        where: {
-          status: { in: ["OPEN", "IN_PROGRESS", "READY_FOR_REVIEW", "CARRIED_OVER"] },
-        },
+      vessel: {
         select: {
           id: true,
-          status: true,
+          code: true,
+          name: true,
+          vesselType: true,
+          fleet: true,
         },
+      },
+      inspectionType: { select: { name: true, code: true } },
+      findings: {
+        where: { status: { in: ["OPEN", "IN_PROGRESS", "READY_FOR_REVIEW", "CARRIED_OVER"] } },
+        select: { id: true, status: true },
       },
       signOffs: {
         orderBy: { signedAt: "desc" },
         take: 1,
-        select: {
-          id: true,
-          stage: true,
-          approved: true,
-          signedAt: true,
-        },
+        select: { id: true, stage: true, approved: true, signedAt: true },
       },
     },
   });
 
-  const timelineInspections = inspections.filter(
-    (inspection) => inspection.inspectionDate >= windowStart && inspection.inspectionDate <= windowEnd
-  );
-
-  const vesselRows = [...new Map(timelineInspections.map((inspection) => [inspection.vessel.id, inspection.vessel])).values()]
-    .map((vessel) => ({
-      ...vessel,
-      inspections: timelineInspections
+  const vesselRows = [...new Map(inspections.map((inspection) => [inspection.vessel.id, inspection.vessel])).values()]
+    .map((vessel) => {
+      const vesselInspections = inspections
         .filter((inspection) => inspection.vessel.id === vessel.id)
-        .map((inspection) => ({
-          id: inspection.id,
-          title: inspection.title,
-          vesselId: inspection.vessel.id,
-          vesselName: inspection.vessel.name,
-          inspectionTypeName: inspection.inspectionType.name,
-          inspectionDate: inspection.inspectionDate.toISOString(),
-          status: inspection.status,
-        })),
-    }))
-    .sort((left, right) => left.name.localeCompare(right.name));
+        .sort((left, right) => right.inspectionDate.getTime() - left.inspectionDate.getTime());
+      const lastInspection = vesselInspections[0] ?? null;
+      const previousInspection = vesselInspections[1] ?? null;
+      const nextDue = addDays(lastInspection?.inspectionDate ?? new Date(), 182);
+      const nextInspectionMode = inferInspectionMode(lastInspection?.title ?? "", lastInspection?.inspectionType.name ?? "");
+      const plannerStatus = classifyPlannerStatus(nextDue);
+      const inspectionCompliance = lastInspection && ["SHORE_REVIEWED", "CLOSED"].includes(lastInspection.status) ? "In Order" : "No 2 VIR";
+      const sailingCompliance =
+        lastInspection && inferInspectionMode(lastInspection.title, lastInspection.inspectionType.name).startsWith("Sailing")
+          ? "In Order"
+          : "No Sailing";
 
-  const calendarDays = Array.from({ length: 21 }, (_, index) => addDays(startOfDay(new Date()), index)).map((date) => ({
-    date,
-    inspections: inspections.filter(
-      (inspection) => startOfDay(inspection.inspectionDate).getTime() === date.getTime()
-    ),
-  }));
-
-  const scheduledCount = timelineInspections.length;
-  const submittedCount = timelineInspections.filter((inspection) => inspection.status === "SUBMITTED").length;
-  const shoreCount = timelineInspections.filter((inspection) => inspection.status === "SHORE_REVIEWED").length;
-  const carryForwardCount = timelineInspections.reduce(
-    (sum, inspection) => sum + inspection.findings.filter((finding) => finding.status === "CARRIED_OVER").length,
-    0
-  );
+      return {
+        vessel,
+        lastInspection,
+        previousInspection,
+        nextDue,
+        nextInspectionMode,
+        plannerStatus,
+        inspectionCompliance,
+        sailingCompliance,
+        inspections: vesselInspections
+          .filter((inspection) => inspection.inspectionDate >= windowStart)
+          .map((inspection) => ({
+            id: inspection.id,
+            title: inspection.title,
+            vesselId: inspection.vessel.id,
+            vesselName: inspection.vessel.name,
+            inspectionTypeName: inspection.inspectionType.name,
+            inspectionDate: inspection.inspectionDate.toISOString(),
+            status: inspection.status,
+          })),
+      };
+    })
+    .sort((left, right) => left.vessel.name.localeCompare(right.vessel.name));
 
   return (
     <div className="page-stack">
       <section className="hero-panel">
         <div>
-          <div className="eyebrow">{isOffice ? "Office scheduling board" : "Vessel schedule"}</div>
-          <h2 className="hero-title">Inspection plan and handover timeline</h2>
+          <div className="eyebrow">VIR Calendar</div>
+          <h2 className="hero-title">VESSEL INSPECTION STATUS &amp; PLANNER - 2026</h2>
           <p className="hero-copy">
-            Run the fleet calendar, monitor ship-to-shore handovers, and drill from planned inspections straight into live execution.
+            Review previous vessel inspection, last vessel inspection, and inspection planner &amp; compliance status in one
+            office-vessel scheduling board.
           </p>
         </div>
         <div className="actions-row">
           <Link className="btn btn-compact" href="/inspections/new">
             Schedule VIR
+          </Link>
+          <Link className="btn-secondary btn-compact" href="/inspections?scope=history">
+            Open history
           </Link>
           <Link className="btn-secondary btn-compact" href="/reports/management">
             Open management pack
@@ -115,118 +119,170 @@ export default async function SchedulePage() {
       </section>
 
       <section className="erp-metrics-grid">
-        <MetricTile label="Planned window" note="56-day gantt horizon" value={scheduledCount} />
-        <MetricTile label="Submitted" note="Waiting office action" value={submittedCount} />
-        <MetricTile label="Shore reviewed" note="Released from office" value={shoreCount} />
-        <MetricTile label="Carry-forward" note="Open items brought ahead" value={carryForwardCount} />
-        <MetricTile
-          label="Closed"
-          note="Completed in visible window"
-          value={timelineInspections.filter((inspection) => inspection.status === "CLOSED").length}
-        />
-        <MetricTile
-          label="Upcoming 21d"
-          note="Near-term board focus"
-          value={calendarDays.reduce((sum, day) => sum + day.inspections.length, 0)}
-        />
-      </section>
-
-      <section className="dashboard-grid dashboard-grid-wide">
-        <section className="panel panel-elevated">
-          <div className="section-header">
-            <div>
-              <h3 className="panel-title">Fleet gantt board</h3>
-              <p className="panel-subtitle">Inspection cadence across vessels with one-click drill-down to the live workflow.</p>
-            </div>
-          </div>
-
-          <ScheduleBoard isOffice={isOffice} rows={vesselRows} windowStart={windowStart.toISOString()} />
-        </section>
-
-        <section className="panel panel-elevated">
-          <div className="section-header">
-            <div>
-              <h3 className="panel-title">21-day calendar</h3>
-              <p className="panel-subtitle">Near-term execution view for masters, office reviewers, and schedulers.</p>
-            </div>
-          </div>
-
-          <div className="stack-list">
-            {calendarDays.map((day) => (
-              <div className="list-card" key={day.date.toISOString()}>
-                <div className="section-header">
-                  <div>
-                    <div className="list-card-title">{fullFmt.format(day.date)}</div>
-                    <div className="small-text">{day.inspections.length} inspections</div>
-                  </div>
-                  <span className={`chip ${day.inspections.length > 0 ? "chip-info" : "chip-muted"}`}>
-                    {day.inspections.length > 0 ? "Active day" : "No events"}
-                  </span>
-                </div>
-
-                {day.inspections.length > 0 ? (
-                  <div className="stack-list">
-                    {day.inspections.map((inspection) => (
-                      <Link className="inline-link" href={`/inspections/${inspection.id}`} key={inspection.id}>
-                        {inspection.vessel.name} / {inspection.title} / {inspection.inspectionType.name}
-                      </Link>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </section>
+        <MetricTile label="Total vessels" note="Visible planner scope" value={vesselRows.length} />
+        <MetricTile label="Approved" note="Last inspection approved" value={vesselRows.filter((row) => row.lastInspection && ["SHORE_REVIEWED", "CLOSED"].includes(row.lastInspection.status)).length} />
+        <MetricTile label="Due Range" note="Due inside 30 days" value={vesselRows.filter((row) => row.plannerStatus === "Due Range").length} />
+        <MetricTile label="Overdue" note="Past next due" value={vesselRows.filter((row) => row.plannerStatus === "Overdue").length} />
+        <MetricTile label="No 2 VIR" note="Inspection compliance exception" value={vesselRows.filter((row) => row.inspectionCompliance === "No 2 VIR").length} />
+        <MetricTile label="No Sailing" note="Sailing compliance exception" value={vesselRows.filter((row) => row.sailingCompliance === "No Sailing").length} />
       </section>
 
       <section className="panel panel-elevated">
         <div className="section-header">
           <div>
-            <h3 className="panel-title">Ship-to-shore handover register</h3>
-            <p className="panel-subtitle">Separate office and vessel statuses remain visible, but both flows work from the same inspection record.</p>
+            <h3 className="panel-title">Inspection planner &amp; compliance status</h3>
+            <p className="panel-subtitle">Workbook-style planner grid aligned to vessel, type, fleet, previous inspection, last inspection, and next due status.</p>
           </div>
         </div>
 
-        <table className="table data-table">
-          <thead>
-            <tr>
-              <th>Inspection</th>
-              <th>Vessel</th>
-              <th>Status</th>
-              <th>Open findings</th>
-              <th>Latest handover</th>
-            </tr>
-          </thead>
-          <tbody>
-            {timelineInspections.map((inspection) => (
-              <tr key={inspection.id}>
-                <td>
-                  <Link className="table-link" href={`/inspections/${inspection.id}`}>
-                    {inspection.title}
-                  </Link>
-                  <div className="small-text">
-                    {inspection.inspectionType.name} / {fullFmt.format(inspection.inspectionDate)}
-                  </div>
-                </td>
-                <td>{inspection.vessel.name}</td>
-                <td>
-                  <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>
-                    {inspectionStatusLabel[inspection.status]}
-                  </span>
-                </td>
-                <td>{inspection.findings.length}</td>
-                <td>
-                  {inspection.signOffs[0]
-                    ? `${inspection.signOffs[0].stage.replaceAll("_", " ")} / ${inspection.signOffs[0].approved ? "approved" : "returned"}`
-                    : "No sign-off yet"}
-                </td>
+        <div className="planner-table-scroll">
+          <table className="table data-table planner-table">
+            <thead>
+              <tr>
+                <th colSpan={3}>VESSEL / TYPE / FLEET</th>
+                <th colSpan={6}>PREVIOUS VESSEL INSPECTION</th>
+                <th colSpan={6}>LAST VESSEL INSPECTION</th>
+                <th colSpan={5}>INSPECTION PLANNER &amp; COMPLIANCE STATUS</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+              <tr>
+                <th>Vessel Name</th>
+                <th>Vessel Type</th>
+                <th>Group Name</th>
+                <th>From Date</th>
+                <th>To Date</th>
+                <th>Inspection Mode</th>
+                <th>From Location</th>
+                <th>To Location</th>
+                <th>Status</th>
+                <th>From Date</th>
+                <th>To Date</th>
+                <th>Inspection Mode</th>
+                <th>From Location</th>
+                <th>To Location</th>
+                <th>Status</th>
+                <th>Next Due</th>
+                <th>Next Inspection Mode</th>
+                <th>Inspection Status</th>
+                <th>Inspection Compliance</th>
+                <th>Sailing Compliance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vesselRows.map((row) => (
+                <tr key={row.vessel.id}>
+                  <td>{row.vessel.name}</td>
+                  <td>{row.vessel.vesselType ?? "Not set"}</td>
+                  <td>{row.vessel.fleet ?? "Not set"}</td>
+                  <td>{row.previousInspection ? fullFmt.format(row.previousInspection.inspectionDate) : "-"}</td>
+                  <td>{row.previousInspection ? fullFmt.format(row.previousInspection.inspectionDate) : "-"}</td>
+                  <td>{row.previousInspection ? inferInspectionMode(row.previousInspection.title, row.previousInspection.inspectionType.name) : "-"}</td>
+                  <td>{row.previousInspection?.port ?? "-"}</td>
+                  <td>{row.previousInspection?.country ?? "-"}</td>
+                  <td>
+                    {row.previousInspection ? (
+                      <span className={`chip ${toneForInspectionStatus(row.previousInspection.status)}`}>
+                        {inspectionStatusLabel[row.previousInspection.status]}
+                      </span>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                  <td>{row.lastInspection ? fullFmt.format(row.lastInspection.inspectionDate) : "-"}</td>
+                  <td>{row.lastInspection ? fullFmt.format(row.lastInspection.inspectionDate) : "-"}</td>
+                  <td>{row.lastInspection ? inferInspectionMode(row.lastInspection.title, row.lastInspection.inspectionType.name) : "-"}</td>
+                  <td>{row.lastInspection?.port ?? "-"}</td>
+                  <td>{row.lastInspection?.country ?? "-"}</td>
+                  <td>
+                    {row.lastInspection ? (
+                      <span className={`chip ${toneForInspectionStatus(row.lastInspection.status)}`}>
+                        {inspectionStatusLabel[row.lastInspection.status]}
+                      </span>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                  <td>{fullFmt.format(row.nextDue)}</td>
+                  <td>{row.nextInspectionMode}</td>
+                  <td>
+                    <span className={`chip ${toneForPlannerStatus(row.plannerStatus)}`}>{row.plannerStatus}</span>
+                  </td>
+                  <td>
+                    <span className={`chip ${row.inspectionCompliance === "In Order" ? "chip-success" : "chip-danger"}`}>{row.inspectionCompliance}</span>
+                  </td>
+                  <td>
+                    <span className={`chip ${row.sailingCompliance === "In Order" ? "chip-success" : "chip-danger"}`}>{row.sailingCompliance}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="panel panel-elevated">
+        <div className="section-header">
+          <div>
+            <h3 className="panel-title">Fleet gantt board</h3>
+            <p className="panel-subtitle">Dynamic scheduler with smaller inspection tags and direct move support inside the gantt for office planners.</p>
+          </div>
+        </div>
+        <ScheduleBoard
+          isOffice={isOffice}
+          rows={vesselRows.map((row) => ({
+            id: row.vessel.id,
+            name: row.vessel.name,
+            inspections: row.inspections,
+          }))}
+          windowStart={windowStart.toISOString()}
+          horizonDays={92}
+        />
       </section>
     </div>
   );
+}
+
+function inferInspectionMode(title: string, inspectionTypeName: string) {
+  const source = `${title} ${inspectionTypeName}`.toUpperCase();
+
+  if (source.includes("SAILING (REMOTE)")) {
+    return "SAILING (REMOTE)";
+  }
+
+  if (source.includes("PORT (REMOTE)")) {
+    return "PORT (REMOTE)";
+  }
+
+  if (source.includes("PORT")) {
+    return "PORT";
+  }
+
+  return "SAILING";
+}
+
+function classifyPlannerStatus(nextDue: Date) {
+  const now = startOfDay(new Date());
+  const days = Math.ceil((startOfDay(nextDue).getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+
+  if (days < 0) {
+    return "Overdue";
+  }
+
+  if (days <= 30) {
+    return "Due Range";
+  }
+
+  return "In Window";
+}
+
+function toneForPlannerStatus(status: string) {
+  switch (status) {
+    case "In Window":
+      return "chip-success";
+    case "Due Range":
+      return "chip-warning";
+    default:
+      return "chip-danger";
+  }
 }
 
 function MetricTile({ label, note, value }: { label: string; note: string; value: number }) {

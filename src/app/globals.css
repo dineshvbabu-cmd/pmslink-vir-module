@@ -1298,9 +1298,9 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
-  min-width: 74px;
-  max-width: 132px;
-  padding: 0.28rem 0.34rem 0.34rem;
+  min-width: 62px;
+  max-width: 112px;
+  padding: 0.22rem 0.3rem 0.28rem;
   border-radius: 0.72rem;
   border: 1px solid rgba(255, 255, 255, 0.42);
   box-shadow: 0 10px 20px rgba(16, 32, 51, 0.08);
@@ -1327,7 +1327,8 @@ textarea {
   font-weight: 800;
   text-align: left;
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: 0.72rem;
+  line-height: 1.1;
 }
 
 .timeline-pill-open {
@@ -1388,6 +1389,47 @@ textarea {
 }
 
 .kpi-segment-active {
+  background: linear-gradient(90deg, #4ba1ff, var(--color-blue));
+}
+
+.planner-table-scroll {
+  overflow: auto;
+}
+
+.planner-table th,
+.planner-table td {
+  white-space: nowrap;
+}
+
+.planner-table thead tr:first-child th {
+  background: rgba(16, 36, 63, 0.06);
+  color: #17385d;
+}
+
+.inspection-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.table-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.table-progress-track {
+  width: 100%;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: #dfe7f0;
+  overflow: hidden;
+}
+
+.table-progress-fill {
+  height: 100%;
+  border-radius: inherit;
   background: linear-gradient(90deg, #4ba1ff, var(--color-blue));
 }
 
@@ -1608,6 +1650,7 @@ textarea {
 
   .dashboard-grid-wide,
   .dashboard-grid-equal,
+  .inspection-summary-grid,
   .detail-grid,
   .workspace-console-shell,
   .form-grid,

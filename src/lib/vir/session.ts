@@ -25,21 +25,26 @@ export type WorkspaceNavItem = {
 };
 
 const officeNavigation: WorkspaceNavItem[] = [
-  { href: "/", label: "Control Tower", note: "Fleet dashboard" },
+  { href: "/", label: "Dashboard", note: "VIR dashboard" },
+  { href: "/inspections?scope=approved", label: "Approved inspections", note: "Approved register" },
+  { href: "/inspections?scope=history", label: "Inspection history", note: "All inspection records" },
+  { href: "/schedule", label: "VIR Calendar", note: "Planner and compliance status" },
+  { href: "/instruction", label: "Instruction", note: "Workflow and sync guidance" },
   { href: "/dashboards", label: "Analytics Boards", note: "Fleet, TMSA, PSC, class" },
-  { href: "/schedule", label: "Scheduling Board", note: "Calendar and gantt" },
   { href: "/inspections?scope=shore-review", label: "Review Queue", note: "Office actions" },
   { href: "/inspections", label: "Inspection Register", note: "Fleet-wide" },
   { href: "/inspections/new", label: "Create VIR", note: "Schedule or launch" },
   { href: "/templates", label: "Template Library", note: "Questionnaires" },
-  { href: "/imports", label: "Import Engine", note: "External reports" },
+  { href: "/imports", label: "Import Engine", note: "Checklist normalization" },
   { href: "/reports/management", label: "Management Pack", note: "Printable review" },
 ];
 
 const vesselNavigation: WorkspaceNavItem[] = [
-  { href: "/", label: "My Workspace", note: "Vessel dashboard" },
+  { href: "/", label: "Dashboard", note: "Vessel dashboard" },
+  { href: "/inspections?scope=history", label: "Inspection history", note: "My vessel record" },
+  { href: "/schedule", label: "VIR Calendar", note: "My upcoming plan" },
+  { href: "/instruction", label: "Instruction", note: "Execution and sync guidance" },
   { href: "/dashboards", label: "Analytics Boards", note: "My vessel boards" },
-  { href: "/schedule", label: "Schedule", note: "My upcoming plan" },
   { href: "/inspections?scope=my-drafts", label: "My VIR Queue", note: "Draft and return" },
   { href: "/inspections", label: "Inspection Register", note: "Assigned to vessel" },
   { href: "/inspections/new", label: "Start VIR", note: "Self assessment" },

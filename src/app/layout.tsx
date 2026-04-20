@@ -67,11 +67,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 </div>
 
                 <div className="erp-topbar-actions">
-                  <Link className="btn-secondary btn-compact" href="/dashboards">
-                    Dashboards
+                  <Link className="btn-secondary btn-compact" href="/">
+                    Dashboard
                   </Link>
-                  <Link className="btn-secondary btn-compact" href="/inspections">
-                    Open register
+                  <Link className="btn-secondary btn-compact" href="/inspections?scope=approved">
+                    Approved inspections
+                  </Link>
+                  <Link className="btn-secondary btn-compact" href="/schedule">
+                    VIR Calendar
                   </Link>
                   <Link className="btn btn-compact" href="/inspections/new">
                     New VIR

@@ -12,6 +12,68 @@ type SearchParams = {
   scope?: string;
   status?: string;
   vesselId?: string;
+  view?: string;
+};
+
+type PageMode = "register" | "approved" | "history";
+type ViewMode = "grid" | "summary";
+type InspectionRow = {
+  id: string;
+  title: string;
+  externalReference: string | null;
+  inspectionDate: Date;
+  port: string | null;
+  country: string | null;
+  inspectorName: string | null;
+  status: keyof typeof inspectionStatusLabel;
+  shoreReviewedBy: string | null;
+  shoreReviewDate: Date | null;
+  vessel: {
+    id: string;
+    code: string;
+    name: string;
+    vesselType: string | null;
+    fleet: string | null;
+  };
+  inspectionType: {
+    name: string;
+    code: string;
+  };
+  findings: Array<{
+    id: string;
+    status: string;
+    severity: string;
+    dueDate: Date | null;
+    correctiveActions: Array<{ id: string }>;
+  }>;
+  signOffs: Array<{
+    id: string;
+    stage: string;
+    approved: boolean;
+    actorName: string | null;
+    signedAt: Date;
+  }>;
+  progress: {
+    totalQuestions: number;
+    answeredQuestions: number;
+    mandatoryQuestions: number;
+    answeredMandatory: number;
+    completionPct: number;
+    mandatoryPct: number;
+  };
+  overdueActions: number;
+  approvedSignOff: {
+    id: string;
+    stage: string;
+    approved: boolean;
+    actorName: string | null;
+    signedAt: Date;
+  } | null;
+  reportType: string;
+  refNo: string;
+  inspectionMode: string;
+  syncLabel: "Synced" | "Not Synced";
+  placeOfInspection: string;
 };
 
 export default async function InspectionsPage({
@@ -20,7 +82,9 @@ export default async function InspectionsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const session = await requireVirSession();
-  const { scope, status, vesselId } = await searchParams;
+  const { scope, status, vesselId, view } = await searchParams;
+  const pageMode = normalizePageMode(scope, session.workspace === "OFFICE");
+  const viewMode = normalizeViewMode(view);
 
   const where =
     session.workspace === "OFFICE"
@@ -36,8 +100,8 @@ export default async function InspectionsPage({
       where,
       orderBy: [{ inspectionDate: "desc" }, { createdAt: "desc" }],
       include: {
-        vessel: { select: { id: true, name: true } },
-        inspectionType: { select: { name: true } },
+        vessel: { select: { id: true, code: true, name: true, vesselType: true, fleet: true } },
+        inspectionType: { select: { name: true, code: true } },
         findings: {
           where: { status: { in: ["OPEN", "IN_PROGRESS", "READY_FOR_REVIEW", "CARRIED_OVER"] } },
           select: {
@@ -51,7 +115,10 @@ export default async function InspectionsPage({
             },
           },
         },
-        signOffs: { select: { id: true, stage: true, approved: true } },
+        signOffs: {
+          orderBy: { signedAt: "desc" },
+          select: { id: true, stage: true, approved: true, actorName: true, signedAt: true },
+        },
         template: {
           select: {
             sections: {
@@ -97,17 +164,33 @@ export default async function InspectionsPage({
     const overdueActions = inspection.findings.filter((finding) =>
       finding.correctiveActions.length > 0 && finding.dueDate && finding.dueDate < new Date()
     ).length;
+    const approvedSignOff = inspection.signOffs.find((item) => item.approved) ?? null;
+    const reportType = inspection.inspectionType.name.includes("VIR") ? inspection.inspectionType.name : "VIR";
 
     return {
       ...inspection,
       progress,
       overdueActions,
+      approvedSignOff,
+      reportType,
+      refNo: inspection.externalReference ?? inspection.title,
+      inspectionMode: inferInspectionMode(inspection.title, inspection.inspectionType.name),
+      syncLabel: syncLabelForInspection(inspection.status),
+      placeOfInspection: [inspection.port, inspection.country].filter(Boolean).join(", ") || "Not set",
     };
   });
 
   const filtered = enriched.filter((inspection) => {
     if (status && inspection.status !== status) {
       return false;
+    }
+
+    if (pageMode === "approved") {
+      return ["SHORE_REVIEWED", "CLOSED"].includes(inspection.status);
+    }
+
+    if (pageMode === "history") {
+      return inspection.status !== "ARCHIVED";
     }
 
     switch (scope) {
@@ -134,47 +217,77 @@ export default async function InspectionsPage({
     }
   });
 
+  const header = pageMode === "approved"
+    ? {
+        title: "Approved inspections",
+        eyebrow: "Approved inspections",
+        subtitle: "Approved register with quick access to approved date, approver, report type, and sync state.",
+      }
+    : pageMode === "history"
+      ? {
+          title: "Inspection history",
+          eyebrow: "Inspection history",
+          subtitle: "All inspection records with progress, status, inspection mode, and live action access.",
+        }
+      : {
+          title: isOfficeSession(session) ? "Inspection Register" : "Inspection Register",
+          eyebrow: "Inspection register",
+          subtitle: isOfficeSession(session)
+            ? "Fleet-wide operations grid for review, closure, and intervention."
+            : "Execution queue scoped to the logged-in vessel workspace.",
+        };
+
   return (
     <div className="page-stack">
       <section className="panel panel-elevated">
         <div className="section-header">
           <div>
-            <div className="eyebrow">Inspection register</div>
-            <h2 className="panel-title">
-              {isOfficeSession(session) ? "Fleet register and shore queues" : `${session.vesselName ?? "Vessel"} register`}
-            </h2>
-            <p className="panel-subtitle">
-              {isOfficeSession(session)
-                ? "Fleet-wide operations grid for review, closure, and intervention."
-                : "Execution queue scoped to the logged-in vessel workspace."}
-            </p>
+            <div className="eyebrow">{header.eyebrow}</div>
+            <h2 className="panel-title">{header.title}</h2>
+            <p className="panel-subtitle">{header.subtitle}</p>
           </div>
-          <Link className="btn" href="/inspections/new">
-            Create VIR
-          </Link>
+          <div className="actions-row">
+            <Link className="btn-secondary btn-compact" href="/inspections?scope=approved">
+              Approved inspections
+            </Link>
+            <Link className="btn-secondary btn-compact" href="/inspections?scope=history">
+              Inspection history
+            </Link>
+            <Link className="btn btn-compact" href="/inspections/new">
+              Create VIR
+            </Link>
+          </div>
         </div>
 
         <div className="filter-toolbar">
           <div className="filter-chips">
-            <Link className={`filter-chip ${!scope ? "filter-chip-active" : ""}`} href="/inspections">
-              All
+            <Link className={`filter-chip ${pageMode === "register" ? "filter-chip-active" : ""}`} href="/inspections">
+              Inspection Register
             </Link>
-            <Link className={`filter-chip ${scope === "shore-review" ? "filter-chip-active" : ""}`} href="/inspections?scope=shore-review">
-              Shore review
+            <Link className={`filter-chip ${pageMode === "approved" ? "filter-chip-active" : ""}`} href="/inspections?scope=approved">
+              Approved inspections
             </Link>
-            <Link className={`filter-chip ${scope === "my-drafts" ? "filter-chip-active" : ""}`} href="/inspections?scope=my-drafts">
-              Draft / returned
+            <Link className={`filter-chip ${pageMode === "history" ? "filter-chip-active" : ""}`} href="/inspections?scope=history">
+              Inspection history
             </Link>
-            <Link className={`filter-chip ${scope === "ready-to-submit" ? "filter-chip-active" : ""}`} href="/inspections?scope=ready-to-submit">
-              Ready to submit
+            <Link
+              className={`filter-chip ${viewMode === "grid" ? "filter-chip-active" : ""}`}
+              href={modeHref(pageMode, { vesselId, status, view: "grid", scope })}
+            >
+              Table/Grid View
             </Link>
-            <Link className={`filter-chip ${scope === "overdue-actions" ? "filter-chip-active" : ""}`} href="/inspections?scope=overdue-actions">
-              Overdue CAR
+            <Link
+              className={`filter-chip ${viewMode === "summary" ? "filter-chip-active" : ""}`}
+              href={modeHref(pageMode, { vesselId, status, view: "summary", scope })}
+            >
+              Summary View
             </Link>
           </div>
 
           {isOfficeSession(session) ? (
             <form className="inline-form" method="get">
+              {scope ? <input name="scope" type="hidden" value={scope} /> : null}
+              {view ? <input name="view" type="hidden" value={view} /> : null}
               <label className="inline-form-label" htmlFor="vesselId">
                 Vessel
               </label>
@@ -186,7 +299,6 @@ export default async function InspectionsPage({
                   </option>
                 ))}
               </select>
-              {scope ? <input name="scope" type="hidden" value={scope} /> : null}
               <button className="btn-secondary" type="submit">
                 Apply
               </button>
@@ -194,76 +306,310 @@ export default async function InspectionsPage({
           ) : null}
         </div>
 
-        <table className="table data-table">
-          <thead>
-            <tr>
-              <th>Inspection</th>
-              {isOfficeSession(session) ? <th>Vessel</th> : null}
-              <th>Type</th>
-              <th>Status</th>
-              <th>Completion</th>
-              <th>Mandatory</th>
-              <th>Open findings</th>
-              <th>Open CAR</th>
-              <th>Sign-offs</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((inspection) => (
-              <tr key={inspection.id}>
-                <td>
-                  <Link className="table-link" href={`/inspections/${inspection.id}`}>
-                    {inspection.title}
-                  </Link>
-                  <div className="small-text">
-                    {fmt.format(inspection.inspectionDate)}
-                    {inspection.port ? ` / ${inspection.port}` : ""}
-                  </div>
-                </td>
-                {isOfficeSession(session) ? <td>{inspection.vessel.name}</td> : null}
-                <td>{inspection.inspectionType.name}</td>
-                <td>
-                  <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>
-                    {inspectionStatusLabel[inspection.status]}
-                  </span>
-                </td>
-                <td>{inspection.progress.completionPct}%</td>
-                <td>
-                  {inspection.progress.answeredMandatory}/{inspection.progress.mandatoryQuestions}
-                </td>
-                <td>{inspection.findings.length}</td>
-                <td>{inspection.overdueActions}</td>
-                <td>{inspection.signOffs.filter((item) => item.approved).length}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {viewMode === "summary" ? (
+          <SummaryInspectionView inspections={filtered} pageMode={pageMode} isOffice={isOfficeSession(session)} />
+        ) : pageMode === "approved" ? (
+          <ApprovedInspectionGrid inspections={filtered} />
+        ) : pageMode === "history" ? (
+          <InspectionHistoryGrid inspections={filtered} isOffice={isOfficeSession(session)} />
+        ) : (
+          <InspectionRegisterGrid inspections={filtered} isOffice={isOfficeSession(session)} />
+        )}
       </section>
 
       <section className="erp-metrics-grid">
+        <MetricStat label="Visible inspections" note="Current filtered set" value={filtered.length} />
         <MetricStat
-          label="Visible inspections"
-          note="Current filtered set"
-          value={filtered.length}
+          label="Approved"
+          note="Shore reviewed or closed"
+          value={filtered.filter((item) => ["SHORE_REVIEWED", "CLOSED"].includes(item.status)).length}
         />
         <MetricStat
-          label="Submitted / review"
-          note="Office-facing queue"
-          value={filtered.filter((item) => ["SUBMITTED", "SHORE_REVIEWED"].includes(item.status)).length}
+          label="Pending approval"
+          note="Submitted or returned"
+          value={filtered.filter((item) => ["SUBMITTED", "RETURNED"].includes(item.status)).length}
         />
+        <MetricStat label="Open findings" note="Across filtered set" value={filtered.reduce((sum, item) => sum + item.findings.length, 0)} />
+        <MetricStat label="Overdue CAR" note="Past target date" value={filtered.reduce((sum, item) => sum + item.overdueActions, 0)} />
         <MetricStat
-          label="Draft / returned"
-          note="Needs vessel work"
-          value={filtered.filter((item) => ["DRAFT", "RETURNED"].includes(item.status)).length}
-        />
-        <MetricStat
-          label="Open findings"
-          note="Across filtered set"
-          value={filtered.reduce((sum, item) => sum + item.findings.length, 0)}
+          label="Not Synced"
+          note="Derived from draft or returned records"
+          value={filtered.filter((item) => item.syncLabel === "Not Synced").length}
         />
       </section>
     </div>
   );
+}
+
+function ApprovedInspectionGrid({
+  inspections,
+}: {
+  inspections: InspectionRow[];
+}) {
+  return (
+    <table className="table data-table">
+      <thead>
+        <tr>
+          <th>Vessel</th>
+          <th>Ref no</th>
+          <th>Place of inspection</th>
+          <th>Inspected by</th>
+          <th>Approved by</th>
+          <th>Approved date</th>
+          <th>Report Type</th>
+          <th>Synced?</th>
+        </tr>
+      </thead>
+      <tbody>
+        {inspections.map((inspection) => (
+          <tr key={inspection.id}>
+            <td>
+              <Link className="table-link" href={`/inspections/${inspection.id}`}>
+                {inspection.vessel.name}
+              </Link>
+            </td>
+            <td>{inspection.refNo}</td>
+            <td>{inspection.placeOfInspection}</td>
+            <td>{inspection.inspectorName ?? "Not set"}</td>
+            <td>{inspection.approvedSignOff?.actorName ?? inspection.shoreReviewedBy ?? "Not set"}</td>
+            <td>{inspection.approvedSignOff?.signedAt ? fmt.format(inspection.approvedSignOff.signedAt) : inspection.shoreReviewDate ? fmt.format(inspection.shoreReviewDate) : "Not set"}</td>
+            <td>{inspection.reportType}</td>
+            <td>
+              <span className={`chip ${inspection.syncLabel === "Synced" ? "chip-success" : "chip-danger"}`}>{inspection.syncLabel}</span>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function InspectionHistoryGrid({
+  inspections,
+  isOffice,
+}: {
+  inspections: InspectionRow[];
+  isOffice: boolean;
+}) {
+  return (
+    <table className="table data-table">
+      <thead>
+        <tr>
+          <th>Progress</th>
+          {isOffice ? <th>Vessel</th> : null}
+          <th>Ref no</th>
+          <th>Status</th>
+          <th>Place of inspection</th>
+          <th>Inspected by</th>
+          <th>Report Type</th>
+          <th>Insp.Mode</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {inspections.map((inspection) => (
+          <tr key={inspection.id}>
+            <td style={{ minWidth: "150px" }}>
+              <div className="table-progress">
+                <div className="table-progress-track">
+                  <div className="table-progress-fill" style={{ width: `${inspection.progress.completionPct}%` }} />
+                </div>
+                <div className="small-text">{inspection.progress.completionPct}%</div>
+              </div>
+            </td>
+            {isOffice ? <td>{inspection.vessel.name}</td> : null}
+            <td>{inspection.refNo}</td>
+            <td>
+              <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>{inspectionStatusLabel[inspection.status]}</span>
+            </td>
+            <td>{inspection.placeOfInspection}</td>
+            <td>{inspection.inspectorName ?? "Not set"}</td>
+            <td>{inspection.reportType}</td>
+            <td>{inspection.inspectionMode}</td>
+            <td>
+              <Link className="inline-link" href={`/inspections/${inspection.id}`}>
+                Open
+              </Link>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function InspectionRegisterGrid({
+  inspections,
+  isOffice,
+}: {
+  inspections: InspectionRow[];
+  isOffice: boolean;
+}) {
+  return (
+    <table className="table data-table">
+      <thead>
+        <tr>
+          <th>Inspection</th>
+          {isOffice ? <th>Vessel</th> : null}
+          <th>Type</th>
+          <th>Status</th>
+          <th>Completion</th>
+          <th>Mandatory</th>
+          <th>Open findings</th>
+          <th>Open CAR</th>
+          <th>Sign-offs</th>
+        </tr>
+      </thead>
+      <tbody>
+        {inspections.map((inspection) => (
+          <tr key={inspection.id}>
+            <td>
+              <Link className="table-link" href={`/inspections/${inspection.id}`}>
+                {inspection.title}
+              </Link>
+              <div className="small-text">
+                {fmt.format(inspection.inspectionDate)}
+                {inspection.port ? ` / ${inspection.port}` : ""}
+              </div>
+            </td>
+            {isOffice ? <td>{inspection.vessel.name}</td> : null}
+            <td>{inspection.inspectionType.name}</td>
+            <td>
+              <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>{inspectionStatusLabel[inspection.status]}</span>
+            </td>
+            <td>{inspection.progress.completionPct}%</td>
+            <td>
+              {inspection.progress.answeredMandatory}/{inspection.progress.mandatoryQuestions}
+            </td>
+            <td>{inspection.findings.length}</td>
+            <td>{inspection.overdueActions}</td>
+            <td>{inspection.signOffs.filter((item) => item.approved).length}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function SummaryInspectionView({
+  inspections,
+  pageMode,
+  isOffice,
+}: {
+  inspections: InspectionRow[];
+  pageMode: PageMode;
+  isOffice: boolean;
+}) {
+  return (
+    <div className="inspection-summary-grid">
+      {inspections.map((inspection) => (
+        <article className="bar-card" key={inspection.id}>
+          <div className="bar-card-header">
+            <div>
+              <strong>{pageMode === "approved" ? inspection.vessel.name : inspection.title}</strong>
+              <div className="small-text">
+                {pageMode === "approved"
+                  ? `${inspection.refNo} / ${inspection.placeOfInspection}`
+                  : `${inspection.vessel.name} / ${inspection.reportType} / ${inspection.inspectionMode}`}
+              </div>
+            </div>
+            <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>{inspectionStatusLabel[inspection.status]}</span>
+          </div>
+
+          <div className="progress-cluster">
+            <div>
+              <div className="small-text">Progress</div>
+              <div className="bar-track">
+                <div className="bar-fill bar-fill-success" style={{ width: `${inspection.progress.completionPct}%` }} />
+              </div>
+            </div>
+          </div>
+
+          <div className="mini-metrics">
+            {isOffice ? <span className="chip chip-info">{inspection.vessel.name}</span> : null}
+            <span className="chip chip-warning">Mandatory {inspection.progress.answeredMandatory}/{inspection.progress.mandatoryQuestions}</span>
+            <span className="chip chip-danger">Findings {inspection.findings.length}</span>
+            <span className={`chip ${inspection.syncLabel === "Synced" ? "chip-success" : "chip-danger"}`}>{inspection.syncLabel}</span>
+          </div>
+
+          <div className="small-text" style={{ marginTop: "0.7rem" }}>
+            Inspected by {inspection.inspectorName ?? "Not set"}
+            {inspection.approvedSignOff?.actorName ? ` / Approved by ${inspection.approvedSignOff.actorName}` : ""}
+          </div>
+          <Link className="inline-link" href={`/inspections/${inspection.id}`}>
+            Open inspection
+          </Link>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function normalizePageMode(scope: string | undefined, isOffice: boolean): PageMode {
+  if (scope === "approved" && isOffice) {
+    return "approved";
+  }
+
+  if (scope === "history") {
+    return "history";
+  }
+
+  return "register";
+}
+
+function normalizeViewMode(view: string | undefined): ViewMode {
+  return view === "summary" ? "summary" : "grid";
+}
+
+function modeHref(
+  pageMode: PageMode,
+  params: { vesselId?: string; status?: string; view?: string; scope?: string }
+) {
+  const next = new URLSearchParams();
+
+  if (pageMode === "approved") {
+    next.set("scope", "approved");
+  } else if (pageMode === "history") {
+    next.set("scope", "history");
+  } else if (params.scope && !["approved", "history"].includes(params.scope)) {
+    next.set("scope", params.scope);
+  }
+
+  if (params.vesselId) {
+    next.set("vesselId", params.vesselId);
+  }
+
+  if (params.status) {
+    next.set("status", params.status);
+  }
+
+  if (params.view) {
+    next.set("view", params.view);
+  }
+
+  return `/inspections${next.toString() ? `?${next.toString()}` : ""}`;
+}
+
+function inferInspectionMode(title: string, inspectionTypeName: string) {
+  const source = `${title} ${inspectionTypeName}`.toUpperCase();
+
+  if (source.includes("SAILING (REMOTE)")) {
+    return "Sailing (Remote)";
+  }
+
+  if (source.includes("PORT (REMOTE)")) {
+    return "Port (Remote)";
+  }
+
+  if (source.includes("PORT")) {
+    return "Port";
+  }
+
+  return "Sailing";
+}
+
+function syncLabelForInspection(status: string): "Synced" | "Not Synced" {
+  return ["DRAFT", "RETURNED", "IMPORT_REVIEW"].includes(status) ? "Not Synced" : "Synced";
 }
 
 function MetricStat({ label, note, value }: { label: string; note: string; value: number }) {
