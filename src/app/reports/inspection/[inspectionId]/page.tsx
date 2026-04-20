@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { FileDown, Mail } from "lucide-react";
 import { PrintButton } from "@/components/print-button";
+import { CompactBarChart } from "@/components/erp-charts";
 import { prisma } from "@/lib/prisma";
 import { calculateInspectionScore, summarizeProgress } from "@/lib/vir/analytics";
 import { canAccessVessel, requireVirSession } from "@/lib/vir/session";
@@ -27,6 +29,8 @@ const reportVariants = [
 ] as const;
 
 type ReportVariant = (typeof reportVariants)[number]["id"];
+type ChecklistView = "grid" | "reasoning";
+type ChapterView = "table" | "bar";
 
 export default async function InspectionReportPage({
   params,
@@ -39,6 +43,12 @@ export default async function InspectionReportPage({
   const { inspectionId } = await params;
   const reportParams = await searchParams;
   const selectedVariant = normalizeVariant(typeof reportParams.variant === "string" ? reportParams.variant : undefined);
+  const selectedChecklistView = normalizeChecklistView(
+    typeof reportParams.checklistView === "string" ? reportParams.checklistView : undefined
+  );
+  const selectedChapterView = normalizeChapterView(
+    typeof reportParams.chapterView === "string" ? reportParams.chapterView : undefined
+  );
   const imageMode = reportParams.imageMode === "selected" ? "selected" : "all";
   const selectedReportPhotoIds = new Set(normalizeArray(reportParams.image));
 
@@ -172,6 +182,24 @@ export default async function InspectionReportPage({
       ? reportPhotos.filter((photo) => selectedReportPhotoIds.has(photo.id))
       : reportPhotos;
   const effectiveReportPhotos = selectedReportPhotos.length > 0 ? selectedReportPhotos : reportPhotos;
+  const exportItems = reportVariants.map((variant) => ({
+    label: variant.label,
+    href: buildReportPdfHref(
+      inspection.id,
+      variant.id,
+      imageMode,
+      effectiveReportPhotos.map((photo) => photo.id)
+    ),
+  }));
+  const shareItems = reportVariants.map((variant) => ({
+    label: `Share ${variant.label}`,
+    href: buildReportMailtoHref(
+      inspection.vessel.name,
+      inspection.title,
+      variant.label,
+      buildReportPdfHref(inspection.id, variant.id, imageMode, effectiveReportPhotos.map((photo) => photo.id))
+    ),
+  }));
 
   return (
     <div className="page-stack report-pack report-pack-live">
@@ -191,19 +219,43 @@ export default async function InspectionReportPage({
           {reportVariants.map((item) => (
             <Link
               className={`btn-compact ${selectedVariant === item.id ? "btn" : "btn-secondary"}`}
-              href={`/reports/inspection/${inspection.id}?variant=${item.id}`}
+              href={buildReportHref(inspection.id, {
+                variant: item.id,
+                checklistView: selectedChecklistView,
+                chapterView: selectedChapterView,
+                imageMode,
+                imageIds: normalizeArray(reportParams.image),
+              })}
               key={item.id}
             >
               {item.label}
             </Link>
           ))}
           <PrintButton />
-          <a
-            className="btn-secondary btn-compact"
-            href={buildReportPdfHref(inspection.id, selectedVariant, imageMode, effectiveReportPhotos.map((photo) => photo.id))}
-          >
-            PDF Export
-          </a>
+          <details className="export-menu">
+            <summary aria-label="Export PDFs" className="btn-secondary btn-compact export-menu-trigger export-menu-trigger-icon" title="Export PDFs">
+              <FileDown size={16} />
+            </summary>
+            <div className="export-menu-popover">
+              {exportItems.map((item) => (
+                <a className="export-menu-item" href={item.href} key={item.label}>
+                  {item.label}
+                </a>
+              ))}
+            </div>
+          </details>
+          <details className="export-menu">
+            <summary aria-label="Share reports" className="btn-secondary btn-compact export-menu-trigger export-menu-trigger-icon" title="Share reports">
+              <Mail size={16} />
+            </summary>
+            <div className="export-menu-popover">
+              {shareItems.map((item) => (
+                <a className="export-menu-item" href={item.href} key={item.label}>
+                  {item.label}
+                </a>
+              ))}
+            </div>
+          </details>
           <Link className="btn-secondary btn-compact" href={`/inspections/${inspection.id}`}>
             Open Workflow
           </Link>
@@ -263,6 +315,21 @@ export default async function InspectionReportPage({
 
       {selectedVariant === "detailed" ? (
         <>
+          <section className="questionnaire-summary-grid">
+            {sectionRows.map((section) => (
+              <div className="questionnaire-summary-card" key={section.id}>
+                <span>{section.title}</span>
+                <strong>
+                  {section.answeredCount}/{section.questions.length}
+                </strong>
+                <div className="small-text">
+                  {section.findings.length} findings / {section.evidenceCount} evidence /{" "}
+                  {section.questions.filter((question) => question.isCicCandidate).length} concentrated
+                </div>
+              </div>
+            ))}
+          </section>
+
           <section className="panel panel-elevated">
             <div className="report-image-toolbar">
               <div>
@@ -302,12 +369,6 @@ export default async function InspectionReportPage({
                     <button className="btn-secondary" type="submit">
                       Update detailed report
                     </button>
-                    <a
-                      className="btn-secondary btn-compact"
-                      href={buildReportPdfHref(inspection.id, "detailed", imageMode, effectiveReportPhotos.map((photo) => photo.id))}
-                    >
-                      Export detailed PDF
-                    </a>
                   </div>
                 </form>
               </div>
@@ -320,9 +381,70 @@ export default async function InspectionReportPage({
                 <h3 className="panel-title">Chapterwise Finding</h3>
                 <p className="panel-subtitle">Summary by chapter before drilling into questionnaire rows.</p>
               </div>
+              <div className="actions-row">
+                <Link
+                  className={`btn-compact ${selectedChapterView === "table" ? "btn" : "btn-secondary"}`}
+                  href={buildReportHref(inspection.id, {
+                    variant: "detailed",
+                    checklistView: selectedChecklistView,
+                    chapterView: "table",
+                    imageMode,
+                    imageIds: normalizeArray(reportParams.image),
+                  })}
+                >
+                  Table view
+                </Link>
+                <Link
+                  className={`btn-compact ${selectedChapterView === "bar" ? "btn" : "btn-secondary"}`}
+                  href={buildReportHref(inspection.id, {
+                    variant: "detailed",
+                    checklistView: selectedChecklistView,
+                    chapterView: "bar",
+                    imageMode,
+                    imageIds: normalizeArray(reportParams.image),
+                  })}
+                >
+                  Bar chart
+                </Link>
+              </div>
             </div>
             <div className="table-shell table-shell-compact">
-              <ChapterFindingTable rows={chapterFindingRows} />
+              <ChapterFindingBlock rows={chapterFindingRows} view={selectedChapterView} />
+            </div>
+          </section>
+
+          <section className="panel panel-elevated">
+            <div className="section-header">
+              <div>
+                <h3 className="panel-title">Vessel inspection checklist</h3>
+                <p className="panel-subtitle">Switch between compact grid and reasoning mode for questionnaire walkthroughs.</p>
+              </div>
+              <div className="actions-row">
+                <Link
+                  className={`btn-compact ${selectedChecklistView === "grid" ? "btn" : "btn-secondary"}`}
+                  href={buildReportHref(inspection.id, {
+                    variant: "detailed",
+                    checklistView: "grid",
+                    chapterView: selectedChapterView,
+                    imageMode,
+                    imageIds: normalizeArray(reportParams.image),
+                  })}
+                >
+                  Grid view
+                </Link>
+                <Link
+                  className={`btn-compact ${selectedChecklistView === "reasoning" ? "btn" : "btn-secondary"}`}
+                  href={buildReportHref(inspection.id, {
+                    variant: "detailed",
+                    checklistView: "reasoning",
+                    chapterView: selectedChapterView,
+                    imageMode,
+                    imageIds: normalizeArray(reportParams.image),
+                  })}
+                >
+                  Reasoning view
+                </Link>
+              </div>
             </div>
           </section>
 
@@ -343,63 +465,103 @@ export default async function InspectionReportPage({
                   </div>
                 </div>
 
-                <div className="table-shell table-shell-compact">
-                  <table className="table data-table vir-data-table">
-                    <thead>
-                      <tr>
-                        <th>S.No</th>
-                        <th>Question</th>
-                        <th>Response</th>
-                        <th>Comments</th>
-                        <th>Reference</th>
-                        <th>Actual Upload</th>
-                        <th>Findings</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {section.questions.map((question, index) => {
-                        const answer = answerMap.get(question.id);
-                        const questionFindings = inspection.findings.filter((finding) => finding.questionId === question.id);
-                        return (
-                          <tr key={question.id}>
-                            <td>{index + 1}</td>
-                            <td>
-                              <div className="report-question-code">{question.code}</div>
-                              <div>{question.prompt}</div>
-                            </td>
-                            <td>{renderAnswerValue(answer)}</td>
-                            <td>{answer?.comment ?? "-"}</td>
-                            <td>
-                              {question.referenceImageUrl ? (
-                                <img
-                                  alt={`${question.code} reference`}
-                                  className="report-thumb report-thumb-reference"
-                                  src={question.referenceImageUrl}
+                <SectionSummaryBoard section={section} />
+
+                {selectedChecklistView === "grid" ? (
+                  <div className="table-shell table-shell-compact">
+                    <table className="table data-table vir-data-table">
+                      <thead>
+                        <tr>
+                          <th>S.No</th>
+                          <th>Question</th>
+                          <th>Response</th>
+                          <th>Comments</th>
+                          <th>Reference</th>
+                          <th>Actual Upload</th>
+                          <th>Findings</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {section.questions.map((question, index) => {
+                          const answer = answerMap.get(question.id);
+                          const questionFindings = inspection.findings.filter((finding) => finding.questionId === question.id);
+                          return (
+                            <tr key={question.id}>
+                              <td>{index + 1}</td>
+                              <td>
+                                <div className="report-question-code">{question.code}</div>
+                                <div>{question.prompt}</div>
+                                {question.helpText ? <div className="small-text">{question.helpText}</div> : null}
+                              </td>
+                              <td>{renderAnswerValue(answer)}</td>
+                              <td>{answer?.comment ?? "-"}</td>
+                              <td>
+                                {question.referenceImageUrl ? (
+                                  <div className="report-thumb-row">
+                                    <img
+                                      alt={`${question.code} reference`}
+                                      className="report-thumb report-thumb-reference"
+                                      src={question.referenceImageUrl}
+                                    />
+                                    <a
+                                      className="inline-link"
+                                      href={question.referenceImageUrl}
+                                      rel="noreferrer"
+                                      target="_blank"
+                                    >
+                                      View reference
+                                    </a>
+                                  </div>
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
+                              <td>
+                                <div className="report-thumb-row">
+                                  {answer?.photos.slice(0, 3).map((photo) => (
+                                    <img
+                                      alt={photo.caption ?? photo.fileName ?? question.code}
+                                      className="report-thumb"
+                                      key={photo.id}
+                                      src={photo.url}
+                                    />
+                                  ))}
+                                  {!answer?.photos.length ? "-" : null}
+                                </div>
+                              </td>
+                              <td>{questionFindings.length}</td>
+                              <td>
+                                <QuestionActionLinks
+                                  answer={answer}
+                                  inspectionId={inspection.id}
+                                  question={question}
                                 />
-                              ) : (
-                                "-"
-                              )}
-                            </td>
-                            <td>
-                              <div className="report-thumb-row">
-                                {answer?.photos.slice(0, 3).map((photo) => (
-                                  <img
-                                    alt={photo.caption ?? photo.fileName ?? question.code}
-                                    className="report-thumb"
-                                    key={photo.id}
-                                    src={photo.url}
-                                  />
-                                ))}
-                                {!answer?.photos.length ? "-" : null}
-                              </div>
-                            </td>
-                            <td>{questionFindings.length}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="page-stack">
+                    {section.questions.map((question, index) => {
+                      const answer = answerMap.get(question.id);
+                      const questionFindings = inspection.findings.filter((finding) => finding.questionId === question.id);
+                      return (
+                        <QuestionReasoningCard
+                          answer={answer}
+                          index={index}
+                          inspectionId={inspection.id}
+                          key={question.id}
+                          question={question}
+                          questionFindings={questionFindings}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
               </section>
             ))}
           </section>
@@ -486,9 +648,35 @@ export default async function InspectionReportPage({
                 <h3 className="panel-title">Chapterwise Finding</h3>
                 <p className="panel-subtitle">Condensed chapter totals for summary-only report circulation.</p>
               </div>
+              <div className="actions-row">
+                <Link
+                  className={`btn-compact ${selectedChapterView === "table" ? "btn" : "btn-secondary"}`}
+                  href={buildReportHref(inspection.id, {
+                    variant: "summary",
+                    checklistView: selectedChecklistView,
+                    chapterView: "table",
+                    imageMode,
+                    imageIds: normalizeArray(reportParams.image),
+                  })}
+                >
+                  Table view
+                </Link>
+                <Link
+                  className={`btn-compact ${selectedChapterView === "bar" ? "btn" : "btn-secondary"}`}
+                  href={buildReportHref(inspection.id, {
+                    variant: "summary",
+                    checklistView: selectedChecklistView,
+                    chapterView: "bar",
+                    imageMode,
+                    imageIds: normalizeArray(reportParams.image),
+                  })}
+                >
+                  Bar chart
+                </Link>
+              </div>
             </div>
             <div className="table-shell table-shell-compact">
-              <ChapterFindingTable rows={chapterFindingRows} />
+              <ChapterFindingBlock rows={chapterFindingRows} view={selectedChapterView} />
             </div>
           </section>
         </section>
@@ -654,9 +842,35 @@ export default async function InspectionReportPage({
                 <h3 className="panel-title">Section review matrix</h3>
                 <p className="panel-subtitle">Condensed chapter-level readiness and evidence coverage.</p>
               </div>
+              <div className="actions-row">
+                <Link
+                  className={`btn-compact ${selectedChapterView === "table" ? "btn" : "btn-secondary"}`}
+                  href={buildReportHref(inspection.id, {
+                    variant: "consolidate",
+                    checklistView: selectedChecklistView,
+                    chapterView: "table",
+                    imageMode,
+                    imageIds: normalizeArray(reportParams.image),
+                  })}
+                >
+                  Table view
+                </Link>
+                <Link
+                  className={`btn-compact ${selectedChapterView === "bar" ? "btn" : "btn-secondary"}`}
+                  href={buildReportHref(inspection.id, {
+                    variant: "consolidate",
+                    checklistView: selectedChecklistView,
+                    chapterView: "bar",
+                    imageMode,
+                    imageIds: normalizeArray(reportParams.image),
+                  })}
+                >
+                  Bar chart
+                </Link>
+              </div>
             </div>
             <div className="table-shell table-shell-compact">
-              <ChapterFindingTable rows={chapterFindingRows} />
+              <ChapterFindingBlock rows={chapterFindingRows} view={selectedChapterView} />
             </div>
           </section>
 
@@ -690,12 +904,46 @@ function normalizeVariant(value: string | undefined): ReportVariant {
   return reportVariants.some((item) => item.id === value) ? (value as ReportVariant) : "detailed";
 }
 
+function normalizeChecklistView(value: string | undefined): ChecklistView {
+  return value === "reasoning" ? "reasoning" : "grid";
+}
+
+function normalizeChapterView(value: string | undefined): ChapterView {
+  return value === "bar" ? "bar" : "table";
+}
+
 function normalizeArray(value: string | string[] | undefined) {
   if (!value) {
     return [];
   }
 
   return Array.isArray(value) ? value : [value];
+}
+
+function buildReportHref(
+  inspectionId: string,
+  options: {
+    variant: ReportVariant;
+    checklistView: ChecklistView;
+    chapterView: ChapterView;
+    imageMode: "all" | "selected";
+    imageIds: string[];
+  }
+) {
+  const params = new URLSearchParams();
+  params.set("variant", options.variant);
+  params.set("checklistView", options.checklistView);
+  params.set("chapterView", options.chapterView);
+  params.set("imageMode", options.imageMode);
+  options.imageIds.forEach((id) => params.append("image", id));
+  return `/reports/inspection/${inspectionId}?${params.toString()}`;
+}
+
+function buildReportMailtoHref(vesselName: string, inspectionTitle: string, variantLabel: string, pdfHref: string) {
+  const absoluteUrl = pdfHref.startsWith("http") ? pdfHref : `https://pmslink-vir-module-production.up.railway.app${pdfHref}`;
+  const subject = `${variantLabel} | ${vesselName} | ${inspectionTitle}`;
+  const body = `Please find the selected ${variantLabel.toLowerCase()} for review.%0D%0A%0D%0A${absoluteUrl}`;
+  return `mailto:?subject=${encodeURIComponent(subject)}&body=${body}`;
 }
 
 function inferInspectionMode(title: string, inspectionTypeName: string) {
@@ -816,6 +1064,248 @@ function DetailRow({ label, value }: { label: string; value: string }) {
       <div className="detail-row-value">{value}</div>
     </div>
   );
+}
+
+function QuestionActionLinks({
+  inspectionId,
+  question,
+  answer,
+}: {
+  inspectionId: string;
+  question: any;
+  answer: any;
+}) {
+  const firstActualImage = answer?.photos?.[0]?.url;
+
+  return (
+    <div className="table-actions">
+      {firstActualImage ? (
+        <a className="inline-link" href={firstActualImage} rel="noreferrer" target="_blank">
+          View images
+        </a>
+      ) : null}
+      <Link className="inline-link" href={`/inspections/${inspectionId}`}>
+        Workflow
+      </Link>
+      {question.allowsPhoto ? (
+        <Link className="inline-link" href={`/inspections/${inspectionId}`}>
+          Upload docs
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
+function QuestionFindingCard({ finding }: { finding: any }) {
+  const severityKey: keyof typeof riskLabel =
+    typeof finding.severity === "string" && finding.severity in riskLabel
+      ? (finding.severity as keyof typeof riskLabel)
+      : "LOW";
+  const statusKey: keyof typeof findingStatusLabel =
+    typeof finding.status === "string" && finding.status in findingStatusLabel
+      ? (finding.status as keyof typeof findingStatusLabel)
+      : "OPEN";
+
+  return (
+    <div className="list-card">
+      <div className="meta-row">
+        <span className={`chip ${toneForRisk(severityKey)}`}>{riskLabel[severityKey]}</span>
+        <span className={`chip ${toneForFindingStatus(statusKey)}`}>{findingStatusLabel[statusKey]}</span>
+      </div>
+      <div className="list-card-title">{finding.title}</div>
+      <div className="small-text">{finding.description}</div>
+    </div>
+  );
+}
+
+function QuestionReasoningCard({
+  index,
+  question,
+  answer,
+  questionFindings,
+  inspectionId,
+}: {
+  index: number;
+  question: any;
+  answer: any;
+  questionFindings: any[];
+  inspectionId: string;
+}) {
+  const riskKey: keyof typeof riskLabel =
+    typeof question.riskLevel === "string" && question.riskLevel in riskLabel
+      ? (question.riskLevel as keyof typeof riskLabel)
+      : "LOW";
+
+  return (
+    <article className={`question-card ${question.isCicCandidate ? "question-card-focus" : ""}`}>
+      <div className="question-card-layout">
+        <div className="question-card-main">
+          <div className="question-header">
+            <div>
+              <div className="question-code">
+                {index + 1}. {question.code}
+              </div>
+              <div className="question-prompt">{question.prompt}</div>
+            </div>
+            <div className="question-card-flags">
+              {question.isMandatory ? <span className="chip chip-warning">Mandatory</span> : null}
+              {question.isCicCandidate ? <span className="chip chip-danger">Concentrated</span> : null}
+              <span className={`chip ${toneForRisk(riskKey)}`}>{riskLabel[riskKey]}</span>
+            </div>
+          </div>
+
+          <div className="inspection-summary-grid">
+            <div className="matrix-card">
+              <strong>Recorded response</strong>
+              <div className="small-text" style={{ marginTop: "0.35rem" }}>
+                {renderAnswerValue(answer)}
+              </div>
+            </div>
+            <div className="matrix-card">
+              <strong>Inspector reasoning</strong>
+              <div className="small-text" style={{ marginTop: "0.35rem" }}>
+                {answer?.comment ?? question.helpText ?? "No inspector reasoning recorded for this row."}
+              </div>
+            </div>
+          </div>
+
+          {questionFindings.length ? (
+            <div className="question-inline-actions">
+              <div className="small-text" style={{ marginBottom: "0.55rem" }}>
+                Linked findings
+              </div>
+              <div className="stack-list">
+                {questionFindings.map((finding) => (
+                  <QuestionFindingCard finding={finding} key={finding.id} />
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="question-card-side">
+          <div className="question-visual-lane">
+            <div className="reference-panel">
+              <div className="visual-label">Reference image</div>
+              {question.referenceImageUrl ? (
+                <>
+                  <img alt={`${question.code} reference`} className="reference-thumb" src={question.referenceImageUrl} />
+                  <a className="inline-link" href={question.referenceImageUrl} rel="noreferrer" target="_blank">
+                    Open reference
+                  </a>
+                </>
+              ) : (
+                <div className="small-text">No reference image linked.</div>
+              )}
+            </div>
+
+            <div className="evidence-panel">
+              <div className="visual-label">Actual upload</div>
+              <div className="report-thumb-row report-thumb-row-spacious">
+                {answer?.photos?.length ? (
+                  answer.photos.map((photo: any) => (
+                    <a href={photo.url} key={photo.id} rel="noreferrer" target="_blank">
+                      <img
+                        alt={photo.caption ?? photo.fileName ?? question.code}
+                        className="report-thumb report-thumb-large"
+                        src={photo.url}
+                      />
+                    </a>
+                  ))
+                ) : (
+                  <div className="small-text">No actual upload yet.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="questionnaire-section-actions">
+              <QuestionActionLinks answer={answer} inspectionId={inspectionId} question={question} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function SectionSummaryBoard({ section }: { section: any }) {
+  const concentratedCount = section.questions.filter((question: any) => question.isCicCandidate).length;
+
+  return (
+    <div className="questionnaire-section-summary">
+      <div className="chart-bar-list">
+        {[
+          { label: "Answered", value: section.answeredCount, note: `${section.questions.length} questions` },
+          { label: "Findings", value: section.findings.length, note: "Open and carried findings" },
+          { label: "Evidence", value: section.evidenceCount, note: "Photos linked to answers" },
+          { label: "Concentrated", value: concentratedCount, note: "Highlighted CIR/CIC prompts" },
+        ].map((item) => (
+          <div className="chart-bar-row" key={`${section.id}-${item.label}`}>
+            <div className="chart-bar-copy">
+              <strong>{item.label}</strong>
+              <div className="small-text">{item.note}</div>
+            </div>
+            <div className="chart-bar-track">
+              <div
+                className="chart-bar-fill"
+                style={{
+                  width: `${Math.max(
+                    8,
+                    (item.value /
+                      Math.max(
+                        section.questions.length,
+                        section.answeredCount,
+                        section.findings.length,
+                        section.evidenceCount,
+                        concentratedCount,
+                        1
+                      )) *
+                      100
+                  )}%`,
+                }}
+              />
+            </div>
+            <div className="chart-bar-value">{item.value}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ChapterFindingBlock({
+  rows,
+  view,
+}: {
+  rows: Array<{ chapter: string; high: number; medium: number; low: number; total: number }>;
+  view: ChapterView;
+}) {
+  if (view === "bar") {
+    return (
+      <div className="chart-bar-list">
+        {rows.length ? (
+          rows.map((row) => (
+            <div className="chart-bar-row" key={row.chapter}>
+              <div className="chart-bar-copy">
+                <strong>{row.chapter}</strong>
+                <div className="small-text">
+                  High {row.high} / Medium {row.medium} / Low {row.low}
+                </div>
+              </div>
+              <div className="chart-bar-track">
+                <div className="chart-bar-fill" style={{ width: `${Math.max(8, row.total * 12)}%` }} />
+              </div>
+              <div className="chart-bar-value">{row.total}</div>
+            </div>
+          ))
+        ) : (
+          <div className="empty-state">No chapter-level findings recorded.</div>
+        )}
+      </div>
+    );
+  }
+
+  return <ChapterFindingTable rows={rows} />;
 }
 
 function ChapterFindingTable({

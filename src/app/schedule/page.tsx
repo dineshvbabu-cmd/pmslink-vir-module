@@ -2,7 +2,7 @@ import type { VirInspectionTypeCategory } from "@prisma/client";
 import Link from "next/link";
 import { ScheduleBoard } from "@/components/schedule-board";
 import { prisma } from "@/lib/prisma";
-import { isOfficeSession, requireVirSession } from "@/lib/vir/session";
+import { getVirWorkspaceFilter, isOfficeSession, requireVirSession } from "@/lib/vir/session";
 import { inspectionStatusLabel, toneForInspectionStatus } from "@/lib/vir/workflow";
 
 export const dynamic = "force-dynamic";
@@ -22,16 +22,29 @@ function addDays(date: Date, days: number) {
   return next;
 }
 
-export default async function SchedulePage() {
+export default async function SchedulePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ vesselId?: string }>;
+}) {
   const session = await requireVirSession();
   const isOffice = isOfficeSession(session);
-  const windowStart = addDays(startOfDay(new Date()), -14);
+  const workspaceFilter = isOffice ? await getVirWorkspaceFilter() : null;
+  const params = await searchParams;
+  const requestedVesselId = typeof params.vesselId === "string" ? params.vesselId.trim() : undefined;
+  const selectedVesselId =
+    isOffice
+      ? requestedVesselId !== undefined
+        ? requestedVesselId
+        : workspaceFilter?.vesselId ?? ""
+      : session.vesselId ?? "";
+  const windowStart = addDays(startOfDay(new Date()), -180);
 
   const inspections = await prisma.virInspection.findMany({
     where: {
       status: { not: "ARCHIVED" },
       inspectionType: { is: { category: { in: visibleInspectionCategories } } },
-      ...(isOffice ? {} : { vesselId: session.vesselId ?? "" }),
+      ...(isOffice ? (selectedVesselId ? { vesselId: selectedVesselId } : {}) : { vesselId: session.vesselId ?? "" }),
     },
     orderBy: [{ inspectionDate: "desc" }, { createdAt: "desc" }],
     include: {
@@ -112,7 +125,10 @@ export default async function SchedulePage() {
           <Link className="btn btn-compact" href="/inspections/new">
             Schedule VIR
           </Link>
-          <Link className="btn-secondary btn-compact" href="/inspections?scope=history">
+          <Link
+            className="btn-secondary btn-compact"
+            href={`/inspections?scope=history${selectedVesselId ? `&vesselId=${encodeURIComponent(selectedVesselId)}` : ""}`}
+          >
             Open history
           </Link>
         </div>
@@ -234,7 +250,7 @@ export default async function SchedulePage() {
             inspections: row.inspections,
           }))}
           windowStart={windowStart.toISOString()}
-          horizonDays={92}
+          horizonDays={180}
         />
       </section>
     </div>

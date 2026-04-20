@@ -774,7 +774,20 @@ async function seedInspectionContent(
     (answer) => answer.question.allowsPhoto && answer.question.referenceImageUrl
   );
 
-  for (const [photoIndex, answer] of evidenceTargets.slice(0, isPreviousInspection ? 1 : 2).entries()) {
+  await prisma.virPhoto.create({
+    data: {
+      inspectionId,
+      url: DEMO_EVIDENCE_IMAGES[seedIndex % DEMO_EVIDENCE_IMAGES.length],
+      fileName: `inspection-cover-${seedIndex + 1}.svg`,
+      contentType: "image/svg+xml",
+      fileSizeKb: 24,
+      caption: `${scenario.title} cover evidence`,
+      uploadedBy: scenario.inspectorName,
+      takenAt: scenario.inspectionDate,
+    },
+  });
+
+  for (const [photoIndex, answer] of evidenceTargets.slice(0, isPreviousInspection ? 3 : 6).entries()) {
     await prisma.virPhoto.create({
       data: {
         inspectionId,
@@ -916,128 +929,10 @@ async function seedSignOffs(inspectionId: string, scenario: DemoScenario) {
 }
 
 async function seedImportSessions(inspectionTypeMap: Map<string, { id: string; code: string; name: string }>) {
-  const importSeeds = [
-    {
-      templateKey: "SAILING_VIR",
-      status: "COMMITTED" as const,
-      sourceFileName: "Sailing_VIR_Technical_Checklist.xlsx",
-      sourceSystem: "Office questionnaire import",
-      sourceType: "XLSX",
-    },
-    {
-      templateKey: "PORT_VIR",
-      status: "REVIEW" as const,
-      sourceFileName: "Port_VIR_Operational_Readiness.docx",
-      sourceSystem: "Office questionnaire import",
-      sourceType: "DOCX",
-    },
-    {
-      templateKey: "REMOTE_VIR",
-      status: "COMMITTED" as const,
-      sourceFileName: "Remote_Navigation_Assurance.json",
-      sourceSystem: "Office questionnaire import",
-      sourceType: "JSON_TEMPLATE",
-    },
-  ];
-
-  let count = 0;
-
-  for (const seed of importSeeds) {
-    const templateSeed = TEMPLATE_SEEDS.find((item) => item.key === seed.templateKey);
-
-    if (!templateSeed) {
-      continue;
-    }
-
-    const inspectionType = inspectionTypeMap.get(templateSeed.inspectionTypeCode);
-
-    if (!inspectionType) {
-      continue;
-    }
-
-    const { normalized, summary } = normalizeVirTemplateImport(templateSeed.payload);
-    const existing = await prisma.virImportSession.findFirst({
-      where: { sourceFileName: seed.sourceFileName },
-      select: { id: true },
-    });
-
-    const session = existing
-      ? await prisma.virImportSession.update({
-          where: { id: existing.id },
-          data: {
-            inspectionTypeId: inspectionType.id,
-            sourceFileName: seed.sourceFileName,
-            sourceSystem: seed.sourceSystem,
-            sourceType: seed.sourceType,
-            status: seed.status,
-            confidenceAvg: seed.status === "COMMITTED" ? 0.96 : 0.88,
-            extractedAt: new Date(),
-            payload: normalized,
-            createdBy: "Seed Engine",
-          },
-          select: { id: true },
-        })
-      : await prisma.virImportSession.create({
-          data: {
-            inspectionTypeId: inspectionType.id,
-            sourceFileName: seed.sourceFileName,
-            sourceSystem: seed.sourceSystem,
-            sourceType: seed.sourceType,
-            status: seed.status,
-            confidenceAvg: seed.status === "COMMITTED" ? 0.96 : 0.88,
-            extractedAt: new Date(),
-            payload: normalized,
-            createdBy: "Seed Engine",
-          },
-          select: { id: true },
-        });
-
-    await prisma.virImportFieldReview.deleteMany({
-      where: { importSessionId: session.id },
-    });
-
-    await prisma.virImportFieldReview.createMany({
-      data: [
-        {
-          importSessionId: session.id,
-          entityType: "VirTemplate",
-          fieldPath: "templateName",
-          aiValue: normalized.templateName,
-          finalValue: normalized.templateName,
-          confidence: 0.97,
-          accepted: true,
-          reviewerName: "Seed Engine",
-          reviewedAt: new Date(),
-        },
-        {
-          importSessionId: session.id,
-          entityType: "VirTemplateSection",
-          fieldPath: "sections[0].title",
-          aiValue: normalized.sections[0]?.title ?? "",
-          finalValue: normalized.sections[0]?.title ?? "",
-          confidence: 0.94,
-          accepted: true,
-          reviewerName: "Seed Engine",
-          reviewedAt: new Date(),
-        },
-        {
-          importSessionId: session.id,
-          entityType: "VirTemplateQuestion",
-          fieldPath: "summary.questions",
-          aiValue: `${summary.questions ?? normalized.sections.reduce((sum, section) => sum + section.questions.length, 0)}`,
-          finalValue: `${summary.questions ?? normalized.sections.reduce((sum, section) => sum + section.questions.length, 0)}`,
-          confidence: 0.92,
-          accepted: true,
-          reviewerName: "Seed Engine",
-          reviewedAt: new Date(),
-        },
-      ],
-    });
-
-    count += 1;
-  }
-
-  return count;
+  void inspectionTypeMap;
+  await prisma.virImportFieldReview.deleteMany({});
+  await prisma.virImportSession.deleteMany({});
+  return 0;
 }
 
 function buildPreviousScenario(index: number): DemoScenario {
@@ -1092,21 +987,15 @@ function buildCurrentScenario(index: number): DemoScenario {
 }
 
 function buildScenarioDate(index: number, previous: boolean) {
+  const anchor = new Date();
+  anchor.setUTCHours(0, 0, 0, 0);
+
   if (previous) {
-    return new Date(Date.UTC(2025, (index + 2) % 7, 5 + (index % 20)));
+    return addDays(anchor, -(220 + ((index * 9) % 160)));
   }
 
-  const bucket = index % 10;
-
-  if (bucket < 2) {
-    return new Date(Date.UTC(2025, 7 + bucket, 6 + (index % 18)));
-  }
-
-  if (bucket < 4) {
-    return new Date(Date.UTC(2025, 9 + (bucket - 2), 8 + (index % 16)));
-  }
-
-  return new Date(Date.UTC(2025, 11 + ((index - 4) % 4), 4 + (index % 18)));
+  const offsets = [8, 14, 21, 28, 36, 44, 58, 72, 96, 124];
+  return addDays(anchor, -offsets[index % offsets.length]!);
 }
 
 function currentStatusForIndex(index: number): VirInspectionStatus {
@@ -1426,19 +1315,8 @@ function inferInspectionMode(title: string) {
 }
 
 function completionForStatus(status: VirInspectionStatus) {
-  if (status === "CLOSED" || status === "SHORE_REVIEWED") {
-    return 1;
-  }
-
-  if (status === "SUBMITTED") {
-    return 0.92;
-  }
-
-  if (status === "RETURNED") {
-    return 0.8;
-  }
-
-  return 0.58;
+  void status;
+  return 1;
 }
 
 function addDays(date: Date, days: number) {

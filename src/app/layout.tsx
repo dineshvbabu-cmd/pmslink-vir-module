@@ -11,10 +11,13 @@ import {
 } from "lucide-react";
 import "./globals.css";
 import { logoutAction } from "@/app/session-actions";
+import { WorkspaceFilterSync } from "@/components/workspace-filter-sync";
 import { VirSyncRegistrar } from "@/components/vir-sync-registrar";
 import { WorkspaceNav } from "@/components/workspace-nav";
 import {
+  buildWorkspaceHref,
   getVirSession,
+  getVirWorkspaceFilter,
   workspaceAccent,
   workspaceLabel,
   workspaceNavigation,
@@ -28,11 +31,13 @@ export const metadata = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const session = await getVirSession();
+  const workspaceFilter = session ? await getVirWorkspaceFilter() : null;
 
   return (
     <html lang="en">
       <body>
         <VirSyncRegistrar />
+        {session ? <WorkspaceFilterSync workspace={session.workspace} /> : null}
         {session ? (
           <div className="erp-shell">
             <aside className="erp-sidebar">
@@ -54,7 +59,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 </div>
               </div>
 
-              <WorkspaceNav items={workspaceNavigation(session.workspace)} />
+              <WorkspaceNav items={workspaceNavigation(session.workspace, workspaceFilter)} />
 
               <div className="sidebar-footer">
                 <div className="sync-stamp">Last synced 20/04/2026</div>
@@ -72,25 +77,49 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 </div>
 
                 <div className="topbar-utility-nav">
-                  <Link aria-label="Dashboard" className="topbar-icon-link" href="/">
+                  <Link
+                    aria-label="Dashboard"
+                    className="topbar-icon-link"
+                    href={buildWorkspaceHref("/", session.workspace, workspaceFilter)}
+                  >
                     <House size={18} />
                   </Link>
-                  <Link aria-label="Approved inspections" className="topbar-icon-link" href="/inspections?scope=approved">
+                  <Link
+                    aria-label="Approved inspections"
+                    className="topbar-icon-link"
+                    href={buildWorkspaceHref("/inspections?scope=approved", session.workspace, workspaceFilter)}
+                  >
                     <ShieldCheck size={18} />
                   </Link>
-                  <Link aria-label="Inspection history" className="topbar-icon-link" href="/inspections?scope=history">
+                  <Link
+                    aria-label="Inspection history"
+                    className="topbar-icon-link"
+                    href={buildWorkspaceHref("/inspections?scope=history", session.workspace, workspaceFilter)}
+                  >
                     <History size={18} />
                   </Link>
-                  <Link aria-label="VIR Calendar" className="topbar-icon-link" href="/schedule">
+                  <Link
+                    aria-label="VIR Calendar"
+                    className="topbar-icon-link"
+                    href={buildWorkspaceHref("/schedule", session.workspace, workspaceFilter)}
+                  >
                     <CalendarDays size={18} />
                   </Link>
-                  <Link aria-label="Analytics Boards" className="topbar-icon-link" href="/dashboards">
+                  <Link
+                    aria-label="Analytics Boards"
+                    className="topbar-icon-link"
+                    href={buildWorkspaceHref("/dashboards", session.workspace, workspaceFilter)}
+                  >
                     <Grid2x2 size={18} />
                   </Link>
                   <button aria-label="Notifications" className="topbar-icon-link" type="button">
                     <Bell size={18} />
                   </button>
-                  <Link aria-label="Instruction" className="topbar-help-link" href="/instruction">
+                  <Link
+                    aria-label="Instruction"
+                    className="topbar-help-link"
+                    href={buildWorkspaceHref("/instruction", session.workspace, workspaceFilter)}
+                  >
                     <HelpCircle size={18} />
                     <span>Help</span>
                   </Link>

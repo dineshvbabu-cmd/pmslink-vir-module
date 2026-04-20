@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 
 export const VIR_SESSION_COOKIE = "vir_workspace_session";
+export const VIR_FILTER_COOKIE = "vir_workspace_filter";
 
 export type VirWorkspace = "OFFICE" | "VESSEL";
 
@@ -22,6 +23,13 @@ export type WorkspaceNavItem = {
   href: string;
   label: string;
   note: string;
+};
+
+export type VirWorkspaceFilter = {
+  vesselId?: string | null;
+  range?: string | null;
+  fleet?: string | null;
+  updatedAt?: number | null;
 };
 
 const officeNavigation: WorkspaceNavItem[] = [
@@ -139,6 +147,38 @@ export async function getVirSession() {
   return parseVirSession(cookieStore.get(VIR_SESSION_COOKIE)?.value);
 }
 
+function parseVirWorkspaceFilter(token: string | undefined | null): VirWorkspaceFilter | null {
+  if (!token) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(token) as VirWorkspaceFilter;
+    const vesselId = typeof parsed.vesselId === "string" && parsed.vesselId.length > 0 ? parsed.vesselId : null;
+    const range = typeof parsed.range === "string" && parsed.range.length > 0 ? parsed.range : null;
+    const fleet = typeof parsed.fleet === "string" && parsed.fleet.length > 0 ? parsed.fleet : null;
+    const updatedAt = typeof parsed.updatedAt === "number" ? parsed.updatedAt : null;
+
+    if (!vesselId && !range && !fleet) {
+      return null;
+    }
+
+    return {
+      vesselId,
+      range,
+      fleet,
+      updatedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function getVirWorkspaceFilter() {
+  const cookieStore = await cookies();
+  return parseVirWorkspaceFilter(cookieStore.get(VIR_FILTER_COOKIE)?.value);
+}
+
 export async function requireVirSession() {
   const session = await getVirSession();
 
@@ -185,8 +225,37 @@ export function workspaceShortLabel(workspace: VirWorkspace) {
   return workspace === "OFFICE" ? "Office" : "Vessel";
 }
 
-export function workspaceNavigation(workspace: VirWorkspace) {
-  return workspace === "OFFICE" ? officeNavigation : vesselNavigation;
+const vesselScopedRoutes = new Set(["/", "/inspections", "/schedule", "/dashboards"]);
+
+export function buildWorkspaceHref(href: string, workspace: VirWorkspace, filter?: VirWorkspaceFilter | null) {
+  if (workspace !== "OFFICE" || !filter) {
+    return href;
+  }
+
+  const url = new URL(href, "https://pmslink.local");
+
+  if (filter.vesselId && vesselScopedRoutes.has(url.pathname) && !url.searchParams.has("vesselId")) {
+    url.searchParams.set("vesselId", filter.vesselId);
+  }
+
+  if (url.pathname === "/" && filter.fleet && !url.searchParams.has("fleet")) {
+    url.searchParams.set("fleet", filter.fleet);
+  }
+
+  if ((url.pathname === "/" || url.pathname === "/dashboards") && filter.range && !url.searchParams.has("range")) {
+    url.searchParams.set("range", filter.range);
+  }
+
+  const nextQuery = url.searchParams.toString();
+  return `${url.pathname}${nextQuery ? `?${nextQuery}` : ""}`;
+}
+
+export function workspaceNavigation(workspace: VirWorkspace, filter?: VirWorkspaceFilter | null) {
+  const source = workspace === "OFFICE" ? officeNavigation : vesselNavigation;
+  return source.map((item) => ({
+    ...item,
+    href: buildWorkspaceHref(item.href, workspace, filter),
+  }));
 }
 
 export function workspaceAccent(workspace: VirWorkspace) {

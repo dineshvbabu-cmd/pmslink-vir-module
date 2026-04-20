@@ -1,9 +1,9 @@
 import type { VirInspectionTypeCategory } from "@prisma/client";
 import Link from "next/link";
-import { Download, Eye, FileText, LayoutGrid, TableProperties } from "lucide-react";
+import { Eye, FileText, LayoutGrid, TableProperties, TriangleAlert } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { summarizeProgress } from "@/lib/vir/analytics";
-import { isOfficeSession, requireVirSession } from "@/lib/vir/session";
+import { getVirWorkspaceFilter, isOfficeSession, requireVirSession } from "@/lib/vir/session";
 import { inspectionStatusLabel, toneForInspectionStatus } from "@/lib/vir/workflow";
 
 export const dynamic = "force-dynamic";
@@ -86,17 +86,25 @@ export default async function InspectionsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const session = await requireVirSession();
+  const workspaceFilter = isOfficeSession(session) ? await getVirWorkspaceFilter() : null;
   const { scope, status, vesselId, view, q } = await searchParams;
   const pageMode = normalizePageMode(scope, session.workspace === "OFFICE");
   const viewMode = normalizeViewMode(view);
   const searchTerm = q?.trim().toLowerCase() ?? "";
+  const requestedVesselId = typeof vesselId === "string" ? vesselId.trim() : undefined;
+  const selectedVesselId =
+    session.workspace === "OFFICE"
+      ? requestedVesselId !== undefined
+        ? requestedVesselId
+        : workspaceFilter?.vesselId ?? ""
+      : session.vesselId ?? "";
 
   const where =
     session.workspace === "OFFICE"
       ? {
           status: { not: "ARCHIVED" as const },
           inspectionType: { is: { category: { in: visibleInspectionCategories } } },
-          ...(vesselId ? { vesselId } : {}),
+          ...(selectedVesselId ? { vesselId: selectedVesselId } : {}),
         }
       : {
           vesselId: session.vesselId ?? "",
@@ -287,10 +295,10 @@ export default async function InspectionsPage({
             <p className="panel-subtitle">{header.subtitle}</p>
           </div>
           <div className="actions-row">
-            <Link className="btn-secondary btn-compact" href="/inspections?scope=approved">
+            <Link className="btn-secondary btn-compact" href={modeHref("approved", { vesselId: selectedVesselId, view: viewMode, q })}>
               Approved inspections
             </Link>
-            <Link className="btn-secondary btn-compact" href="/inspections?scope=history">
+            <Link className="btn-secondary btn-compact" href={modeHref("history", { vesselId: selectedVesselId, view: viewMode, q })}>
               Inspection history
             </Link>
             <Link className="btn btn-compact" href="/inspections/new">
@@ -301,25 +309,34 @@ export default async function InspectionsPage({
 
         <div className="filter-toolbar">
           <div className="filter-chips">
-            <Link className={`filter-chip ${pageMode === "register" ? "filter-chip-active" : ""}`} href="/inspections">
+            <Link
+              className={`filter-chip ${pageMode === "register" ? "filter-chip-active" : ""}`}
+              href={modeHref("register", { vesselId: selectedVesselId, view: viewMode, q })}
+            >
               Inspection Register
             </Link>
-            <Link className={`filter-chip ${pageMode === "approved" ? "filter-chip-active" : ""}`} href="/inspections?scope=approved">
+            <Link
+              className={`filter-chip ${pageMode === "approved" ? "filter-chip-active" : ""}`}
+              href={modeHref("approved", { vesselId: selectedVesselId, view: viewMode, q })}
+            >
               Approved inspections
             </Link>
-            <Link className={`filter-chip ${pageMode === "history" ? "filter-chip-active" : ""}`} href="/inspections?scope=history">
+            <Link
+              className={`filter-chip ${pageMode === "history" ? "filter-chip-active" : ""}`}
+              href={modeHref("history", { vesselId: selectedVesselId, view: viewMode, q })}
+            >
               Inspection history
             </Link>
             <Link
               className={`filter-chip ${viewMode === "grid" ? "filter-chip-active" : ""}`}
-              href={modeHref(pageMode, { vesselId, status, view: "grid", scope, q })}
+              href={modeHref(pageMode, { vesselId: selectedVesselId, status, view: "grid", scope, q })}
             >
               <TableProperties size={16} />
               <span>Table/Grid View</span>
             </Link>
             <Link
               className={`filter-chip ${viewMode === "summary" ? "filter-chip-active" : ""}`}
-              href={modeHref(pageMode, { vesselId, status, view: "summary", scope, q })}
+              href={modeHref(pageMode, { vesselId: selectedVesselId, status, view: "summary", scope, q })}
             >
               <LayoutGrid size={16} />
               <span>Summary View</span>
@@ -338,7 +355,7 @@ export default async function InspectionsPage({
                 <label className="inline-form-label" htmlFor="vesselId">
                   Vessel
                 </label>
-                <select defaultValue={vesselId ?? ""} id="vesselId" name="vesselId">
+                <select defaultValue={selectedVesselId} id="vesselId" name="vesselId">
                   <option value="">All vessels</option>
                   {vessels.map((vessel) => (
                     <option key={vessel.id} value={vessel.id}>
@@ -359,7 +376,7 @@ export default async function InspectionsPage({
         ) : pageMode === "approved" ? (
           <ApprovedInspectionGrid inspections={filtered} />
         ) : pageMode === "history" ? (
-          <InspectionHistoryGrid inspections={filtered} isOffice={isOfficeSession(session)} />
+          <InspectionHistoryGrid inspections={filtered} isOffice={isOfficeSession(session)} selectedVesselId={selectedVesselId} />
         ) : (
           <InspectionRegisterGrid inspections={filtered} isOffice={isOfficeSession(session)} />
         )}
@@ -447,9 +464,11 @@ function ApprovedInspectionGrid({
 function InspectionHistoryGrid({
   inspections,
   isOffice,
+  selectedVesselId,
 }: {
   inspections: InspectionRow[];
   isOffice: boolean;
+  selectedVesselId: string;
 }) {
   return (
     <div className="table-shell table-shell-tall">
@@ -494,6 +513,9 @@ function InspectionHistoryGrid({
               <td>{inspection.inspectionMode}</td>
               <td>
                 <div className="table-actions">
+                  <Link className="inline-link" href={`/vessels/${inspection.vessel.id}`}>
+                    <span>Vessel details</span>
+                  </Link>
                   <Link className="inline-link" href={`/inspections/${inspection.id}`}>
                     <Eye size={14} />
                     <span>Workflow</span>
@@ -502,10 +524,15 @@ function InspectionHistoryGrid({
                     <FileText size={14} />
                     <span>Report</span>
                   </Link>
-                  <a className="inline-link" href={`/api/reports/inspection/${inspection.id}/pdf?variant=detailed`}>
-                    <Download size={14} />
-                    <span>PDF</span>
-                  </a>
+                  {inspection.findings.length > 0 ? (
+                    <Link
+                      className="inline-link"
+                      href={`/deviations/${inspection.id}${selectedVesselId ? `?vesselId=${encodeURIComponent(selectedVesselId)}` : ""}`}
+                    >
+                      <TriangleAlert size={14} />
+                      <span>Pending deviations</span>
+                    </Link>
+                  ) : null}
                 </div>
               </td>
             </tr>

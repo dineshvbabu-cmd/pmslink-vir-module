@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { FileDown } from "lucide-react";
 import { CompactBarChart, DonutChart, TrendLineChart } from "@/components/erp-charts";
 import { prisma } from "@/lib/prisma";
 import { calculateInspectionScore } from "@/lib/vir/analytics";
 import {
   defaultDashboardScopedVesselCodes,
+  getVirWorkspaceFilter,
   isOfficeSession,
   isTsiSession,
   requireVirSession,
@@ -12,11 +14,10 @@ import { inspectionStatusLabel, toneForInspectionStatus } from "@/lib/vir/workfl
 
 export const dynamic = "force-dynamic";
 
-type BoardKey = "overview" | "tmsa" | "class" | "psc-sire";
-type RangeKey = "30" | "90" | "180" | "365";
+type BoardKey = "tmsa" | "class" | "psc-sire";
+type RangeKey = "90" | "180" | "365";
 
 const boardOptions: Array<{ key: BoardKey; label: string }> = [
-  { key: "overview", label: "Fleet / vessel overview" },
   { key: "tmsa", label: "TMSA compliance" },
   { key: "class", label: "Class and statutory" },
   { key: "psc-sire", label: "PSC and SIRE / vetting" },
@@ -27,12 +28,12 @@ const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", y
 function toSearchParams({
   board,
   scope,
-  vesselCode,
+  vesselId,
   range,
 }: {
   board: BoardKey;
   scope?: string | null;
-  vesselCode?: string | null;
+  vesselId?: string | null;
   range?: string | null;
 }) {
   const params = new URLSearchParams();
@@ -42,8 +43,8 @@ function toSearchParams({
     params.set("scope", scope);
   }
 
-  if (vesselCode) {
-    params.set("vesselCode", vesselCode);
+  if (vesselId) {
+    params.set("vesselId", vesselId);
   }
 
   if (range) {
@@ -59,11 +60,19 @@ export default async function DashboardBoardsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const session = await requireVirSession();
+  const workspaceFilter = await getVirWorkspaceFilter();
   const params = await searchParams;
   const board = normalizeBoard(params.board);
-  const range = normalizeRange(typeof params.range === "string" ? params.range : undefined);
+  const range = normalizeRange(
+    typeof params.range === "string" ? params.range : workspaceFilter?.range ?? undefined
+  );
   const scope = typeof params.scope === "string" ? params.scope : null;
-  const requestedVesselCode = typeof params.vesselCode === "string" ? params.vesselCode : null;
+  const requestedVesselId =
+    typeof params.vesselId === "string"
+      ? params.vesselId
+      : session.workspace === "OFFICE"
+        ? workspaceFilter?.vesselId ?? null
+        : session.vesselId;
   const defaultScopedCodes = defaultDashboardScopedVesselCodes(session);
   const showExpandedScope = isOfficeSession(session) && scope === "all";
   const enforcedVesselCodes = defaultScopedCodes.length > 0 && !showExpandedScope ? defaultScopedCodes : [];
@@ -72,7 +81,7 @@ export default async function DashboardBoardsPage({
     isActive: true,
     ...(session.workspace === "VESSEL" && session.vesselId ? { id: session.vesselId } : {}),
     ...(enforcedVesselCodes.length > 0 ? { code: { in: enforcedVesselCodes } } : {}),
-    ...(requestedVesselCode ? { code: requestedVesselCode } : {}),
+    ...(requestedVesselId ? { id: requestedVesselId } : {}),
   };
 
   const now = new Date();
@@ -81,7 +90,7 @@ export default async function DashboardBoardsPage({
   const dueSoonDate = new Date();
   dueSoonDate.setDate(now.getDate() + 45);
 
-  const [vessels, inspections, overdueActions, importSessions, templates] = await Promise.all([
+  const [vessels, inspections, overdueActions] = await Promise.all([
     prisma.vessel.findMany({
       where: vesselWhere,
       orderBy: { name: "asc" },
@@ -176,39 +185,6 @@ export default async function DashboardBoardsPage({
       orderBy: { targetDate: "asc" },
       take: 12,
     }),
-    prisma.virImportSession.findMany({
-      where: {
-        ...(requestedVesselCode ? { vessel: { code: requestedVesselCode } } : {}),
-      },
-      include: {
-        inspectionType: { select: { code: true, name: true, category: true } },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 12,
-    }),
-    prisma.virTemplate.findMany({
-      where: {
-        inspectionType: {
-          ...(requestedVesselCode ? {} : {}),
-        },
-      },
-      include: {
-        inspectionType: { select: { code: true, name: true, category: true } },
-        sections: {
-          select: {
-            title: true,
-            questions: {
-              select: {
-                id: true,
-                isCicCandidate: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 24,
-    }),
   ]);
 
   const vesselCodes = new Set(vessels.map((vessel) => vessel.code));
@@ -260,18 +236,13 @@ export default async function DashboardBoardsPage({
       item.inspection.inspectionType.category === "VETTING" ||
       ["SIRE", "SIRE_2_0", "RIGHTSHIP", "CID"].includes(item.inspection.inspectionType.code)
   );
-  const concentratedQuestionCount = templates.reduce(
-    (sum, template) => sum + template.sections.reduce((inner, section) => inner + section.questions.filter((question) => question.isCicCandidate).length, 0),
-    0
-  );
-
   const visibleScopeLabel =
     session.workspace === "VESSEL"
       ? session.vesselName ?? "Assigned vessel"
       : isTsiSession(session) && !showExpandedScope
         ? session.dashboardScopeLabel ?? "TSI assigned vessels"
-        : requestedVesselCode
-          ? vessels.find((vessel) => vessel.code === requestedVesselCode)?.name ?? requestedVesselCode
+        : requestedVesselId
+          ? vessels.find((vessel) => vessel.id === requestedVesselId)?.name ?? requestedVesselId
           : "Fleet-wide view";
 
   return (
@@ -283,16 +254,22 @@ export default async function DashboardBoardsPage({
             {session.workspace === "VESSEL" ? "Vessel performance, compliance, and execution" : "Fleet performance and assurance boards"}
           </h2>
           <p className="hero-copy">
-            Separate operational boards for overview, TMSA, class/statutory, and PSC/SIRE, with role-aware scope and drill-down into the live VIR workflow.
+            Separate operational boards for TMSA, class/statutory, and PSC/SIRE, with role-aware scope and drill-down into the live VIR workflow.
           </p>
         </div>
         <div className="actions-row">
-          <a
-            className="btn-secondary btn-compact"
-            href={`/api/reports/dashboard/pdf?kind=analytics&board=${board}&range=${range}${requestedVesselCode ? `&vesselId=${encodeURIComponent(vessels.find((vessel) => vessel.code === requestedVesselCode)?.id ?? "")}` : ""}`}
-          >
-            Export analytics
-          </a>
+          <AnalyticsExportMenu
+            items={[
+              {
+                href: `/api/reports/dashboard/pdf?kind=analytics&board=${board}&range=${range}${requestedVesselId ? `&vesselId=${encodeURIComponent(requestedVesselId)}` : ""}`,
+                label: "Analytics PDF",
+              },
+              {
+                href: `/api/reports/dashboard/pdf?kind=dashboard&range=${range}${requestedVesselId ? `&vesselId=${encodeURIComponent(requestedVesselId)}` : ""}`,
+                label: "Dashboard PDF",
+              },
+            ]}
+          />
           <Link className="btn btn-compact" href="/schedule">
             Open scheduler
           </Link>
@@ -310,63 +287,51 @@ export default async function DashboardBoardsPage({
           </div>
         </div>
 
-        <div className="board-switcher">
-          {boardOptions.map((option) => (
-            <Link
-              className={`board-tab ${board === option.key ? "board-tab-active" : ""}`}
-              href={toSearchParams({ board: option.key, scope, vesselCode: requestedVesselCode, range })}
-              key={option.key}
-            >
-              {option.label}
-            </Link>
-          ))}
-        </div>
-
-        <div className="filter-toolbar" style={{ marginTop: "1rem" }}>
-          <div className="filter-chips">
-            {(["30", "90", "180", "365"] as RangeKey[]).map((option) => (
-              <Link
-                className={`filter-chip ${range === option ? "filter-chip-active" : ""}`}
-                href={toSearchParams({ board, scope, vesselCode: requestedVesselCode, range: option })}
-                key={option}
-              >
-                {option}d
-              </Link>
+        <form className="inline-form inline-form-wide" method="get" style={{ marginTop: "1rem" }}>
+          <label className="inline-form-label" htmlFor="board">
+            Board
+          </label>
+          <select defaultValue={board} id="board" name="board">
+            {boardOptions.map((option) => (
+              <option key={option.key} value={option.key}>
+                {option.label}
+              </option>
             ))}
-            <Link
-              className={`filter-chip ${!requestedVesselCode ? "filter-chip-active" : ""}`}
-              href={toSearchParams({ board, scope, vesselCode: null, range })}
-            >
-              All visible vessels
-            </Link>
+          </select>
+          <label className="inline-form-label" htmlFor="range">
+            Timeline
+          </label>
+          <select defaultValue={range} id="range" name="range">
+            <option value="90">3 months to today</option>
+            <option value="180">6 months to today</option>
+            <option value="365">1 year to today</option>
+          </select>
+          <label className="inline-form-label" htmlFor="vesselId">
+            Vessel
+          </label>
+          <select defaultValue={requestedVesselId ?? ""} id="vesselId" name="vesselId">
+            <option value="">All visible vessels</option>
             {vessels.map((vessel) => (
-              <Link
-                className={`filter-chip ${requestedVesselCode === vessel.code ? "filter-chip-active" : ""}`}
-                href={toSearchParams({ board, scope, vesselCode: vessel.code, range })}
-                key={vessel.code}
-              >
+              <option key={vessel.id} value={vessel.id}>
                 {vessel.name}
-              </Link>
+              </option>
             ))}
-          </div>
-
+          </select>
           {isTsiSession(session) ? (
-            <div className="filter-chips">
-              <Link
-                className={`filter-chip ${!showExpandedScope ? "filter-chip-active" : ""}`}
-                href={toSearchParams({ board, scope: "default", vesselCode: requestedVesselCode, range })}
-              >
-                Assigned scope
-              </Link>
-              <Link
-                className={`filter-chip ${showExpandedScope ? "filter-chip-active" : ""}`}
-                href={toSearchParams({ board, scope: "all", vesselCode: requestedVesselCode, range })}
-              >
-                Expand to fleet
-              </Link>
-            </div>
+            <>
+              <label className="inline-form-label" htmlFor="scope">
+                Scope
+              </label>
+              <select defaultValue={showExpandedScope ? "all" : "default"} id="scope" name="scope">
+                <option value="default">Assigned scope</option>
+                <option value="all">Expand to fleet</option>
+              </select>
+            </>
           ) : null}
-        </div>
+          <button className="btn-secondary" type="submit">
+            Apply
+          </button>
+        </form>
       </section>
 
       <section className="dashboard-grid dashboard-grid-equal">
@@ -381,127 +346,6 @@ export default async function DashboardBoardsPage({
           title="Status distribution"
         />
       </section>
-
-      {board === "overview" ? (
-        <>
-          <section className="erp-metrics-grid">
-            <MetricTile label="Visible vessels" note="Current scope" value={vessels.length} />
-            <MetricTile label="Inspections" note="Last 180 days" value={filteredInspections.length} />
-            <MetricTile label="Open findings" note="Across visible scope" value={openFindings.length} />
-            <MetricTile label="Average score" note="Inspection readiness" value={averageScore !== null ? `${averageScore}` : "n/a"} />
-            <MetricTile label="Overdue CARs" note="Needs office push" value={overdueActions.length} />
-            <MetricTile
-              label="Upcoming 45d"
-              note="Planned near term"
-              value={filteredInspections.filter((inspection) => inspection.inspectionDate >= now && inspection.inspectionDate <= dueSoonDate).length}
-            />
-          </section>
-
-          <section className="dashboard-grid dashboard-grid-wide">
-            <section className="panel panel-elevated">
-              <div className="section-header">
-                <div>
-                  <h3 className="panel-title">Fleet or vessel overview</h3>
-                  <p className="panel-subtitle">Interactive drilling from performance posture straight into the operational queue.</p>
-                </div>
-              </div>
-
-              <div className="stack-list">
-                {latestByVessel.map((row) => (
-                  <div className="bar-card" key={row.vessel.code}>
-                    <div className="bar-card-header">
-                      <div>
-                        <strong>{row.vessel.name}</strong>
-                        <div className="small-text">
-                          {row.vessel.fleet ?? "No fleet"} / {row.vessel.manager ?? "No manager"}
-                        </div>
-                      </div>
-                      <Link className="btn-secondary btn-compact" href={`/inspections?vesselId=${row.vessel.id}`}>
-                        Drill down
-                      </Link>
-                    </div>
-                    <div className="kpi-rail">
-                      {Array.from({ length: 12 }, (_, index) => (
-                        <div
-                          className={`kpi-segment ${index < Math.max(1, Math.round((row.averageScore ?? 0) / 10)) ? "kpi-segment-active" : ""}`}
-                          key={`${row.vessel.code}-${index}`}
-                        />
-                      ))}
-                    </div>
-                    <div className="mini-metrics">
-                      <span className="chip chip-info">Score {row.averageScore ?? "n/a"}</span>
-                      <span className="chip chip-warning">Open findings {row.openFindings}</span>
-                      <span className="chip chip-danger">Critical {row.criticalFindings}</span>
-                    </div>
-                    {row.latest ? (
-                      <div className="small-text" style={{ marginTop: "0.65rem" }}>
-                        Latest: {row.latest.title} / {fmt.format(row.latest.inspectionDate)} / {row.latest.inspectionType.name}
-                      </div>
-                    ) : (
-                      <div className="small-text" style={{ marginTop: "0.65rem" }}>
-                        No inspection activity in the visible horizon.
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className="panel panel-elevated">
-              <div className="section-header">
-                <div>
-                  <h3 className="panel-title">Priority watchlist</h3>
-                  <p className="panel-subtitle">Near-term items management can act on immediately.</p>
-                </div>
-              </div>
-
-              <div className="stack-list">
-                {inspectionScores.slice(0, 8).map((item) => (
-                  <div className="list-card" key={item.inspection.id}>
-                    <div className="meta-row">
-                      <span className={`chip ${toneForInspectionStatus(item.inspection.status)}`}>
-                        {inspectionStatusLabel[item.inspection.status]}
-                      </span>
-                      <span className="chip chip-info">{item.inspection.inspectionType.name}</span>
-                    </div>
-                    <div className="list-card-title">{item.inspection.title}</div>
-                    <div className="small-text">
-                      {item.inspection.vessel.name} / {fmt.format(item.inspection.inspectionDate)}
-                    </div>
-                    <div className="small-text">
-                      Score {item.score ?? "n/a"} / findings {item.inspection.findings.length} / CIC {item.cicCount}
-                    </div>
-                    <Link className="inline-link" href={`/inspections/${item.inspection.id}`}>
-                      Open live inspection
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </section>
-
-          <section className="dashboard-grid dashboard-grid-equal">
-            <CompactBarChart
-              bars={latestByVessel.slice(0, 8).map((row) => ({
-                label: row.vessel.name,
-                value: row.openFindings,
-                note: `Critical ${row.criticalFindings} / score ${row.averageScore ?? "n/a"}`,
-              }))}
-              subtitle="Open issue concentration by vessel."
-              title="Fleet exposure bars"
-            />
-            <CompactBarChart
-              bars={buildInspectionFamilySummary(inspectionScores).slice(0, 8).map((family) => ({
-                label: family.label,
-                value: family.count,
-                note: `Findings ${family.findings} / score ${family.score ?? "n/a"}`,
-              }))}
-              subtitle="Inspection family volume in the selected range."
-              title="Inspection family mix"
-            />
-          </section>
-        </>
-      ) : null}
 
       {board === "tmsa" ? (
         <>
@@ -519,14 +363,14 @@ export default async function DashboardBoardsPage({
               value={tmsaInspections.reduce((sum, item) => sum + item.inspection.findings.length, 0)}
             />
             <MetricTile
-              label="Imported questionnaires"
-              note="Template governance"
-              value={templates.filter((template) => template.inspectionType.code.includes("TMSA")).length}
+              label="Returned"
+              note="Needs rework"
+              value={tmsaInspections.filter((item) => item.inspection.status === "RETURNED").length}
             />
             <MetricTile
-              label="Import sessions"
-              note="Recent AI/OCR review"
-              value={importSessions.filter((item) => item.inspectionType?.code?.includes("TMSA")).length}
+              label="Draft / submitted"
+              note="Still in vessel-office flow"
+              value={tmsaInspections.filter((item) => ["DRAFT", "SUBMITTED"].includes(item.inspection.status)).length}
             />
           </section>
 
@@ -535,7 +379,7 @@ export default async function DashboardBoardsPage({
               <div className="section-header">
                 <div>
                   <h3 className="panel-title">TMSA compliance posture</h3>
-                  <p className="panel-subtitle">Element-level readiness view based on the latest live inspections and imports.</p>
+                  <p className="panel-subtitle">Element-level readiness view based on the latest live inspections in the selected scope.</p>
                 </div>
               </div>
               <div className="matrix-grid">
@@ -726,7 +570,11 @@ export default async function DashboardBoardsPage({
               note="Vetting categories"
               value={pscSireInspections.filter((item) => item.inspection.inspectionType.category === "VETTING").length}
             />
-            <MetricTile label="Concentrated questions" note="Template-import pipeline" value={concentratedQuestionCount} />
+            <MetricTile
+              label="Submitted / returned"
+              note="Pending office intervention"
+              value={pscSireInspections.filter((item) => ["SUBMITTED", "RETURNED"].includes(item.inspection.status)).length}
+            />
             <MetricTile
               label="Critical findings"
               note="Highest risk observations"
@@ -736,14 +584,9 @@ export default async function DashboardBoardsPage({
               )}
             />
             <MetricTile
-              label="Import review sessions"
-              note="OCR / AI intake"
-              value={importSessions.filter((item) => {
-                const code = item.inspectionType?.code ?? "";
-                return ["PORT_STATE_CONTROL", "PSC_SELF_ASSESSMENT", "SIRE", "SIRE_2_0", "RIGHTSHIP", "CID"].some((match) =>
-                  code.includes(match)
-                );
-              }).length}
+              label="Approved"
+              note="Released by office"
+              value={pscSireInspections.filter((item) => ["SHORE_REVIEWED", "CLOSED"].includes(item.inspection.status)).length}
             />
             <MetricTile
               label="Average score"
@@ -757,7 +600,7 @@ export default async function DashboardBoardsPage({
               <div className="section-header">
                 <div>
                   <h3 className="panel-title">PSC and SIRE board</h3>
-                  <p className="panel-subtitle">Readiness, concentrated topics, and the live queue by vessel and inspection family.</p>
+                  <p className="panel-subtitle">Readiness, vessel pressure, and the live queue by vessel and inspection family.</p>
                 </div>
               </div>
               <div className="stack-list">
@@ -770,7 +613,7 @@ export default async function DashboardBoardsPage({
                           {family.count} inspections / {family.findings} open findings / average score {family.score ?? "n/a"}
                         </div>
                       </div>
-                      <span className="chip chip-info">{family.cicCount} CIC</span>
+                      <span className="chip chip-info">Findings {family.findings}</span>
                     </div>
                     <div className="bar-track">
                       <div className="bar-fill" style={{ width: `${Math.max(10, family.score ?? 25)}%` }} />
@@ -783,39 +626,28 @@ export default async function DashboardBoardsPage({
             <section className="panel panel-elevated">
               <div className="section-header">
                 <div>
-                  <h3 className="panel-title">Concentrated topic register</h3>
-                  <p className="panel-subtitle">Imported CIC-sensitive questions remain visible for fast onboard review.</p>
+                  <h3 className="panel-title">Vetting and PSC watchlist</h3>
+                  <p className="panel-subtitle">Live queue of high-risk inspections needing follow-up in the selected scope.</p>
                 </div>
               </div>
               <div className="stack-list">
-                {templates
-                  .filter((template) =>
-                    ["PSC", "VETTING"].includes(template.inspectionType.category) ||
-                    ["PORT_STATE_CONTROL", "SIRE", "SIRE_2_0", "RIGHTSHIP", "CID"].includes(template.inspectionType.code)
-                  )
-                  .slice(0, 8)
-                  .map((template) => {
-                    const cicCount = template.sections.reduce(
-                      (sum, section) => sum + section.questions.filter((question) => question.isCicCandidate).length,
-                      0
-                    );
-
-                    return (
-                      <div className="list-card" key={template.id}>
-                        <div className="meta-row">
-                          <span className="chip chip-warning">CIC {cicCount}</span>
-                          <span className="chip chip-info">{template.inspectionType.name}</span>
-                        </div>
-                        <div className="list-card-title">{template.name}</div>
-                        <div className="small-text">
-                          {template.sections.length} sections / imported into the standardized VIR model
-                        </div>
-                        <Link className="inline-link" href="/templates">
-                          Open template library
-                        </Link>
-                      </div>
-                    );
-                  })}
+                {pscSireInspections.slice(0, 8).map((item) => (
+                  <div className="list-card" key={`watch-${item.inspection.id}`}>
+                    <div className="meta-row">
+                      <span className={`chip ${toneForInspectionStatus(item.inspection.status)}`}>
+                        {inspectionStatusLabel[item.inspection.status]}
+                      </span>
+                      <span className="chip chip-warning">Findings {item.inspection.findings.length}</span>
+                    </div>
+                    <div className="list-card-title">{item.inspection.title}</div>
+                    <div className="small-text">
+                      {item.inspection.vessel.name} / average score {item.score ?? "n/a"}
+                    </div>
+                    <Link className="inline-link" href={`/reports/inspection/${item.inspection.id}?variant=summary`}>
+                      Open report
+                    </Link>
+                  </div>
+                ))}
               </div>
             </section>
           </section>
@@ -824,11 +656,11 @@ export default async function DashboardBoardsPage({
             <CompactBarChart
               bars={buildInspectionFamilySummary(pscSireInspections).map((family) => ({
                 label: family.label,
-                value: family.cicCount,
-                note: `${family.count} inspections / findings ${family.findings}`,
+                value: family.findings,
+                note: `${family.count} inspections / score ${family.score ?? "n/a"}`,
               }))}
-              subtitle="Concentrated-topic intensity by inspection family."
-              title="CIR focus bars"
+              subtitle="Open finding burden by inspection family."
+              title="Finding focus bars"
             />
             <DonutChart
               segments={[
@@ -843,15 +675,15 @@ export default async function DashboardBoardsPage({
         </>
       ) : null}
 
-      {board === "overview" ? (
-        <section className="panel panel-elevated">
-          <div className="section-header">
-            <div>
-              <h3 className="panel-title">Overdue corrective actions</h3>
-              <p className="panel-subtitle">Remains common across all boards because it is the cross-workflow management trigger.</p>
-            </div>
+      <section className="panel panel-elevated">
+        <div className="section-header">
+          <div>
+            <h3 className="panel-title">Overdue corrective actions</h3>
+            <p className="panel-subtitle">Cross-workflow management triggers for the selected vessel and timeline scope.</p>
           </div>
+        </div>
 
+        <div className="table-shell table-shell-compact">
           <table className="table data-table">
             <thead>
               <tr>
@@ -882,8 +714,8 @@ export default async function DashboardBoardsPage({
               )}
             </tbody>
           </table>
-        </section>
-      ) : null}
+        </div>
+      </section>
     </div>
   );
 }
@@ -895,11 +727,11 @@ function normalizeBoard(value: string | string[] | undefined): BoardKey {
     return board;
   }
 
-  return "overview";
+  return "tmsa";
 }
 
 function normalizeRange(value: string | undefined): RangeKey {
-  if (value === "30" || value === "90" || value === "365") {
+  if (value === "90" || value === "180" || value === "365") {
     return value;
   }
 
@@ -1038,5 +870,26 @@ function MetricTile({ label, note, value }: { label: string; note: string; value
       <div className="metric-tile-value">{value ?? "n/a"}</div>
       <div className="metric-tile-note">{note}</div>
     </div>
+  );
+}
+
+function AnalyticsExportMenu({
+  items,
+}: {
+  items: Array<{ href: string; label: string }>;
+}) {
+  return (
+    <details className="export-menu">
+      <summary aria-label="Export PDFs" className="btn-secondary btn-compact export-menu-trigger export-menu-trigger-icon" title="Export PDFs">
+        <FileDown size={16} />
+      </summary>
+      <div className="export-menu-popover">
+        {items.map((item) => (
+          <a className="export-menu-item" href={item.href} key={item.label}>
+            {item.label}
+          </a>
+        ))}
+      </div>
+    </details>
   );
 }

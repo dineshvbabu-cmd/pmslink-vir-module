@@ -1,9 +1,10 @@
 import type { VirInspectionTypeCategory } from "@prisma/client";
 import Link from "next/link";
+import { FileDown } from "lucide-react";
 import { CompactBarChart, DonutChart } from "@/components/erp-charts";
 import { prisma } from "@/lib/prisma";
 import { findingStatusLabel, inspectionStatusLabel, toneForFindingStatus, toneForInspectionStatus } from "@/lib/vir/workflow";
-import { isOfficeSession, requireVirSession } from "@/lib/vir/session";
+import { getVirWorkspaceFilter, isOfficeSession, requireVirSession } from "@/lib/vir/session";
 
 export const dynamic = "force-dynamic";
 
@@ -37,11 +38,15 @@ async function OfficeDashboard({
 }: {
   searchParams: DashboardSearchParams;
 }) {
+  const workspaceFilter = await getVirWorkspaceFilter();
   const now = new Date();
-  const rangeDays = normalizeDashboardRange(searchParams.range);
+  const requestedRange = typeof searchParams.range === "string" ? searchParams.range : undefined;
+  const requestedFleet = typeof searchParams.fleet === "string" ? searchParams.fleet.trim() : undefined;
+  const requestedVesselId = typeof searchParams.vesselId === "string" ? searchParams.vesselId.trim() : undefined;
+  const rangeDays = normalizeDashboardRange(requestedRange ?? workspaceFilter?.range ?? undefined);
   const sinceDate = addDays(now, -rangeDays);
-  const selectedFleet = searchParams.fleet?.trim() || "";
-  const selectedVesselId = searchParams.vesselId?.trim() || "";
+  const selectedFleet = requestedFleet !== undefined ? requestedFleet : workspaceFilter?.fleet ?? "";
+  const selectedVesselId = requestedVesselId !== undefined ? requestedVesselId : workspaceFilter?.vesselId ?? "";
 
   const [vessels, inspections] = await Promise.all([
     prisma.vessel.findMany({
@@ -196,19 +201,25 @@ async function OfficeDashboard({
             <span>{fmt.format(now)}</span>
           </div>
           <div className="actions-row">
-            <a className="btn-secondary btn-compact" href={buildDashboardExportHref("dashboard", { range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId })}>
-              Export dashboard
-            </a>
-            <a className="btn-secondary btn-compact" href={buildDashboardExportHref("analytics", { range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId })}>
-              Export analytics
-            </a>
-            <Link className="btn-secondary btn-compact" href="/inspections?scope=approved">
+            <DashboardExportMenu
+              items={[
+                {
+                  href: buildDashboardExportHref("dashboard", { range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId }),
+                  label: "Dashboard PDF",
+                },
+                {
+                  href: buildDashboardExportHref("analytics", { range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId }),
+                  label: "Analytics PDF",
+                },
+              ]}
+            />
+            <Link className="btn-secondary btn-compact" href={buildInspectionListHref("approved", selectedVesselId)}>
               Approved inspections
             </Link>
-            <Link className="btn-secondary btn-compact" href="/inspections?scope=history">
+            <Link className="btn-secondary btn-compact" href={buildInspectionListHref("history", selectedVesselId)}>
               Inspection history
             </Link>
-            <Link className="btn-secondary btn-compact" href="/schedule">
+            <Link className="btn-secondary btn-compact" href={buildScheduleHref(selectedVesselId)}>
               VIR Calendar
             </Link>
           </div>
@@ -221,10 +232,9 @@ async function OfficeDashboard({
             Timeline
           </label>
           <select defaultValue={`${rangeDays}`} id="range" name="range">
-            <option value="30">Last 30 days</option>
-            <option value="90">Last 90 days</option>
-            <option value="180">Last 180 days</option>
-            <option value="365">Last 365 days</option>
+            <option value="90">3 months to today</option>
+            <option value="180">6 months to today</option>
+            <option value="365">1 year to today</option>
           </select>
           <label className="inline-form-label" htmlFor="fleet">
             Fleet
@@ -349,12 +359,12 @@ async function OfficeDashboard({
               <h3 className="panel-title">Pending review queue</h3>
               <p className="panel-subtitle">Open the workflow or report directly from the queue.</p>
             </div>
-            <Link className="btn-secondary" href="/inspections?scope=history">
+            <Link className="btn-secondary" href={buildInspectionListHref("history", selectedVesselId)}>
               Open inspection history
             </Link>
           </div>
 
-          <div className="table-shell table-shell-compact table-shell-narrow">
+          <div className="table-shell table-shell-compact">
             <table className="table data-table vir-data-table">
               <thead>
                 <tr>
@@ -423,12 +433,12 @@ async function OfficeDashboard({
               <h3 className="panel-title">Approved inspections</h3>
               <p className="panel-subtitle">Direct report-entry flow for demo walkthroughs.</p>
             </div>
-            <Link className="btn-secondary" href="/inspections?scope=approved">
+            <Link className="btn-secondary" href={buildInspectionListHref("approved", selectedVesselId)}>
               Open approved inspections
             </Link>
           </div>
 
-          <div className="table-shell table-shell-compact table-shell-narrow">
+          <div className="table-shell table-shell-compact">
             <table className="table data-table vir-data-table">
               <thead>
                 <tr>
@@ -544,12 +554,18 @@ async function VesselDashboard({ vesselId, vesselName }: { vesselId: string; ves
             <span>{nextDue ? fmt.format(nextDue) : "Not set"}</span>
           </div>
           <div className="actions-row">
-            <a className="btn-secondary btn-compact" href={buildDashboardExportHref("dashboard", { range: 180, vesselId })}>
-              Export dashboard
-            </a>
-            <a className="btn-secondary btn-compact" href={buildDashboardExportHref("analytics", { range: 180, vesselId })}>
-              Export analytics
-            </a>
+            <DashboardExportMenu
+              items={[
+                {
+                  href: buildDashboardExportHref("dashboard", { range: 180, vesselId }),
+                  label: "Dashboard PDF",
+                },
+                {
+                  href: buildDashboardExportHref("analytics", { range: 180, vesselId }),
+                  label: "Analytics PDF",
+                },
+              ]}
+            />
             <Link className="btn-secondary btn-compact" href="/inspections?scope=my-drafts">
               My VIR Queue
             </Link>
@@ -804,7 +820,7 @@ function countBy(values: string[]) {
 
 function normalizeDashboardRange(value: string | undefined) {
   const parsed = Number(value);
-  return [30, 90, 180, 365].includes(parsed) ? parsed : 180;
+  return [90, 180, 365].includes(parsed) ? parsed : 180;
 }
 
 function buildDashboardExportHref(
@@ -824,4 +840,46 @@ function buildDashboardExportHref(
   }
 
   return `/api/reports/dashboard/pdf?${params.toString()}`;
+}
+
+function buildInspectionListHref(scope: "approved" | "history", vesselId?: string) {
+  const params = new URLSearchParams();
+  params.set("scope", scope);
+
+  if (vesselId) {
+    params.set("vesselId", vesselId);
+  }
+
+  return `/inspections?${params.toString()}`;
+}
+
+function buildScheduleHref(vesselId?: string) {
+  const params = new URLSearchParams();
+
+  if (vesselId) {
+    params.set("vesselId", vesselId);
+  }
+
+  return `/schedule${params.toString() ? `?${params.toString()}` : ""}`;
+}
+
+function DashboardExportMenu({
+  items,
+}: {
+  items: Array<{ href: string; label: string }>;
+}) {
+  return (
+    <details className="export-menu">
+      <summary aria-label="Export PDFs" className="btn-secondary btn-compact export-menu-trigger export-menu-trigger-icon" title="Export PDFs">
+        <FileDown size={16} />
+      </summary>
+      <div className="export-menu-popover">
+        {items.map((item) => (
+          <a className="export-menu-item" href={item.href} key={item.label}>
+            {item.label}
+          </a>
+        ))}
+      </div>
+    </details>
+  );
 }
