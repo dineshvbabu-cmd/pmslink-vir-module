@@ -40,6 +40,15 @@ function isoDay(value: Date | string) {
 }
 
 const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short" });
+const timelineViews = [
+  { id: "week", label: "Week", horizonDays: 7, segmentDays: 1 },
+  { id: "month", label: "Month", horizonDays: 31, segmentDays: 7 },
+  { id: "quarter", label: "Quarter", horizonDays: 92, segmentDays: 14 },
+  { id: "half", label: "Bi-Year", horizonDays: 183, segmentDays: 30 },
+  { id: "year", label: "Year", horizonDays: 365, segmentDays: 30 },
+] as const;
+
+type TimelineViewId = (typeof timelineViews)[number]["id"];
 
 export function ScheduleBoard({
   horizonDays = 56,
@@ -53,6 +62,8 @@ export function ScheduleBoard({
   horizonDays?: number;
 }) {
   const router = useRouter();
+  const initialView = horizonDays <= 7 ? "week" : horizonDays <= 31 ? "month" : horizonDays <= 92 ? "quarter" : "half";
+  const [view, setView] = useState<TimelineViewId>(initialView);
   const [selectedInspectionId, setSelectedInspectionId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState(
     isOffice
@@ -62,12 +73,19 @@ export function ScheduleBoard({
   const [optimisticDates, setOptimisticDates] = useState<Record<string, string>>({});
   const [isPending, startTransition] = useTransition();
 
+  const activeView = timelineViews.find((option) => option.id === view) ?? timelineViews[1];
   const startDate = useMemo(() => startOfDay(new Date(windowStart)), [windowStart]);
   const axisDates = useMemo(
-    () => Array.from({ length: Math.ceil(horizonDays / 7) }, (_, index) => addDays(startDate, index * 7)),
-    [horizonDays, startDate]
+    () =>
+      Array.from({ length: Math.ceil(activeView.horizonDays / activeView.segmentDays) }, (_, index) =>
+        addDays(startDate, index * activeView.segmentDays)
+      ),
+    [activeView.horizonDays, activeView.segmentDays, startDate]
   );
-  const daySlots = useMemo(() => Array.from({ length: horizonDays }, (_, index) => addDays(startDate, index)), [horizonDays, startDate]);
+  const daySlots = useMemo(
+    () => Array.from({ length: activeView.horizonDays }, (_, index) => addDays(startDate, index)),
+    [activeView.horizonDays, startDate]
+  );
 
   const inspectionLookup = useMemo(
     () => new Map(rows.flatMap((row) => row.inspections.map((inspection) => [inspection.id, inspection]))),
@@ -127,6 +145,18 @@ export function ScheduleBoard({
           </div>
         </div>
         <div className="actions-row">
+          <div className="board-switcher">
+            {timelineViews.map((option) => (
+              <button
+                className={`board-tab board-tab-compact ${option.id === view ? "board-tab-active" : ""}`}
+                key={option.id}
+                onClick={() => setView(option.id)}
+                type="button"
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
           {selectedInspection ? (
             <>
               <Link className="btn-secondary btn-compact" href={`/inspections/${selectedInspection.id}`}>
@@ -144,7 +174,7 @@ export function ScheduleBoard({
         </div>
       </div>
 
-      <div className="timeline-axis">
+      <div className="timeline-axis" style={{ gridTemplateColumns: `220px repeat(${axisDates.length}, minmax(0, 1fr))` }}>
         {axisDates.map((date) => (
           <div className="timeline-axis-cell" key={date.toISOString()}>
             {fmt.format(date)}
@@ -167,9 +197,19 @@ export function ScheduleBoard({
                 ) : null}
               </div>
 
-              <div className={`timeline-track-surface ${rowSelectionActive ? "timeline-track-surface-active" : ""}`} style={{ minHeight: `${trackHeight}rem` }}>
+              <div
+                className={`timeline-track-surface ${rowSelectionActive ? "timeline-track-surface-active" : ""}`}
+                style={{
+                  minHeight: `${trackHeight}rem`,
+                  backgroundSize: `calc(100% / ${axisDates.length}) 100%`,
+                }}
+              >
                 {isOffice && rowSelectionActive ? (
-                  <div className="timeline-drop-grid" aria-hidden="true">
+                  <div
+                    className="timeline-drop-grid"
+                    aria-hidden="true"
+                    style={{ gridTemplateColumns: `repeat(${activeView.horizonDays}, minmax(0, 1fr))` }}
+                  >
                     {daySlots.map((date) => {
                       const dayIso = isoDay(date);
                       const isCurrent = dayIso === isoDay(optimisticDates[selectedInspection.id] ?? selectedInspection.inspectionDate);
@@ -194,8 +234,12 @@ export function ScheduleBoard({
 
                 {row.inspections.map((inspection, index) => {
                   const effectiveDate = optimisticDates[inspection.id] ?? inspection.inspectionDate;
-                  const offsetMs = startOfDay(new Date(effectiveDate)).getTime() - startDate.getTime();
-                  const left = Math.max(0, Math.min(98, (offsetMs / (horizonDays * 24 * 60 * 60 * 1000)) * 100));
+                  const effective = startOfDay(new Date(effectiveDate));
+                  const offsetMs = effective.getTime() - startDate.getTime();
+                  const left = Math.max(
+                    0,
+                    Math.min(98, (offsetMs / (activeView.horizonDays * 24 * 60 * 60 * 1000)) * 100)
+                  );
                   const lane = index % 3;
 
                   return (

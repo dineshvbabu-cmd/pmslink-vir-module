@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SubmitButton } from "@/components/submit-button";
 
 type VesselOption = {
@@ -42,13 +42,18 @@ export function InspectionLaunchForm({
   sessionActorName: string;
 }) {
   const [inspectionTypeId, setInspectionTypeId] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
 
   const selectedTemplates = useMemo(
     () => templates.filter((template) => template.inspectionTypeId === inspectionTypeId),
     [inspectionTypeId, templates]
   );
 
-  const autoTemplate = selectedTemplates[0] ?? null;
+  useEffect(() => {
+    setSelectedTemplateId(selectedTemplates[0]?.id ?? "");
+  }, [selectedTemplates]);
+
+  const autoTemplate = selectedTemplates.find((template) => template.id === selectedTemplateId) ?? selectedTemplates[0] ?? null;
 
   return (
     <form action={action} className="form-grid">
@@ -86,13 +91,14 @@ export function InspectionLaunchForm({
 
       <div className="field-wide">
         <div className="list-card" style={{ background: "rgba(26, 116, 216, 0.04)" }}>
-          <strong>Auto template binding</strong>
+          <strong>Inspection to checklist to questionnaire binding</strong>
           {inspectionTypeId ? (
             autoTemplate ? (
               <>
                 <div className="small-text" style={{ marginTop: "0.35rem" }}>
-                  Template `{autoTemplate.name}` v{autoTemplate.version} will be attached automatically when this
-                  inspection is created.
+                  Inspection `{inspectionTypes.find((type) => type.id === inspectionTypeId)?.name}` will launch with
+                  checklist template `{autoTemplate.name}` v{autoTemplate.version}. The linked questionnaire groups and
+                  concentrated questions will be populated automatically.
                 </div>
                 <div className="meta-row" style={{ marginTop: "0.6rem" }}>
                   <span className="chip chip-info">{autoTemplate.questionCount} questions</span>
@@ -109,6 +115,55 @@ export function InspectionLaunchForm({
           ) : (
             <div className="small-text" style={{ marginTop: "0.35rem" }}>
               Select the inspection type and the system will bind the latest matching questionnaire template.
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="field-wide">
+        <div className="template-selector-grid">
+          {selectedTemplates.length > 0 ? (
+            <>
+              <div className="field">
+                <label htmlFor="templateIdVisible">Checklist template</label>
+                <select
+                  id="templateIdVisible"
+                  onChange={(event) => setSelectedTemplateId(event.target.value)}
+                  value={selectedTemplateId}
+                >
+                  {selectedTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name} / v{template.version}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field-wide">
+                <div className="template-selection-strip">
+                  {selectedTemplates.map((template) => (
+                    <button
+                      className={`template-choice-card ${template.id === autoTemplate?.id ? "template-choice-card-active" : ""}`}
+                      key={template.id}
+                      onClick={() => setSelectedTemplateId(template.id)}
+                      type="button"
+                    >
+                      <strong>{template.name}</strong>
+                      <div className="small-text">v{template.version}</div>
+                      <div className="meta-row" style={{ marginTop: "0.55rem" }}>
+                        <span className="chip chip-info">{template.questionCount} questions</span>
+                        <span className={template.focusCount > 0 ? "chip chip-danger" : "chip chip-success"}>
+                          {template.focusCount} CIR focus
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="empty-state">
+              Select an inspection type to load the available checklist templates and linked questionnaire groups.
             </div>
           )}
         </div>

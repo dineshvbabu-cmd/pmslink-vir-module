@@ -1,4 +1,5 @@
 import { loginAction } from "@/app/session-actions";
+import { PasswordField } from "@/components/password-field";
 import { SubmitButton } from "@/components/submit-button";
 import { prisma } from "@/lib/prisma";
 import { getVirSession } from "@/lib/vir/session";
@@ -53,10 +54,7 @@ export default async function LoginPage() {
               <div className="small-text">Demo users: office.qhse, office.marine, office.tech, office.tsi</div>
             </div>
 
-            <div className="field-wide">
-              <label htmlFor="officePassword">Password</label>
-              <input defaultValue="PMSLink@2026" id="officePassword" name="password" type="password" />
-            </div>
+            <PasswordField defaultValue="PMSLink@2026" id="officePassword" label="Password" name="password" />
 
             <div className="field-wide">
               <SubmitButton className="btn">Enter Office Workspace</SubmitButton>
@@ -81,10 +79,7 @@ export default async function LoginPage() {
               <input defaultValue="master" id="vesselUsername" name="username" placeholder="master" />
             </div>
 
-            <div className="field-wide">
-              <label htmlFor="vesselPassword">Password</label>
-              <input defaultValue="Vessel@2026" id="vesselPassword" name="password" type="password" />
-            </div>
+            <PasswordField defaultValue="Vessel@2026" id="vesselPassword" label="Password" name="password" />
 
             <div className="field-wide">
               <label htmlFor="vesselId">Vessel</label>
