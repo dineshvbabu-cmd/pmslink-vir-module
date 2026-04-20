@@ -1,3 +1,4 @@
+import type { VirInspectionTypeCategory } from "@prisma/client";
 import Link from "next/link";
 import { CompactBarChart, DonutChart } from "@/components/erp-charts";
 import { prisma } from "@/lib/prisma";
@@ -8,23 +9,47 @@ export const dynamic = "force-dynamic";
 
 const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 const approvedStatuses = new Set(["SHORE_REVIEWED", "CLOSED"]);
+const visibleInspectionCategories: VirInspectionTypeCategory[] = ["INTERNAL", "CLASS"];
 
-export default async function DashboardPage() {
+type DashboardSearchParams = {
+  range?: string;
+  fleet?: string;
+  vesselId?: string;
+};
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<DashboardSearchParams>;
+}) {
   const session = await requireVirSession();
+  const params = await searchParams;
 
   if (isOfficeSession(session)) {
-    return <OfficeDashboard />;
+    return <OfficeDashboard searchParams={params} />;
   }
 
   return <VesselDashboard vesselId={session.vesselId ?? ""} vesselName={session.vesselName ?? "Assigned vessel"} />;
 }
 
-async function OfficeDashboard() {
+async function OfficeDashboard({
+  searchParams,
+}: {
+  searchParams: DashboardSearchParams;
+}) {
   const now = new Date();
+  const rangeDays = normalizeDashboardRange(searchParams.range);
+  const sinceDate = addDays(now, -rangeDays);
+  const selectedFleet = searchParams.fleet?.trim() || "";
+  const selectedVesselId = searchParams.vesselId?.trim() || "";
 
   const [vessels, inspections] = await Promise.all([
     prisma.vessel.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        ...(selectedFleet ? { fleet: selectedFleet } : {}),
+        ...(selectedVesselId ? { id: selectedVesselId } : {}),
+      },
       orderBy: { name: "asc" },
       select: {
         id: true,
@@ -35,7 +60,16 @@ async function OfficeDashboard() {
       },
     }),
     prisma.virInspection.findMany({
-      where: { status: { not: "ARCHIVED" } },
+      where: {
+        status: { not: "ARCHIVED" },
+        inspectionDate: { gte: sinceDate },
+        inspectionType: { is: { category: { in: visibleInspectionCategories } } },
+        vessel: {
+          isActive: true,
+          ...(selectedFleet ? { fleet: selectedFleet } : {}),
+          ...(selectedVesselId ? { id: selectedVesselId } : {}),
+        },
+      },
       orderBy: [{ inspectionDate: "desc" }, { createdAt: "desc" }],
       include: {
         vessel: {
@@ -77,6 +111,8 @@ async function OfficeDashboard() {
       },
     }),
   ]);
+
+  const fleetOptions = [...new Set(vessels.map((vessel) => vessel.fleet).filter((value): value is string => Boolean(value)))].sort();
 
   const inspectionsByVessel = new Map<string, typeof inspections>();
 
@@ -155,11 +191,17 @@ async function OfficeDashboard() {
         <div className="vir-toolbar-row">
           <div className="vir-toolbar-copy">
             <strong>Period:</strong>
-            <span>{fmt.format(addDays(now, -90))}</span>
+            <span>{fmt.format(sinceDate)}</span>
             <span>to</span>
             <span>{fmt.format(now)}</span>
           </div>
           <div className="actions-row">
+            <a className="btn-secondary btn-compact" href={buildDashboardExportHref("dashboard", { range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId })}>
+              Export dashboard
+            </a>
+            <a className="btn-secondary btn-compact" href={buildDashboardExportHref("analytics", { range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId })}>
+              Export analytics
+            </a>
             <Link className="btn-secondary btn-compact" href="/inspections?scope=approved">
               Approved inspections
             </Link>
@@ -171,6 +213,45 @@ async function OfficeDashboard() {
             </Link>
           </div>
         </div>
+      </section>
+
+      <section className="panel panel-elevated">
+        <form className="inline-form inline-form-wide" method="get">
+          <label className="inline-form-label" htmlFor="range">
+            Timeline
+          </label>
+          <select defaultValue={`${rangeDays}`} id="range" name="range">
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+            <option value="180">Last 180 days</option>
+            <option value="365">Last 365 days</option>
+          </select>
+          <label className="inline-form-label" htmlFor="fleet">
+            Fleet
+          </label>
+          <select defaultValue={selectedFleet} id="fleet" name="fleet">
+            <option value="">All fleets</option>
+            {fleetOptions.map((fleet) => (
+              <option key={fleet} value={fleet}>
+                {fleet}
+              </option>
+            ))}
+          </select>
+          <label className="inline-form-label" htmlFor="vesselId">
+            Vessel
+          </label>
+          <select defaultValue={selectedVesselId} id="vesselId" name="vesselId">
+            <option value="">All vessels</option>
+            {vessels.map((vessel) => (
+              <option key={vessel.id} value={vessel.id}>
+                {vessel.name}
+              </option>
+            ))}
+          </select>
+          <button className="btn-secondary" type="submit">
+            Apply
+          </button>
+        </form>
       </section>
 
       <section className="vir-kpi-grid">
@@ -273,65 +354,67 @@ async function OfficeDashboard() {
             </Link>
           </div>
 
-          <table className="table data-table vir-data-table">
-            <thead>
-              <tr>
-                <th>Progress</th>
-                <th>Vessel</th>
-                <th>Ref no</th>
-                <th>Status</th>
-                <th>Place of inspection</th>
-                <th>Inspected by</th>
-                <th>Report Type</th>
-                <th>Insp.Mode</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reviewQueue.map((inspection) => (
-                <tr key={inspection.id}>
-                  <td>
-                    <div className="table-progress">
-                      <div className="table-progress-track">
-                        <div
-                          className="table-progress-fill"
-                          style={{
-                            width: `${Math.min(100, Math.max(8, Math.round((inspection.signOffs.length / 3) * 100)))}%`,
-                          }}
-                        />
-                      </div>
-                      <div className="small-text">{Math.min(100, Math.max(8, Math.round((inspection.signOffs.length / 3) * 100)))}%</div>
-                    </div>
-                  </td>
-                  <td>{inspection.vessel.name}</td>
-                  <td>
-                    <Link className="table-link" href={`/reports/inspection/${inspection.id}`}>
-                      {inspection.externalReference ?? inspection.title}
-                    </Link>
-                  </td>
-                  <td>
-                    <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>
-                      {inspectionStatusLabel[inspection.status]}
-                    </span>
-                  </td>
-                  <td>{[inspection.port, inspection.country].filter(Boolean).join(", ") || "Not set"}</td>
-                  <td>{inspection.inspectorName ?? "Not set"}</td>
-                  <td>{inspection.inspectionType.name}</td>
-                  <td>{inferInspectionMode(inspection.title, inspection.inspectionType.name)}</td>
-                  <td>
-                    <div className="table-actions">
-                      <Link className="inline-link" href={`/inspections/${inspection.id}`}>
-                        Workflow
-                      </Link>
-                      <Link className="inline-link" href={`/reports/inspection/${inspection.id}`}>
-                        Report
-                      </Link>
-                    </div>
-                  </td>
+          <div className="table-shell table-shell-compact table-shell-narrow">
+            <table className="table data-table vir-data-table">
+              <thead>
+                <tr>
+                  <th>Progress</th>
+                  <th>Vessel</th>
+                  <th>Ref no</th>
+                  <th>Status</th>
+                  <th>Place of inspection</th>
+                  <th>Inspected by</th>
+                  <th>Report Type</th>
+                  <th>Insp.Mode</th>
+                  <th>Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {reviewQueue.map((inspection) => (
+                  <tr key={inspection.id}>
+                    <td>
+                      <div className="table-progress">
+                        <div className="table-progress-track">
+                          <div
+                            className="table-progress-fill"
+                            style={{
+                              width: `${Math.min(100, Math.max(8, Math.round((inspection.signOffs.length / 3) * 100)))}%`,
+                            }}
+                          />
+                        </div>
+                        <div className="small-text">{Math.min(100, Math.max(8, Math.round((inspection.signOffs.length / 3) * 100)))}%</div>
+                      </div>
+                    </td>
+                    <td>{inspection.vessel.name}</td>
+                    <td>
+                      <Link className="table-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+                        {inspection.externalReference ?? inspection.title}
+                      </Link>
+                    </td>
+                    <td>
+                      <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>
+                        {inspectionStatusLabel[inspection.status]}
+                      </span>
+                    </td>
+                    <td>{[inspection.port, inspection.country].filter(Boolean).join(", ") || "Not set"}</td>
+                    <td>{inspection.inspectorName ?? "Not set"}</td>
+                    <td>{inspection.inspectionType.name}</td>
+                    <td>{inferInspectionMode(inspection.title, inspection.inspectionType.name)}</td>
+                    <td>
+                      <div className="table-actions">
+                        <Link className="inline-link" href={`/inspections/${inspection.id}`}>
+                          Workflow
+                        </Link>
+                        <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+                          Report
+                        </Link>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div className="panel panel-elevated">
@@ -345,36 +428,42 @@ async function OfficeDashboard() {
             </Link>
           </div>
 
-          <table className="table data-table vir-data-table">
-            <thead>
-              <tr>
-                <th>Vessel</th>
-                <th>Ref no</th>
-                <th>Place of inspection</th>
-                <th>Inspected by</th>
-                <th>Approved date</th>
-                <th>Synced?</th>
-              </tr>
-            </thead>
-            <tbody>
-              {approvedSnapshot.map((inspection) => (
-                <tr key={inspection.id}>
-                  <td>
-                    <Link className="table-link" href={`/reports/inspection/${inspection.id}`}>
-                      {inspection.vessel.name}
-                    </Link>
-                  </td>
-                  <td>{inspection.externalReference ?? inspection.title}</td>
-                  <td>{[inspection.port, inspection.country].filter(Boolean).join(", ") || "Not set"}</td>
-                  <td>{inspection.inspectorName ?? "Not set"}</td>
-                  <td>{inspection.signOffs[0]?.signedAt ? fmt.format(inspection.signOffs[0].signedAt) : "Not set"}</td>
-                  <td>
-                    <span className="chip chip-success">Synced</span>
-                  </td>
+          <div className="table-shell table-shell-compact table-shell-narrow">
+            <table className="table data-table vir-data-table">
+              <thead>
+                <tr>
+                  <th>Vessel</th>
+                  <th>Ref no</th>
+                  <th>Place of inspection</th>
+                  <th>Inspected by</th>
+                  <th>Approved date</th>
+                  <th>Synced?</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {approvedSnapshot.map((inspection) => (
+                  <tr key={inspection.id}>
+                    <td>
+                      <Link className="table-link" href={`/reports/inspection/${inspection.id}?variant=summary`}>
+                        {inspection.vessel.name}
+                      </Link>
+                    </td>
+                    <td>
+                      <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+                        {inspection.externalReference ?? inspection.title}
+                      </Link>
+                    </td>
+                    <td>{[inspection.port, inspection.country].filter(Boolean).join(", ") || "Not set"}</td>
+                    <td>{inspection.inspectorName ?? "Not set"}</td>
+                    <td>{inspection.signOffs[0]?.signedAt ? fmt.format(inspection.signOffs[0].signedAt) : "Not set"}</td>
+                    <td>
+                      <span className="chip chip-success">Synced</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
     </div>
@@ -384,7 +473,7 @@ async function OfficeDashboard() {
 async function VesselDashboard({ vesselId, vesselName }: { vesselId: string; vesselName: string }) {
   const now = new Date();
   const inspections = await prisma.virInspection.findMany({
-    where: { vesselId, status: { not: "ARCHIVED" } },
+    where: { vesselId, status: { not: "ARCHIVED" }, inspectionType: { is: { category: { in: visibleInspectionCategories } } } },
     orderBy: [{ inspectionDate: "desc" }, { createdAt: "desc" }],
     include: {
       vessel: {
@@ -455,6 +544,12 @@ async function VesselDashboard({ vesselId, vesselName }: { vesselId: string; ves
             <span>{nextDue ? fmt.format(nextDue) : "Not set"}</span>
           </div>
           <div className="actions-row">
+            <a className="btn-secondary btn-compact" href={buildDashboardExportHref("dashboard", { range: 180, vesselId })}>
+              Export dashboard
+            </a>
+            <a className="btn-secondary btn-compact" href={buildDashboardExportHref("analytics", { range: 180, vesselId })}>
+              Export analytics
+            </a>
             <Link className="btn-secondary btn-compact" href="/inspections?scope=my-drafts">
               My VIR Queue
             </Link>
@@ -532,47 +627,49 @@ async function VesselDashboard({ vesselId, vesselName }: { vesselId: string; ves
               <p className="panel-subtitle">Open workflow or report directly from each live inspection.</p>
             </div>
           </div>
-          <table className="table data-table vir-data-table">
-            <thead>
-              <tr>
-                <th>Ref no</th>
-                <th>Status</th>
-                <th>Place of inspection</th>
-                <th>Report Type</th>
-                <th>Insp.Mode</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {inspections.map((inspection) => (
-                <tr key={inspection.id}>
-                  <td>
-                    <Link className="table-link" href={`/reports/inspection/${inspection.id}`}>
-                      {inspection.externalReference ?? inspection.title}
-                    </Link>
-                  </td>
-                  <td>
-                    <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>
-                      {inspectionStatusLabel[inspection.status]}
-                    </span>
-                  </td>
-                  <td>{[inspection.port, inspection.country].filter(Boolean).join(", ") || "Not set"}</td>
-                  <td>{inspection.inspectionType.name}</td>
-                  <td>{inferInspectionMode(inspection.title, inspection.inspectionType.name)}</td>
-                  <td>
-                    <div className="table-actions">
-                      <Link className="inline-link" href={`/inspections/${inspection.id}`}>
-                        Workflow
-                      </Link>
-                      <Link className="inline-link" href={`/reports/inspection/${inspection.id}`}>
-                        Report
-                      </Link>
-                    </div>
-                  </td>
+          <div className="table-shell table-shell-compact">
+            <table className="table data-table vir-data-table">
+              <thead>
+                <tr>
+                  <th>Ref no</th>
+                  <th>Status</th>
+                  <th>Place of inspection</th>
+                  <th>Report Type</th>
+                  <th>Insp.Mode</th>
+                  <th>Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {inspections.map((inspection) => (
+                  <tr key={inspection.id}>
+                    <td>
+                      <Link className="table-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+                        {inspection.externalReference ?? inspection.title}
+                      </Link>
+                    </td>
+                    <td>
+                      <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>
+                        {inspectionStatusLabel[inspection.status]}
+                      </span>
+                    </td>
+                    <td>{[inspection.port, inspection.country].filter(Boolean).join(", ") || "Not set"}</td>
+                    <td>{inspection.inspectionType.name}</td>
+                    <td>{inferInspectionMode(inspection.title, inspection.inspectionType.name)}</td>
+                    <td>
+                      <div className="table-actions">
+                        <Link className="inline-link" href={`/inspections/${inspection.id}`}>
+                          Workflow
+                        </Link>
+                        <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+                          Report
+                        </Link>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -584,34 +681,36 @@ async function VesselDashboard({ vesselId, vesselName }: { vesselId: string; ves
           </div>
         </div>
 
-        <table className="table data-table vir-data-table">
-          <thead>
-            <tr>
-              <th>Status</th>
-              <th>Severity</th>
-              <th>Finding</th>
-              <th>Inspection</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {openFindings.map((finding) => (
-              <tr key={finding.id}>
-                <td>
-                  <span className={`chip ${toneForFindingStatus(finding.status)}`}>{findingStatusLabel[finding.status]}</span>
-                </td>
-                <td>{finding.severity}</td>
-                <td>{finding.title}</td>
-                <td>{finding.inspectionTitle}</td>
-                <td>
-                  <Link className="inline-link" href={`/inspections/${finding.inspectionId}?pane=findings`}>
-                    Open finding lane
-                  </Link>
-                </td>
+        <div className="table-shell table-shell-compact">
+          <table className="table data-table vir-data-table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Severity</th>
+                <th>Finding</th>
+                <th>Inspection</th>
+                <th>Action</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {openFindings.map((finding) => (
+                <tr key={finding.id}>
+                  <td>
+                    <span className={`chip ${toneForFindingStatus(finding.status)}`}>{findingStatusLabel[finding.status]}</span>
+                  </td>
+                  <td>{finding.severity}</td>
+                  <td>{finding.title}</td>
+                  <td>{finding.inspectionTitle}</td>
+                  <td>
+                    <Link className="inline-link" href={`/inspections/${finding.inspectionId}?pane=findings`}>
+                      Open finding lane
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );
@@ -701,4 +800,28 @@ function countBy(values: string[]) {
     acc[value] = (acc[value] ?? 0) + 1;
     return acc;
   }, {});
+}
+
+function normalizeDashboardRange(value: string | undefined) {
+  const parsed = Number(value);
+  return [30, 90, 180, 365].includes(parsed) ? parsed : 180;
+}
+
+function buildDashboardExportHref(
+  kind: "dashboard" | "analytics",
+  filters: { range: number; fleet?: string; vesselId?: string }
+) {
+  const params = new URLSearchParams();
+  params.set("kind", kind);
+  params.set("range", `${filters.range}`);
+
+  if (filters.fleet) {
+    params.set("fleet", filters.fleet);
+  }
+
+  if (filters.vesselId) {
+    params.set("vesselId", filters.vesselId);
+  }
+
+  return `/api/reports/dashboard/pdf?${params.toString()}`;
 }

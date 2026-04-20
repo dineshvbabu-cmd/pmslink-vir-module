@@ -375,10 +375,75 @@ export default async function InspectionDetailPage({
                       </div>
                     </div>
 
-                    {selectedSection.guidance ? <p className="small-text">{selectedSection.guidance}</p> : null}
+                     {selectedSection.guidance ? <p className="small-text">{selectedSection.guidance}</p> : null}
 
-                    <div className="question-list-viewport" style={{ marginTop: "1rem" }}>
-                      <div className="stack-list">
+                     <div className="questionnaire-summary-grid">
+                       <div className="questionnaire-summary-card">
+                         <span>Questions</span>
+                         <strong>{selectedSection.questions.length}</strong>
+                         <div className="small-text">Total questions in this section</div>
+                       </div>
+                       <div className="questionnaire-summary-card">
+                         <span>Mandatory</span>
+                         <strong>{selectedSection.questions.filter((question) => question.isMandatory).length}</strong>
+                         <div className="small-text">Questions requiring completion before submission</div>
+                       </div>
+                       <div className="questionnaire-summary-card">
+                         <span>Answered</span>
+                         <strong>
+                           {
+                             selectedSection.questions.filter((question) => {
+                               const answer = answerMap.get(question.id);
+                               if (!answer) {
+                                 return false;
+                               }
+
+                               return Boolean(
+                                 answer.answerText ||
+                                   answer.answerNumber !== null ||
+                                   answer.answerBoolean !== null ||
+                                   answer.answerDate ||
+                                   (Array.isArray(answer.selectedOptions) && answer.selectedOptions.length > 0)
+                               );
+                             }).length
+                           }
+                         </strong>
+                         <div className="small-text">Responses currently saved in this section</div>
+                       </div>
+                       <div className="questionnaire-summary-card">
+                         <span>Visuals</span>
+                         <strong>
+                           {selectedSection.questions.reduce(
+                             (sum, question) => sum + (answerMap.get(question.id)?.photos.length ?? 0),
+                             0
+                           )}
+                         </strong>
+                         <div className="small-text">Actual uploads linked to this section</div>
+                       </div>
+                     </div>
+
+                     <div className="questionnaire-section-actions">
+                       <div>
+                         <strong>Section actions</strong>
+                         <div className="small-text" style={{ marginTop: "0.35rem" }}>
+                           Open the matching report, findings lane, or section summary without leaving the inspection workspace.
+                         </div>
+                       </div>
+                       <div className="actions-row">
+                         <Link className="btn-secondary btn-compact" href={`/reports/inspection/${inspection.id}?variant=summary`}>
+                           Section summary
+                         </Link>
+                         <Link className="btn-secondary btn-compact" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+                           Detailed report
+                         </Link>
+                         <Link className="btn-secondary btn-compact" href={`/inspections/${inspection.id}?pane=findings`}>
+                           Raise / review findings
+                         </Link>
+                       </div>
+                     </div>
+
+                     <div className="question-list-viewport" style={{ marginTop: "1rem" }}>
+                       <div className="stack-list">
                       {[...selectedSection.questions]
                         .sort((a, b) => Number(b.isCicCandidate) - Number(a.isCicCandidate) || a.sortOrder - b.sortOrder)
                         .map((question) => {
@@ -473,6 +538,18 @@ export default async function InspectionDetailPage({
                                   </div>
                                 </div>
                               ) : null}
+
+                              <div className="actions-row question-inline-actions">
+                                <Link className="inline-link" href={`/inspections/${inspection.id}?pane=findings`}>
+                                  Open finding lane
+                                </Link>
+                                <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+                                  View in detailed report
+                                </Link>
+                                <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=summary`}>
+                                  View section summary
+                                </Link>
+                              </div>
                             </div>
                           );
                         })}

@@ -76,6 +76,14 @@ export default async function InstructionPage() {
             anonymized, and ready for management review.
           </p>
         </div>
+        <div className="actions-row">
+          <a className="btn-secondary btn-compact" href="/api/reports/manual/pdf?kind=web">
+            Web manual PDF
+          </a>
+          <a className="btn-secondary btn-compact" href="/api/reports/manual/pdf?kind=offline">
+            Offline manual PDF
+          </a>
+        </div>
       </section>
 
       <section className="panel panel-elevated">

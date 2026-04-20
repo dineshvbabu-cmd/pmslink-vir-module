@@ -30,11 +30,6 @@ type ImportResult =
     };
 
 const sourceOptions: VirTemplateSourceStandard[] = [
-  "PSC",
-  "TMSA",
-  "RIGHTSHIP",
-  "CID",
-  "SIRE_2_0",
   "INTERNAL_AUDIT",
   "EXTERNAL_AUDIT",
   "GENERIC",
@@ -97,8 +92,8 @@ export function TemplateImportConsole() {
         <div>
           <h3 className="panel-title">Questionnaire Import Engine</h3>
           <p className="panel-subtitle">
-            Import checklist and questionnaire definitions from TMSA, PSC, RightShip, CID, SIRE 2.0, and audit sources,
-            then normalize them into one VIR template structure for operational use.
+            Import checklist and questionnaire definitions in the seeded VIR format, normalize them into the standard
+            inspection template model, and review the cross-reference output before committing a live template.
           </p>
         </div>
         <div className="actions-row">
@@ -251,6 +246,49 @@ export function TemplateImportConsole() {
                 ) : null}
               </div>
             </div>
+
+            {result.fieldReviews?.length ? (
+              <div className="page-stack" style={{ marginTop: "1rem" }}>
+                <div>
+                  <h4 className="panel-title">Cross-reference review</h4>
+                  <p className="panel-subtitle">
+                    Validate how the imported source fields have been mapped into the seeded VIR template structure
+                    before accepting the template into the office catalogue.
+                  </p>
+                </div>
+                <div className="table-shell table-shell-compact">
+                  <table className="table data-table vir-data-table">
+                    <thead>
+                      <tr>
+                        <th>Mapped field</th>
+                        <th>Imported value</th>
+                        <th>Standardized value</th>
+                        <th>Confidence</th>
+                        <th>Accepted</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.fieldReviews.map((review, index) => {
+                        const record = review as Record<string, unknown>;
+                        const accepted = record.accepted === false ? "No" : "Yes";
+                        const confidence =
+                          typeof record.confidence === "number" ? `${Math.round(record.confidence * 100)}%` : "n/a";
+
+                        return (
+                          <tr key={`${String(record.fieldPath ?? "field")}-${index}`}>
+                            <td>{String(record.fieldPath ?? "-")}</td>
+                            <td>{String(record.aiValue ?? "-")}</td>
+                            <td>{String(record.finalValue ?? "-")}</td>
+                            <td>{confidence}</td>
+                            <td>{accepted}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
 
             <div className="stack-list" style={{ marginTop: "1rem" }}>
               {result.template.sections.slice(0, 4).map((section) => (

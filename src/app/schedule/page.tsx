@@ -1,3 +1,4 @@
+import type { VirInspectionTypeCategory } from "@prisma/client";
 import Link from "next/link";
 import { ScheduleBoard } from "@/components/schedule-board";
 import { prisma } from "@/lib/prisma";
@@ -7,6 +8,7 @@ import { inspectionStatusLabel, toneForInspectionStatus } from "@/lib/vir/workfl
 export const dynamic = "force-dynamic";
 
 const fullFmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
+const visibleInspectionCategories: VirInspectionTypeCategory[] = ["INTERNAL", "CLASS"];
 
 function startOfDay(date: Date) {
   const next = new Date(date);
@@ -28,6 +30,7 @@ export default async function SchedulePage() {
   const inspections = await prisma.virInspection.findMany({
     where: {
       status: { not: "ARCHIVED" },
+      inspectionType: { is: { category: { in: visibleInspectionCategories } } },
       ...(isOffice ? {} : { vesselId: session.vesselId ?? "" }),
     },
     orderBy: [{ inspectionDate: "desc" }, { createdAt: "desc" }],

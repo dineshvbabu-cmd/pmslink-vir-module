@@ -1,13 +1,10 @@
 import Link from "next/link";
-import { ExternalReportConsole } from "@/app/imports/external-report-console";
 import { TemplateImportConsole } from "@/app/imports/template-import-console";
 import { FloatingActivityFeed } from "@/components/floating-activity-feed";
 import { prisma } from "@/lib/prisma";
 import { isOfficeSession, requireVirSession } from "@/lib/vir/session";
 
 export const dynamic = "force-dynamic";
-
-const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 
 export default async function ImportsPage({
   searchParams,
@@ -27,8 +24,8 @@ export default async function ImportsPage({
             </div>
           </div>
           <div className="empty-state">
-            Vessel users can consume imported templates through live inspections, but they cannot run template imports
-            or approve external report mapping sessions.
+            Vessel users can consume imported templates through live inspections, but they cannot run template staging
+            or approve template mapping reviews.
           </div>
         </section>
       </div>
@@ -38,11 +35,16 @@ export default async function ImportsPage({
   const { session, section } = await searchParams;
 
   const sessions = await prisma.virImportSession.findMany({
+    where: {
+      inspectionType: {
+        category: "INTERNAL",
+      },
+    },
     orderBy: { createdAt: "desc" },
     include: {
       inspectionType: { select: { name: true, code: true } },
       fieldReviews: {
-        take: 5,
+        take: 40,
         orderBy: { createdAt: "desc" },
       },
     },
@@ -61,7 +63,6 @@ export default async function ImportsPage({
   return (
     <div className="page-stack">
       <TemplateImportConsole />
-      <ExternalReportConsole />
 
       {selectedSession && selectedPayload ? (
         <section className="workspace-console-shell">
@@ -206,48 +207,6 @@ export default async function ImportsPage({
           </section>
         </section>
       ) : null}
-
-      <section className="panel panel-elevated">
-        <div className="section-header">
-          <div>
-            <div className="eyebrow">Office governance</div>
-            <h2 className="panel-title">Import session history</h2>
-            <p className="panel-subtitle">
-              Audit trail for checklist and questionnaire normalization across PSC, TMSA, RightShip, CID, SIRE 2.0,
-              internal audits, and external audits.
-            </p>
-          </div>
-        </div>
-
-        <div className="stack-list">
-          {sessions.map((record) => (
-            <div className="list-card" key={record.id}>
-              <div className="section-header">
-                <div>
-                  <div className="meta-row">
-                    <span className={`chip ${record.id === session ? "chip-success" : "chip-info"}`}>{record.status}</span>
-                    {record.inspectionType ? <span className="chip chip-warning">{record.inspectionType.name}</span> : null}
-                  </div>
-                  <div className="list-card-title">{record.sourceFileName}</div>
-                  <div className="small-text">
-                    {record.sourceSystem ?? "Unknown source"} / {fmt.format(record.createdAt)}
-                    {record.confidenceAvg ? ` / ${Math.round(record.confidenceAvg * 100)}% confidence` : ""}
-                  </div>
-                </div>
-              </div>
-
-              <div className="small-text">
-                Payload fields reviewed: {record.fieldReviews.length} / Session ID: {record.id}
-              </div>
-              <div className="actions-row" style={{ marginTop: "0.7rem" }}>
-                <Link className="btn-secondary btn-compact" href={`/imports?session=${record.id}`}>
-                  Review session
-                </Link>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
 
       <FloatingActivityFeed
         items={sessionActivity}

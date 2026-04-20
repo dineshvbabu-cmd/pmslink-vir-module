@@ -33,7 +33,12 @@ export default async function TemplatesPage({
   const { type, template, section } = await searchParams;
 
   const templates = await prisma.virTemplate.findMany({
-    where: { isActive: true },
+    where: {
+      isActive: true,
+      inspectionType: {
+        category: "INTERNAL",
+      },
+    },
     orderBy: [{ createdAt: "desc" }],
     include: {
       inspectionType: true,
@@ -53,6 +58,11 @@ export default async function TemplatesPage({
     },
   });
   const importSessions = await prisma.virImportSession.findMany({
+    where: {
+      inspectionType: {
+        category: "INTERNAL",
+      },
+    },
     orderBy: { createdAt: "desc" },
     take: 60,
     include: {

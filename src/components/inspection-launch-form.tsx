@@ -109,7 +109,7 @@ export function InspectionLaunchForm({
               </>
             ) : (
               <div className="small-text" style={{ marginTop: "0.35rem" }}>
-                No matching template exists yet for this inspection type. Import one first from the Import Engine.
+                No matching template exists yet for this inspection type. Stage it first through the questionnaire review workspace.
               </div>
             )
           ) : (
@@ -181,7 +181,7 @@ export function InspectionLaunchForm({
 
       <div className="field-wide">
         <label htmlFor="title">Inspection title</label>
-        <input id="title" name="title" placeholder="PSC Self Assessment - Singapore" required />
+        <input id="title" name="title" placeholder="Sailing VIR - Technical Condition Review / Current Voyage" required />
       </div>
 
       <div className="field">

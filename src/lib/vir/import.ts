@@ -93,11 +93,11 @@ const standardDefaults: Record<
   }
 > = {
   GENERIC: {
-    inspectionTypeCode: "GENERIC_INSPECTION",
-    inspectionTypeName: "Generic Inspection",
+    inspectionTypeCode: "OWNERS_INSPECTION_INTERNAL",
+    inspectionTypeName: "Owner's Inspection (Internal)",
     inspectionCategory: "INTERNAL",
-    templateName: "Generic Checklist Import",
-    description: "Standardized questionnaire imported from a generic checklist source.",
+    templateName: "Seeded VIR Checklist Import",
+    description: "Standardized questionnaire imported in the seeded VIR checklist format.",
   },
   TMSA: {
     inspectionTypeCode: "TMSA_SELF_ASSESSMENT",
@@ -264,17 +264,17 @@ export function getImportSample(sourceStandard: VirTemplateSourceStandard, input
         description: defaults.description,
         sections: [
           {
-            code: "CERTS",
-            title: "Certificates and Documentation",
-            guidance: "Verify expiry, posting, and accessibility.",
+            code: "DECK",
+            title: "Deck and Mooring",
+            guidance: "Verify condition, accessibility, and operational readiness.",
             questions: [
               {
-                code: "CERTS_001",
-                prompt: "Are all statutory certificates valid and readily available?",
+                code: "DECK_001",
+                prompt: "Condition of mooring winches, guards, and brake markings.",
                 responseType: "YES_NO_NA",
-                riskLevel: sourceStandard === "PSC" ? "HIGH" : "MEDIUM",
+                riskLevel: "HIGH",
                 isMandatory: true,
-                referenceImageUrl: "/reference-images/certificates-reference.svg",
+                referenceImageUrl: "/reference-images/deck-reference.svg",
               },
             ],
           },
@@ -288,20 +288,20 @@ export function getImportSample(sourceStandard: VirTemplateSourceStandard, input
   if (inputFormat === "ROW_TABLE") {
     return [
       "section|section_code|question_code|prompt|response_type|mandatory|risk|options|cic_topic|help_text|reference_image_url",
-      "Certificates|CERTS|CERTS_001|Are all statutory certificates valid and readily available?|YES_NO_NA|YES|HIGH||||/reference-images/certificates-reference.svg",
-      "Certificates|CERTS|CERTS_002|How many certificates fall due within the next 30 days?|NUMBER|NO|MEDIUM||||",
-      "Bridge|BRIDGE|BRIDGE_001|What is the status of navigation publications?|SINGLE_SELECT|YES|HIGH|UP_TO_DATE,PARTIAL,GAP||Use latest weekly correction report|/reference-images/navigation-reference.svg",
+      "Deck and Mooring|DECK|DECK_001|Condition of mooring winches, guards, and brake markings.|SINGLE_SELECT|YES|HIGH|SATISFACTORY,OBSERVATION,DEFICIENT||Use latest deck walkdown note|/reference-images/deck-reference.svg",
+      "Deck and Mooring|DECK|DECK_002|Condition of bulwarks, hand rails, and access ladders on main deck.|YES_NO_NA|YES|HIGH||||/reference-images/deck-reference.svg",
+      "Engine Room|ENGINE|ENGINE_001|General condition of main engine auxiliaries and housekeeping.|SINGLE_SELECT|YES|HIGH|GOOD,MONITOR,ATTENTION||Record any leakage or alarm trend|/reference-images/engine-reference.svg",
     ].join("\n");
   }
 
   return [
-    "[SECTION] Certificates and Documentation",
-    "CERTS_001: Are all statutory certificates valid and readily available? | type=YES_NO_NA | mandatory | risk=HIGH | referenceImageUrl=/reference-images/certificates-reference.svg",
-    "CERTS_002: How many certificates fall due within the next 30 days? | type=NUMBER | risk=MEDIUM",
+    "[SECTION] Deck and Mooring",
+    "DECK_001: Condition of mooring winches, guards, and brake markings. | type=SINGLE_SELECT | mandatory | risk=HIGH | options=SATISFACTORY,OBSERVATION,DEFICIENT | referenceImageUrl=/reference-images/deck-reference.svg",
+    "DECK_002: Condition of bulwarks, hand rails, and access ladders on main deck. | type=YES_NO_NA | mandatory | risk=HIGH | referenceImageUrl=/reference-images/deck-reference.svg",
     "",
-    "[SECTION] Bridge and Navigation",
-    "BRIDGE_001: What is the status of navigation publications? | type=SINGLE_SELECT | mandatory | risk=HIGH | options=UP_TO_DATE,PARTIAL,GAP | referenceImageUrl=/reference-images/navigation-reference.svg",
-    "BRIDGE_002: Are bridge team familiarization records current? | type=YES_NO_NA | mandatory | risk=MEDIUM",
+    "[SECTION] Engine Room",
+    "ENGINE_001: General condition of main engine auxiliaries and housekeeping. | type=SINGLE_SELECT | mandatory | risk=HIGH | options=GOOD,MONITOR,ATTENTION | referenceImageUrl=/reference-images/engine-reference.svg",
+    "ENGINE_002: Any machinery alarm, vibration, or leakage trend requiring escalation? | type=TEXT | risk=HIGH | referenceImageUrl=/reference-images/engine-reference.svg",
   ].join("\n");
 }
 

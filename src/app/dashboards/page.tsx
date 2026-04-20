@@ -70,6 +70,7 @@ export default async function DashboardBoardsPage({
 
   const vesselWhere = {
     isActive: true,
+    ...(session.workspace === "VESSEL" && session.vesselId ? { id: session.vesselId } : {}),
     ...(enforcedVesselCodes.length > 0 ? { code: { in: enforcedVesselCodes } } : {}),
     ...(requestedVesselCode ? { code: requestedVesselCode } : {}),
   };
@@ -286,6 +287,12 @@ export default async function DashboardBoardsPage({
           </p>
         </div>
         <div className="actions-row">
+          <a
+            className="btn-secondary btn-compact"
+            href={`/api/reports/dashboard/pdf?kind=analytics&board=${board}&range=${range}${requestedVesselCode ? `&vesselId=${encodeURIComponent(vessels.find((vessel) => vessel.code === requestedVesselCode)?.id ?? "")}` : ""}`}
+          >
+            Export analytics
+          </a>
           <Link className="btn btn-compact" href="/schedule">
             Open scheduler
           </Link>

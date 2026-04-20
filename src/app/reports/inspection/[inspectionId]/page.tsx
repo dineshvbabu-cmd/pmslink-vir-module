@@ -33,12 +33,14 @@ export default async function InspectionReportPage({
   searchParams,
 }: {
   params: Promise<{ inspectionId: string }>;
-  searchParams: Promise<{ variant?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const session = await requireVirSession();
   const { inspectionId } = await params;
-  const { variant } = await searchParams;
-  const selectedVariant = normalizeVariant(variant);
+  const reportParams = await searchParams;
+  const selectedVariant = normalizeVariant(typeof reportParams.variant === "string" ? reportParams.variant : undefined);
+  const imageMode = reportParams.imageMode === "selected" ? "selected" : "all";
+  const selectedReportPhotoIds = new Set(normalizeArray(reportParams.image));
 
   const inspection = await prisma.virInspection.findUnique({
     where: { id: inspectionId },
@@ -164,6 +166,12 @@ export default async function InspectionReportPage({
     { label: "Evidence", value: `${inspection.photos.length + inspection.answers.reduce((sum, answer) => sum + answer.photos.length, 0)}` },
     { label: "Score", value: score.finalScore !== null ? `${score.finalScore}` : "n/a" },
   ];
+  const reportPhotos = collectReportPhotos(inspection);
+  const selectedReportPhotos =
+    imageMode === "selected"
+      ? reportPhotos.filter((photo) => selectedReportPhotoIds.has(photo.id))
+      : reportPhotos;
+  const effectiveReportPhotos = selectedReportPhotos.length > 0 ? selectedReportPhotos : reportPhotos;
 
   return (
     <div className="page-stack report-pack report-pack-live">
@@ -190,7 +198,10 @@ export default async function InspectionReportPage({
             </Link>
           ))}
           <PrintButton />
-          <a className="btn-secondary btn-compact" href={`/api/reports/inspection/${inspection.id}/pdf?variant=${selectedVariant}`}>
+          <a
+            className="btn-secondary btn-compact"
+            href={buildReportPdfHref(inspection.id, selectedVariant, imageMode, effectiveReportPhotos.map((photo) => photo.id))}
+          >
             PDF Export
           </a>
           <Link className="btn-secondary btn-compact" href={`/inspections/${inspection.id}`}>
@@ -239,17 +250,70 @@ export default async function InspectionReportPage({
         </p>
       </section>
 
-      <section className="vir-kpi-grid">
-        {outcomeRows.map((item) => (
-          <div className="panel panel-elevated vir-kpi-card" key={item.label}>
-            <div className="vir-kpi-label">{item.label}</div>
-            <div className="vir-kpi-value">{item.value}</div>
-          </div>
-        ))}
-      </section>
+      {selectedVariant !== "findings" ? (
+        <section className="vir-kpi-grid">
+          {outcomeRows.map((item) => (
+            <div className="panel panel-elevated vir-kpi-card" key={item.label}>
+              <div className="vir-kpi-label">{item.label}</div>
+              <div className="vir-kpi-value">{item.value}</div>
+            </div>
+          ))}
+        </section>
+      ) : null}
 
       {selectedVariant === "detailed" ? (
         <>
+          <section className="panel panel-elevated">
+            <div className="report-image-toolbar">
+              <div>
+                <h3 className="panel-title">Detailed report composition</h3>
+                <p className="panel-subtitle">
+                  Select the evidence images that should appear in the detailed annex and its PDF export.
+                </p>
+              </div>
+              <div className="report-image-selector">
+                <form className="report-image-selector-form" method="get">
+                  <input name="variant" type="hidden" value="detailed" />
+                  <div className="field">
+                    <label htmlFor="imageMode">Image annex mode</label>
+                    <select defaultValue={imageMode} id="imageMode" name="imageMode">
+                      <option value="all">All available images</option>
+                      <option value="selected">Only selected images</option>
+                    </select>
+                  </div>
+                  <div className="report-image-choice-strip">
+                    {reportPhotos.slice(0, 12).map((photo) => (
+                      <label className="report-image-choice" key={photo.id}>
+                        <input
+                          defaultChecked={imageMode === "all" || selectedReportPhotoIds.has(photo.id)}
+                          name="image"
+                          type="checkbox"
+                          value={photo.id}
+                        />
+                        <img alt={photo.caption} src={photo.url} />
+                        <span className="report-image-choice-copy">
+                          <strong>{photo.label}</strong>
+                          <span className="small-text">{photo.caption}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="report-image-selector-actions">
+                    <button className="btn-secondary" type="submit">
+                      Update detailed report
+                    </button>
+                    <a
+                      className="btn-secondary btn-compact"
+                      href={buildReportPdfHref(inspection.id, "detailed", imageMode, effectiveReportPhotos.map((photo) => photo.id))}
+                    >
+                      Export detailed PDF
+                    </a>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </section>
+
           <section className="panel panel-elevated">
             <div className="section-header">
               <div>
@@ -257,7 +321,9 @@ export default async function InspectionReportPage({
                 <p className="panel-subtitle">Summary by chapter before drilling into questionnaire rows.</p>
               </div>
             </div>
-            <ChapterFindingTable rows={chapterFindingRows} />
+            <div className="table-shell table-shell-compact">
+              <ChapterFindingTable rows={chapterFindingRows} />
+            </div>
           </section>
 
           <section className="page-stack">
@@ -277,110 +343,153 @@ export default async function InspectionReportPage({
                   </div>
                 </div>
 
-                <table className="table data-table vir-data-table">
-                  <thead>
-                    <tr>
-                      <th>S.No</th>
-                      <th>Question</th>
-                      <th>Response</th>
-                      <th>Comments</th>
-                      <th>Reference</th>
-                      <th>Actual Upload</th>
-                      <th>Findings</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {section.questions.map((question, index) => {
-                      const answer = answerMap.get(question.id);
-                      const questionFindings = inspection.findings.filter((finding) => finding.questionId === question.id);
-                      return (
-                        <tr key={question.id}>
-                          <td>{index + 1}</td>
-                          <td>
-                            <div className="report-question-code">{question.code}</div>
-                            <div>{question.prompt}</div>
-                          </td>
-                          <td>{renderAnswerValue(answer)}</td>
-                          <td>{answer?.comment ?? "-"}</td>
-                          <td>
-                            {question.referenceImageUrl ? (
-                              <img
-                                alt={`${question.code} reference`}
-                                className="report-thumb report-thumb-reference"
-                                src={question.referenceImageUrl}
-                              />
-                            ) : (
-                              "-"
-                            )}
-                          </td>
-                          <td>
-                            <div className="report-thumb-row">
-                              {answer?.photos.slice(0, 3).map((photo) => (
+                <div className="table-shell table-shell-compact">
+                  <table className="table data-table vir-data-table">
+                    <thead>
+                      <tr>
+                        <th>S.No</th>
+                        <th>Question</th>
+                        <th>Response</th>
+                        <th>Comments</th>
+                        <th>Reference</th>
+                        <th>Actual Upload</th>
+                        <th>Findings</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {section.questions.map((question, index) => {
+                        const answer = answerMap.get(question.id);
+                        const questionFindings = inspection.findings.filter((finding) => finding.questionId === question.id);
+                        return (
+                          <tr key={question.id}>
+                            <td>{index + 1}</td>
+                            <td>
+                              <div className="report-question-code">{question.code}</div>
+                              <div>{question.prompt}</div>
+                            </td>
+                            <td>{renderAnswerValue(answer)}</td>
+                            <td>{answer?.comment ?? "-"}</td>
+                            <td>
+                              {question.referenceImageUrl ? (
                                 <img
-                                  alt={photo.caption ?? photo.fileName ?? question.code}
-                                  className="report-thumb"
-                                  key={photo.id}
-                                  src={photo.url}
+                                  alt={`${question.code} reference`}
+                                  className="report-thumb report-thumb-reference"
+                                  src={question.referenceImageUrl}
                                 />
-                              ))}
-                              {!answer?.photos.length ? "-" : null}
-                            </div>
-                          </td>
-                          <td>{questionFindings.length}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                              ) : (
+                                "-"
+                              )}
+                            </td>
+                            <td>
+                              <div className="report-thumb-row">
+                                {answer?.photos.slice(0, 3).map((photo) => (
+                                  <img
+                                    alt={photo.caption ?? photo.fileName ?? question.code}
+                                    className="report-thumb"
+                                    key={photo.id}
+                                    src={photo.url}
+                                  />
+                                ))}
+                                {!answer?.photos.length ? "-" : null}
+                              </div>
+                            </td>
+                            <td>{questionFindings.length}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </section>
             ))}
+          </section>
+
+          <section className="panel panel-elevated">
+            <div className="section-header">
+              <div>
+                <h3 className="panel-title">Selected image annex</h3>
+                <p className="panel-subtitle">Detailed report evidence set based on the current image selection.</p>
+              </div>
+            </div>
+            <div className="report-photo-annex">
+              {effectiveReportPhotos.length ? (
+                effectiveReportPhotos.map((photo) => (
+                  <div className="report-photo-card" key={photo.id}>
+                    <img alt={photo.caption} src={photo.url} />
+                    <div className="report-photo-meta">
+                      <strong>{photo.label}</strong>
+                      <span className="small-text">{photo.caption}</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="empty-state">No images are selected for the detailed annex.</div>
+              )}
+            </div>
           </section>
         </>
       ) : null}
 
       {selectedVariant === "summary" ? (
-        <section className="dashboard-grid dashboard-grid-equal">
-          <section className="panel panel-elevated">
-            <div className="section-header">
-              <div>
-                <h3 className="panel-title">Inspection Outcome</h3>
-                <p className="panel-subtitle">Quick review pack for office and management.</p>
+        <section className="page-stack">
+          <section className="questionnaire-summary-grid">
+            {sectionRows.map((section) => (
+              <div className="questionnaire-summary-card" key={section.id}>
+                <span>{section.title}</span>
+                <strong>{section.answeredCount}/{section.questions.length}</strong>
+                <div className="small-text">
+                  {section.findings.length} findings / {section.evidenceCount} evidence /{" "}
+                  {section.questions.filter((question) => question.isCicCandidate).length} concentrated
+                </div>
               </div>
-            </div>
-            <ChapterFindingTable rows={chapterFindingRows} />
+            ))}
           </section>
 
           <section className="panel panel-elevated">
             <div className="section-header">
               <div>
-                <h3 className="panel-title">Section Summary</h3>
-                <p className="panel-subtitle">Per-chapter completion, evidence, and finding density.</p>
+                <h3 className="panel-title">Section summary</h3>
+                <p className="panel-subtitle">Management view with per-section completion, findings, and evidence posture.</p>
               </div>
             </div>
-            <table className="table data-table vir-data-table">
-              <thead>
-                <tr>
-                  <th>Chapter Name</th>
-                  <th>Answered</th>
-                  <th>Findings</th>
-                  <th>Condition</th>
-                  <th>Section Images</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sectionRows.map((section) => (
-                  <tr key={section.id}>
-                    <td>{section.title}</td>
-                    <td>
-                      {section.answeredCount}/{section.questions.length}
-                    </td>
-                    <td>{section.findings.length}</td>
-                    <td>{section.findings.length > 0 ? "Review required" : "In Order"}</td>
-                    <td>{section.evidenceCount}</td>
+            <div className="table-shell table-shell-compact">
+              <table className="table data-table vir-data-table">
+                <thead>
+                  <tr>
+                    <th>Chapter Name</th>
+                    <th>Answered</th>
+                    <th>Findings</th>
+                    <th>Condition</th>
+                    <th>Section Images</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {sectionRows.map((section) => (
+                    <tr key={section.id}>
+                      <td>{section.title}</td>
+                      <td>
+                        {section.answeredCount}/{section.questions.length}
+                      </td>
+                      <td>{section.findings.length}</td>
+                      <td>{section.findings.length > 0 ? "Review required" : "In Order"}</td>
+                      <td>{section.evidenceCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="panel panel-elevated">
+            <div className="section-header">
+              <div>
+                <h3 className="panel-title">Chapterwise Finding</h3>
+                <p className="panel-subtitle">Condensed chapter totals for summary-only report circulation.</p>
+              </div>
+            </div>
+            <div className="table-shell table-shell-compact">
+              <ChapterFindingTable rows={chapterFindingRows} />
+            </div>
           </section>
         </section>
       ) : null}
@@ -394,36 +503,38 @@ export default async function InspectionReportPage({
                 <p className="panel-subtitle">Report-first view for all observations and corrective actions.</p>
               </div>
             </div>
-            <table className="table data-table vir-data-table">
-              <thead>
-                <tr>
-                  <th>S.No</th>
-                  <th>Checklist Question</th>
-                  <th>Desc of Finding</th>
-                  <th>Type of Finding</th>
-                  <th>Severity</th>
-                  <th>Status</th>
-                  <th>Finding Images</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {inspection.findings.map((finding, index) => (
-                  <tr key={finding.id}>
-                    <td>{index + 1}</td>
-                    <td>{finding.question?.prompt ?? "General finding"}</td>
-                    <td>{finding.description}</td>
-                    <td>{finding.findingType}</td>
-                    <td>{finding.severity}</td>
-                    <td>
-                      <span className={`chip ${toneForFindingStatus(finding.status)}`}>{findingStatusLabel[finding.status]}</span>
-                    </td>
-                    <td>{finding.photos.length}</td>
-                    <td>{finding.correctiveActions.length}</td>
+            <div className="table-shell table-shell-compact">
+              <table className="table data-table vir-data-table">
+                <thead>
+                  <tr>
+                    <th>S.No</th>
+                    <th>Checklist Question</th>
+                    <th>Desc of Finding</th>
+                    <th>Type of Finding</th>
+                    <th>Severity</th>
+                    <th>Status</th>
+                    <th>Finding Images</th>
+                    <th>Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {inspection.findings.map((finding, index) => (
+                    <tr key={finding.id}>
+                      <td>{index + 1}</td>
+                      <td>{finding.question?.prompt ?? "General finding"}</td>
+                      <td>{finding.description}</td>
+                      <td>{finding.findingType}</td>
+                      <td>{finding.severity}</td>
+                      <td>
+                        <span className={`chip ${toneForFindingStatus(finding.status)}`}>{findingStatusLabel[finding.status]}</span>
+                      </td>
+                      <td>{finding.photos.length}</td>
+                      <td>{finding.correctiveActions.length}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section className="page-stack">
@@ -485,30 +596,32 @@ export default async function InspectionReportPage({
                 <p className="panel-subtitle">One-page review for management and approvers.</p>
               </div>
             </div>
-            <table className="table data-table vir-data-table">
-              <tbody>
-                <tr>
-                  <td>Status</td>
-                  <td>{inspectionStatusLabel[inspection.status]}</td>
-                </tr>
-                <tr>
-                  <td>Inspector</td>
-                  <td>{inspection.inspectorName ?? "Not recorded"}</td>
-                </tr>
-                <tr>
-                  <td>Location</td>
-                  <td>{[inspection.port, inspection.country].filter(Boolean).join(", ") || "Not recorded"}</td>
-                </tr>
-                <tr>
-                  <td>Open Findings</td>
-                  <td>{inspection.findings.filter((finding) => finding.status !== "CLOSED").length}</td>
-                </tr>
-                <tr>
-                  <td>Evidence</td>
-                  <td>{inspection.photos.length}</td>
-                </tr>
-              </tbody>
-            </table>
+            <div className="table-shell table-shell-compact">
+              <table className="table data-table vir-data-table">
+                <tbody>
+                  <tr>
+                    <td>Status</td>
+                    <td>{inspectionStatusLabel[inspection.status]}</td>
+                  </tr>
+                  <tr>
+                    <td>Inspector</td>
+                    <td>{inspection.inspectorName ?? "Not recorded"}</td>
+                  </tr>
+                  <tr>
+                    <td>Location</td>
+                    <td>{[inspection.port, inspection.country].filter(Boolean).join(", ") || "Not recorded"}</td>
+                  </tr>
+                  <tr>
+                    <td>Open Findings</td>
+                    <td>{inspection.findings.filter((finding) => finding.status !== "CLOSED").length}</td>
+                  </tr>
+                  <tr>
+                    <td>Evidence</td>
+                    <td>{effectiveReportPhotos.length}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section className="panel panel-elevated">
@@ -542,7 +655,9 @@ export default async function InspectionReportPage({
                 <p className="panel-subtitle">Condensed chapter-level readiness and evidence coverage.</p>
               </div>
             </div>
-            <ChapterFindingTable rows={chapterFindingRows} />
+            <div className="table-shell table-shell-compact">
+              <ChapterFindingTable rows={chapterFindingRows} />
+            </div>
           </section>
 
           <section className="panel panel-elevated">
@@ -552,11 +667,17 @@ export default async function InspectionReportPage({
                 <p className="panel-subtitle">Branded evidence set for demo export and review.</p>
               </div>
             </div>
-            <div className="report-thumb-row report-thumb-row-spacious">
-              {inspection.photos.map((photo) => (
-                <img alt={photo.caption ?? photo.fileName ?? inspection.title} className="report-thumb report-thumb-large" key={photo.id} src={photo.url} />
+            <div className="report-photo-annex">
+              {effectiveReportPhotos.map((photo) => (
+                <div className="report-photo-card" key={photo.id}>
+                  <img alt={photo.caption} src={photo.url} />
+                  <div className="report-photo-meta">
+                    <strong>{photo.label}</strong>
+                    <span className="small-text">{photo.caption}</span>
+                  </div>
+                </div>
               ))}
-              {!inspection.photos.length ? <div className="small-text">No inspection-level photos linked.</div> : null}
+              {!effectiveReportPhotos.length ? <div className="small-text">No inspection-level photos linked.</div> : null}
             </div>
           </section>
         </section>
@@ -567,6 +688,14 @@ export default async function InspectionReportPage({
 
 function normalizeVariant(value: string | undefined): ReportVariant {
   return reportVariants.some((item) => item.id === value) ? (value as ReportVariant) : "detailed";
+}
+
+function normalizeArray(value: string | string[] | undefined) {
+  if (!value) {
+    return [];
+  }
+
+  return Array.isArray(value) ? value : [value];
 }
 
 function inferInspectionMode(title: string, inspectionTypeName: string) {
@@ -631,6 +760,53 @@ function renderAnswerValue(
   }
 
   return answer.answerText ?? "Pending";
+}
+
+function buildReportPdfHref(inspectionId: string, variant: ReportVariant, imageMode: "all" | "selected", imageIds: string[]) {
+  const params = new URLSearchParams();
+  params.set("variant", variant);
+  params.set("imageMode", imageMode);
+  imageIds.forEach((id) => params.append("image", id));
+  return `/api/reports/inspection/${inspectionId}/pdf?${params.toString()}`;
+}
+
+function collectReportPhotos(inspection: {
+  title: string;
+  photos: Array<{ id: string; url: string; caption: string | null; fileName: string | null }>;
+  answers: Array<{
+    photos: Array<{ id: string; url: string; caption: string | null; fileName: string | null }>;
+    question: { code: string; prompt: string; section: { title: string } };
+  }>;
+  findings: Array<{
+    title: string;
+    photos: Array<{ id: string; url: string; caption: string | null; fileName: string | null }>;
+    question: { section: { title: string } } | null;
+  }>;
+}) {
+  return [
+    ...inspection.photos.map((photo) => ({
+      id: photo.id,
+      url: photo.url,
+      caption: photo.caption ?? photo.fileName ?? "Inspection evidence",
+      label: "Inspection photo",
+    })),
+    ...inspection.answers.flatMap((answer) =>
+      answer.photos.map((photo) => ({
+        id: photo.id,
+        url: photo.url,
+        caption: photo.caption ?? photo.fileName ?? `${answer.question.code} evidence`,
+        label: `${answer.question.section.title} / ${answer.question.code}`,
+      }))
+    ),
+    ...inspection.findings.flatMap((finding) =>
+      finding.photos.map((photo) => ({
+        id: photo.id,
+        url: photo.url,
+        caption: photo.caption ?? photo.fileName ?? finding.title,
+        label: `${finding.question?.section.title ?? "General"} / Finding`,
+      }))
+    ),
+  ];
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {

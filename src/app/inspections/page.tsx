@@ -1,3 +1,4 @@
+import type { VirInspectionTypeCategory } from "@prisma/client";
 import Link from "next/link";
 import { Download, Eye, FileText, LayoutGrid, TableProperties } from "lucide-react";
 import { prisma } from "@/lib/prisma";
@@ -8,6 +9,7 @@ import { inspectionStatusLabel, toneForInspectionStatus } from "@/lib/vir/workfl
 export const dynamic = "force-dynamic";
 
 const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+const visibleInspectionCategories: VirInspectionTypeCategory[] = ["INTERNAL", "CLASS"];
 
 type SearchParams = {
   scope?: string;
@@ -91,11 +93,15 @@ export default async function InspectionsPage({
 
   const where =
     session.workspace === "OFFICE"
-      ? vesselId
-        ? { vesselId }
-        : {}
+      ? {
+          status: { not: "ARCHIVED" as const },
+          inspectionType: { is: { category: { in: visibleInspectionCategories } } },
+          ...(vesselId ? { vesselId } : {}),
+        }
       : {
           vesselId: session.vesselId ?? "",
+          status: { not: "ARCHIVED" as const },
+          inspectionType: { is: { category: { in: visibleInspectionCategories } } },
         };
 
   const [inspections, vessels] = await Promise.all([
@@ -184,6 +190,19 @@ export default async function InspectionsPage({
   });
 
   const filtered = enriched.filter((inspection) => {
+    const inspectionSource = `${inspection.title} ${inspection.inspectionType.name} ${inspection.inspectionType.code}`.toUpperCase();
+
+    if (
+      inspectionSource.includes("PSC") ||
+      inspectionSource.includes("PORT STATE CONTROL") ||
+      inspectionSource.includes("TMSA") ||
+      inspectionSource.includes("SIRE") ||
+      inspectionSource.includes("CDI") ||
+      inspectionSource.includes("RIGHTSHIP")
+    ) {
+      return false;
+    }
+
     if (
       searchTerm &&
       ![
@@ -376,50 +395,52 @@ function ApprovedInspectionGrid({
   inspections: InspectionRow[];
 }) {
   return (
-    <table className="table data-table">
-      <thead>
-        <tr>
-          <th>Vessel</th>
-          <th>Ref no</th>
-          <th>Place of inspection</th>
-          <th>Inspected by</th>
-          <th>Approved by</th>
-          <th>Approved date</th>
-          <th>Report Type</th>
-          <th>Synced?</th>
-        </tr>
-      </thead>
-      <tbody>
-        {inspections.map((inspection) => (
-          <tr key={inspection.id}>
-            <td>
-              <Link className="table-link" href={`/reports/inspection/${inspection.id}?variant=summary`}>
-                {inspection.vessel.name}
-              </Link>
-              <div className="table-actions">
-                <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
-                  <Eye size={14} />
-                  <span>Open report</span>
-                </Link>
-              </div>
-            </td>
-            <td>
-              <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
-                {inspection.refNo}
-              </Link>
-            </td>
-            <td>{inspection.placeOfInspection}</td>
-            <td>{inspection.inspectorName ?? "Not set"}</td>
-            <td>{inspection.approvedSignOff?.actorName ?? inspection.shoreReviewedBy ?? "Not set"}</td>
-            <td>{inspection.approvedSignOff?.signedAt ? fmt.format(inspection.approvedSignOff.signedAt) : inspection.shoreReviewDate ? fmt.format(inspection.shoreReviewDate) : "Not set"}</td>
-            <td>{inspection.reportType}</td>
-            <td>
-              <span className={`chip ${inspection.syncLabel === "Synced" ? "chip-success" : "chip-danger"}`}>{inspection.syncLabel}</span>
-            </td>
+    <div className="table-shell table-shell-compact">
+      <table className="table data-table vir-data-table">
+        <thead>
+          <tr>
+            <th>Vessel</th>
+            <th>Ref no</th>
+            <th>Place of inspection</th>
+            <th>Inspected by</th>
+            <th>Approved by</th>
+            <th>Approved date</th>
+            <th>Report Type</th>
+            <th>Synced?</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {inspections.map((inspection) => (
+            <tr key={inspection.id}>
+              <td>
+                <Link className="table-link" href={`/reports/inspection/${inspection.id}?variant=summary`}>
+                  {inspection.vessel.name}
+                </Link>
+                <div className="table-actions">
+                  <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+                    <Eye size={14} />
+                    <span>Open report</span>
+                  </Link>
+                </div>
+              </td>
+              <td>
+                <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+                  {inspection.refNo}
+                </Link>
+              </td>
+              <td>{inspection.placeOfInspection}</td>
+              <td>{inspection.inspectorName ?? "Not set"}</td>
+              <td>{inspection.approvedSignOff?.actorName ?? inspection.shoreReviewedBy ?? "Not set"}</td>
+              <td>{inspection.approvedSignOff?.signedAt ? fmt.format(inspection.approvedSignOff.signedAt) : inspection.shoreReviewDate ? fmt.format(inspection.shoreReviewDate) : "Not set"}</td>
+              <td>{inspection.reportType}</td>
+              <td>
+                <span className={`chip ${inspection.syncLabel === "Synced" ? "chip-success" : "chip-danger"}`}>{inspection.syncLabel}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -431,60 +452,67 @@ function InspectionHistoryGrid({
   isOffice: boolean;
 }) {
   return (
-    <table className="table data-table">
-      <thead>
-        <tr>
-          <th>Progress</th>
-          {isOffice ? <th>Vessel</th> : null}
-          <th>Ref no</th>
-          <th>Status</th>
-          <th>Place of inspection</th>
-          <th>Inspected by</th>
-          <th>Report Type</th>
-          <th>Insp.Mode</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        {inspections.map((inspection) => (
-          <tr key={inspection.id}>
-            <td style={{ minWidth: "150px" }}>
-              <div className="table-progress">
-                <div className="table-progress-track">
-                  <div className="table-progress-fill" style={{ width: `${inspection.progress.completionPct}%` }} />
-                </div>
-                <div className="small-text">{inspection.progress.completionPct}%</div>
-              </div>
-            </td>
-            {isOffice ? <td>{inspection.vessel.name}</td> : null}
-            <td>{inspection.refNo}</td>
-            <td>
-              <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>{inspectionStatusLabel[inspection.status]}</span>
-            </td>
-            <td>{inspection.placeOfInspection}</td>
-            <td>{inspection.inspectorName ?? "Not set"}</td>
-            <td>{inspection.reportType}</td>
-            <td>{inspection.inspectionMode}</td>
-            <td>
-              <div className="table-actions">
-                <Link className="inline-link" href={`/inspections/${inspection.id}`}>
-                  <Eye size={14} />
-                  <span>Workflow</span>
-                </Link>
-                <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
-                  <FileText size={14} />
-                  <span>Report</span>
-                </Link>
-                <a className="inline-link" href={`/api/reports/inspection/${inspection.id}/pdf`}>
-                  <Download size={14} />
-                  <span>PDF</span>
-                </a>
-              </div>
-            </td>
+    <div className="table-shell table-shell-tall">
+      <table className="table data-table vir-data-table">
+        <thead>
+          <tr>
+            <th>Progress</th>
+            {isOffice ? <th>Vessel</th> : null}
+            <th>Ref no</th>
+            <th>Status</th>
+            <th>Place of inspection</th>
+            <th>Inspected by</th>
+            <th>Report Type</th>
+            <th>Insp.Mode</th>
+            <th>Action</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {inspections.map((inspection) => (
+            <tr key={inspection.id}>
+              <td style={{ minWidth: "150px" }}>
+                <div className="table-progress">
+                  <div className="table-progress-track">
+                    <div className="table-progress-fill" style={{ width: `${inspection.progress.completionPct}%` }} />
+                  </div>
+                  <div className="small-text">{inspection.progress.completionPct}%</div>
+                </div>
+              </td>
+              {isOffice ? <td>{inspection.vessel.name}</td> : null}
+              <td>
+                <Link className="table-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+                  {inspection.refNo}
+                </Link>
+                <div className="small-text">{inspection.title}</div>
+              </td>
+              <td>
+                <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>{inspectionStatusLabel[inspection.status]}</span>
+              </td>
+              <td>{inspection.placeOfInspection}</td>
+              <td>{inspection.inspectorName ?? "Not set"}</td>
+              <td>{inspection.reportType}</td>
+              <td>{inspection.inspectionMode}</td>
+              <td>
+                <div className="table-actions">
+                  <Link className="inline-link" href={`/inspections/${inspection.id}`}>
+                    <Eye size={14} />
+                    <span>Workflow</span>
+                  </Link>
+                  <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+                    <FileText size={14} />
+                    <span>Report</span>
+                  </Link>
+                  <a className="inline-link" href={`/api/reports/inspection/${inspection.id}/pdf?variant=detailed`}>
+                    <Download size={14} />
+                    <span>PDF</span>
+                  </a>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -496,60 +524,62 @@ function InspectionRegisterGrid({
   isOffice: boolean;
 }) {
   return (
-    <table className="table data-table">
-      <thead>
-        <tr>
-          <th>Inspection</th>
-          {isOffice ? <th>Vessel</th> : null}
-          <th>Type</th>
-          <th>Status</th>
-          <th>Completion</th>
-          <th>Mandatory</th>
-          <th>Open findings</th>
-          <th>Open CAR</th>
-          <th>Sign-offs</th>
-        </tr>
-      </thead>
-      <tbody>
-        {inspections.map((inspection) => (
-          <tr key={inspection.id}>
-            <td>
-              <Link className="table-link" href={`/inspections/${inspection.id}`}>
-                {inspection.title}
-              </Link>
-              <div className="small-text">
-                {fmt.format(inspection.inspectionDate)}
-                {inspection.port ? ` / ${inspection.port}` : ""}
-              </div>
-            </td>
-            {isOffice ? <td>{inspection.vessel.name}</td> : null}
-            <td>{inspection.inspectionType.name}</td>
-            <td>
-              <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>{inspectionStatusLabel[inspection.status]}</span>
-            </td>
-            <td>{inspection.progress.completionPct}%</td>
-            <td>
-              {inspection.progress.answeredMandatory}/{inspection.progress.mandatoryQuestions}
-            </td>
-            <td>{inspection.findings.length}</td>
-            <td>{inspection.overdueActions}</td>
-            <td>
-              <div className="table-actions">
-                <span>{inspection.signOffs.filter((item) => item.approved).length}</span>
-                <Link className="inline-link" href={`/inspections/${inspection.id}`}>
-                  <Eye size={14} />
-                  <span>Workflow</span>
-                </Link>
-                <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=summary`}>
-                  <FileText size={14} />
-                  <span>Report</span>
-                </Link>
-              </div>
-            </td>
+    <div className="table-shell table-shell-tall">
+      <table className="table data-table vir-data-table">
+        <thead>
+          <tr>
+            <th>Inspection</th>
+            {isOffice ? <th>Vessel</th> : null}
+            <th>Type</th>
+            <th>Status</th>
+            <th>Completion</th>
+            <th>Mandatory</th>
+            <th>Open findings</th>
+            <th>Open CAR</th>
+            <th>Sign-offs</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {inspections.map((inspection) => (
+            <tr key={inspection.id}>
+              <td>
+                <Link className="table-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+                  {inspection.title}
+                </Link>
+                <div className="small-text">
+                  {fmt.format(inspection.inspectionDate)}
+                  {inspection.port ? ` / ${inspection.port}` : ""}
+                </div>
+              </td>
+              {isOffice ? <td>{inspection.vessel.name}</td> : null}
+              <td>{inspection.inspectionType.name}</td>
+              <td>
+                <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>{inspectionStatusLabel[inspection.status]}</span>
+              </td>
+              <td>{inspection.progress.completionPct}%</td>
+              <td>
+                {inspection.progress.answeredMandatory}/{inspection.progress.mandatoryQuestions}
+              </td>
+              <td>{inspection.findings.length}</td>
+              <td>{inspection.overdueActions}</td>
+              <td>
+                <div className="table-actions">
+                  <span>{inspection.signOffs.filter((item) => item.approved).length}</span>
+                  <Link className="inline-link" href={`/inspections/${inspection.id}`}>
+                    <Eye size={14} />
+                    <span>Workflow</span>
+                  </Link>
+                  <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+                    <FileText size={14} />
+                    <span>Report</span>
+                  </Link>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

@@ -30,7 +30,7 @@ const officeNavigation: WorkspaceNavItem[] = [
   { href: "/inspections?scope=history", label: "Inspection history", note: "All inspection records" },
   { href: "/schedule", label: "VIR Calendar", note: "Planner and compliance status" },
   { href: "/instruction", label: "Instruction", note: "Workflow and sync guidance" },
-  { href: "/dashboards", label: "Analytics Boards", note: "Fleet, TMSA, PSC, class" },
+  { href: "/dashboards", label: "Analytics Boards", note: "Fleet, vessel, class, vetting" },
   { href: "/inspections?scope=shore-review", label: "Review Queue", note: "Office actions" },
   { href: "/inspections", label: "Inspection Register", note: "Fleet-wide" },
   { href: "/inspections/new", label: "Create VIR", note: "Schedule or launch" },
