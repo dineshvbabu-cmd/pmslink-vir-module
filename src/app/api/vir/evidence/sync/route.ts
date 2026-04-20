@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { uploadToR2 } from "@/lib/r2";
 import { canAccessVessel, getVirSession, isVesselSession } from "@/lib/vir/session";
 
 const syncPayloadSchema = z.object({
@@ -134,12 +135,21 @@ export async function POST(request: Request) {
       answerMap.set(item.questionId, createdAnswer.id);
     }
 
+    const [, base64Payload = ""] = item.dataUrl.split(",", 2);
+    const upload = await uploadToR2({
+      prefix: `evidence/${inspection.id}`,
+      fileName: item.fileName,
+      contentType: item.contentType,
+      body: Buffer.from(base64Payload, "base64"),
+    });
+
     await prisma.virPhoto.create({
       data: {
         inspectionId: inspection.id,
         findingId: item.findingId ?? null,
         answerId,
-        url: item.dataUrl,
+        url: upload?.url ?? item.dataUrl,
+        storageKey: upload?.storageKey ?? null,
         caption: item.caption ?? null,
         fileName: item.fileName,
         contentType: item.contentType,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { uploadToR2 } from "@/lib/r2";
 import { normalizeReportImportInput } from "@/lib/vir/report-import";
 import { isOfficeSession, parseVirSession, VIR_SESSION_COOKIE } from "@/lib/vir/session";
 
@@ -11,7 +12,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Office workspace required." }, { status: 403 });
     }
 
-    const parsed = await normalizeReportImportInput(await request.json());
+    const requestBody = await request.json();
+    const parsed = await normalizeReportImportInput(requestBody);
+    const base64Payload =
+      typeof requestBody?.contentBase64 === "string"
+        ? requestBody.contentBase64.includes(",")
+          ? requestBody.contentBase64.split(",").pop() ?? ""
+          : requestBody.contentBase64
+        : "";
+    const storedSource = base64Payload
+      ? await uploadToR2({
+          prefix: "imports/reports",
+          fileName: parsed.request.fileName,
+          contentType: parsed.request.contentType,
+          body: Buffer.from(base64Payload, "base64"),
+        })
+      : null;
 
     const inspectionType = await prisma.virInspectionType.upsert({
       where: { code: parsed.inspectionType.code },
@@ -30,7 +46,7 @@ export async function POST(request: NextRequest) {
       data: {
         inspectionTypeId: inspectionType.id,
         sourceFileName: parsed.request.fileName,
-        sourceUrl: parsed.request.sourceUrl ?? null,
+        sourceUrl: parsed.request.sourceUrl ?? storedSource?.url ?? null,
         sourceSystem: parsed.summary.sourceSystem,
         sourceType: "DOCUMENT_UPLOAD",
         status: "REVIEW",
@@ -47,6 +63,8 @@ export async function POST(request: NextRequest) {
           externalReference: parsed.externalReference,
           findings: parsed.findings,
           reviewNotes: parsed.reviewNotes,
+          sourceStorageKey: storedSource?.storageKey ?? null,
+          sourceObjectUrl: storedSource?.url ?? null,
         },
         createdBy: session.actorName,
       },
