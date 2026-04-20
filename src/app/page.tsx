@@ -1,17 +1,13 @@
 import Link from "next/link";
+import { CompactBarChart, DonutChart } from "@/components/erp-charts";
 import { prisma } from "@/lib/prisma";
-import { calculateInspectionScore, summarizeProgress } from "@/lib/vir/analytics";
-import {
-  findingStatusLabel,
-  inspectionStatusLabel,
-  toneForFindingStatus,
-  toneForInspectionStatus,
-} from "@/lib/vir/workflow";
+import { findingStatusLabel, inspectionStatusLabel, toneForFindingStatus, toneForInspectionStatus } from "@/lib/vir/workflow";
 import { isOfficeSession, requireVirSession } from "@/lib/vir/session";
 
 export const dynamic = "force-dynamic";
 
 const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+const approvedStatuses = new Set(["SHORE_REVIEWED", "CLOSED"]);
 
 export default async function DashboardPage() {
   const session = await requireVirSession();
@@ -26,189 +22,312 @@ export default async function DashboardPage() {
 async function OfficeDashboard() {
   const now = new Date();
 
-  const [
-    inspectionCount,
-    reviewCount,
-    draftCount,
-    closedCount,
-    overdueActionCount,
-    importQueueCount,
-    reviewQueue,
-    overdueActions,
-    importSessions,
-    vesselSnapshots,
-  ] = await Promise.all([
-    prisma.virInspection.count(),
-    prisma.virInspection.count({ where: { status: { in: ["SUBMITTED", "RETURNED", "SHORE_REVIEWED"] } } }),
-    prisma.virInspection.count({ where: { status: { in: ["DRAFT", "RETURNED"] } } }),
-    prisma.virInspection.count({ where: { status: "CLOSED" } }),
-    prisma.virCorrectiveAction.count({
-      where: {
-        status: { in: ["OPEN", "IN_PROGRESS", "REJECTED"] },
-        targetDate: { lt: now },
-      },
-    }),
-    prisma.virImportSession.count({ where: { status: { in: ["QUEUED", "PROCESSING", "REVIEW"] } } }),
-    prisma.virInspection.findMany({
-      where: { status: { in: ["SUBMITTED", "RETURNED", "SHORE_REVIEWED"] } },
-      take: 8,
-      orderBy: [{ inspectionDate: "desc" }, { createdAt: "desc" }],
-      include: {
-        vessel: { select: { name: true } },
-        inspectionType: { select: { name: true } },
-        findings: {
-          where: { status: { in: ["OPEN", "IN_PROGRESS", "READY_FOR_REVIEW", "CARRIED_OVER"] } },
-          select: { id: true },
-        },
-        signOffs: { select: { stage: true, approved: true } },
-      },
-    }),
-    prisma.virCorrectiveAction.findMany({
-      where: {
-        status: { in: ["OPEN", "IN_PROGRESS", "REJECTED"] },
-        targetDate: { lt: now },
-      },
-      take: 8,
-      orderBy: { targetDate: "asc" },
-      include: {
-        finding: {
-          select: {
-            title: true,
-            inspection: {
-              select: {
-                id: true,
-                title: true,
-                vessel: { select: { name: true } },
-              },
-            },
-          },
-        },
-      },
-    }),
-    prisma.virImportSession.findMany({
-      take: 6,
-      orderBy: { createdAt: "desc" },
-      include: { inspectionType: { select: { name: true } } },
-    }),
+  const [vessels, inspections] = await Promise.all([
     prisma.vessel.findMany({
       where: { isActive: true },
       orderBy: { name: "asc" },
       select: {
         id: true,
+        code: true,
         name: true,
-        inspections: {
-          where: { status: { not: "ARCHIVED" } },
+        vesselType: true,
+        fleet: true,
+      },
+    }),
+    prisma.virInspection.findMany({
+      where: { status: { not: "ARCHIVED" } },
+      orderBy: [{ inspectionDate: "desc" }, { createdAt: "desc" }],
+      include: {
+        vessel: {
           select: {
             id: true,
-            status: true,
-            findings: {
-              where: { status: { in: ["OPEN", "IN_PROGRESS", "READY_FOR_REVIEW", "CARRIED_OVER"] } },
-              select: { severity: true },
+            code: true,
+            name: true,
+            vesselType: true,
+            fleet: true,
+          },
+        },
+        inspectionType: { select: { code: true, name: true } },
+        findings: {
+          where: { status: { in: ["OPEN", "IN_PROGRESS", "READY_FOR_REVIEW", "CARRIED_OVER"] } },
+          include: {
+            question: {
+              select: {
+                prompt: true,
+                section: {
+                  select: {
+                    title: true,
+                  },
+                },
+              },
             },
+          },
+        },
+        signOffs: {
+          orderBy: { signedAt: "desc" },
+          take: 2,
+          select: {
+            id: true,
+            stage: true,
+            approved: true,
+            actorName: true,
+            signedAt: true,
           },
         },
       },
     }),
   ]);
 
-  const fleetHeatmap = vesselSnapshots.map((vessel) => {
-    const openFindings = vessel.inspections.flatMap((inspection) => inspection.findings);
-    const critical = openFindings.filter((finding) => finding.severity === "CRITICAL").length;
-    const high = openFindings.filter((finding) => finding.severity === "HIGH").length;
-    const reviewQueue = vessel.inspections.filter((inspection) =>
-      ["SUBMITTED", "RETURNED", "SHORE_REVIEWED"].includes(inspection.status)
-    ).length;
+  const inspectionsByVessel = new Map<string, typeof inspections>();
+
+  for (const inspection of inspections) {
+    const current = inspectionsByVessel.get(inspection.vessel.id) ?? [];
+    current.push(inspection);
+    inspectionsByVessel.set(inspection.vessel.id, current);
+  }
+
+  const latestByVessel = vessels.map((vessel) => {
+    const vesselInspections = (inspectionsByVessel.get(vessel.id) ?? []).sort(
+      (left, right) => right.inspectionDate.getTime() - left.inspectionDate.getTime()
+    );
+    const latest = vesselInspections[0] ?? null;
+    const nextDue = latest ? addDays(latest.inspectionDate, 182) : null;
+    const plannerStatus = classifyPlannerStatus(nextDue, now);
+    const latestMode = latest ? inferInspectionMode(latest.title, latest.inspectionType.name) : "Sailing";
 
     return {
-      id: vessel.id,
-      name: vessel.name,
-      openFindings: openFindings.length,
-      critical,
-      high,
-      reviewQueue,
+      vessel,
+      latest,
+      nextDue,
+      latestMode,
+      plannerStatus,
+      inspectionCompliance: latest && approvedStatuses.has(latest.status) ? "In Order" : "Non Compliance",
+      sailingCompliance: latest && latestMode.includes("Sailing") && approvedStatuses.has(latest.status) ? "In Order" : "Non Compliance",
     };
   });
 
+  const completedInspections = inspections.filter((inspection) => approvedStatuses.has(inspection.status));
+  const completedSailing = completedInspections.filter((inspection) =>
+    inferInspectionMode(inspection.title, inspection.inspectionType.name).includes("Sailing")
+  ).length;
+  const completedPort = completedInspections.filter(
+    (inspection) => inferInspectionMode(inspection.title, inspection.inspectionType.name) === "Port"
+  ).length;
+  const pendingReport = inspections.filter((inspection) => ["DRAFT", "SUBMITTED", "RETURNED"].includes(inspection.status)).length;
+  const pendingDeviation = inspections.reduce((sum, inspection) => sum + inspection.findings.length, 0);
+  const notSynced = inspections.filter((inspection) => ["DRAFT", "RETURNED"].includes(inspection.status)).length;
+
+  const inspectionStatusCounts = countBy(latestByVessel.map((item) => item.plannerStatus));
+  const reportStatusCounts = {
+    "In Order": completedInspections.length,
+    "Non Compliance": Math.max(0, inspections.length - completedInspections.length),
+  };
+  const inspectionComplianceCounts = countBy(latestByVessel.map((item) => item.inspectionCompliance));
+  const sailingComplianceCounts = countBy(latestByVessel.map((item) => item.sailingCompliance));
+
+  const chapterCounts = new Map<string, number>();
+
+  for (const inspection of inspections) {
+    for (const finding of inspection.findings) {
+      const chapter = finding.question?.section.title ?? "General";
+      chapterCounts.set(chapter, (chapterCounts.get(chapter) ?? 0) + 1);
+    }
+  }
+
+  const vesselTypeCounts = new Map<string, { inspections: number; findings: number }>();
+
+  for (const inspection of inspections) {
+    const vesselType = inspection.vessel.vesselType ?? "Unspecified";
+    const current = vesselTypeCounts.get(vesselType) ?? { inspections: 0, findings: 0 };
+    current.inspections += 1;
+    current.findings += inspection.findings.length;
+    vesselTypeCounts.set(vesselType, current);
+  }
+
+  const reviewQueue = inspections
+    .filter((inspection) => ["SUBMITTED", "RETURNED", "SHORE_REVIEWED"].includes(inspection.status))
+    .slice(0, 12);
+  const approvedSnapshot = completedInspections.slice(0, 12);
+
   return (
     <div className="page-stack">
-      <section className="hero-panel">
-        <div>
-          <div className="eyebrow">Office control tower</div>
-          <h2 className="hero-title">Fleet review and governance</h2>
-          <p className="hero-copy">
-            Monitor vessel submissions, drive shore review, intervene on overdue corrective actions, and govern
-            templates and imports from one operational command layer.
-          </p>
-        </div>
-        <div className="actions-row">
-          <Link className="btn btn-compact" href="/inspections/new">
-            Launch VIR
-          </Link>
-          <Link className="btn-secondary btn-compact" href="/dashboards">
-            Analytics boards
-          </Link>
-          <Link className="btn-secondary btn-compact" href="/schedule">
-            Scheduling board
-          </Link>
-          <Link className="btn-secondary btn-compact" href="/imports">
-            Open import engine
-          </Link>
-          <Link className="btn-secondary btn-compact" href="/reports/management">
-            Management pack
-          </Link>
+      <section className="panel panel-elevated vir-toolbar-panel">
+        <div className="vir-toolbar-row">
+          <div className="vir-toolbar-copy">
+            <strong>Period:</strong>
+            <span>{fmt.format(addDays(now, -90))}</span>
+            <span>to</span>
+            <span>{fmt.format(now)}</span>
+          </div>
+          <div className="actions-row">
+            <Link className="btn-secondary btn-compact" href="/inspections?scope=approved">
+              Approved inspections
+            </Link>
+            <Link className="btn-secondary btn-compact" href="/inspections?scope=history">
+              Inspection history
+            </Link>
+            <Link className="btn-secondary btn-compact" href="/schedule">
+              VIR Calendar
+            </Link>
+          </div>
         </div>
       </section>
 
-      <section className="erp-metrics-grid">
-        <MetricTile href="/inspections" label="Fleet VIRs" note="All inspections" value={inspectionCount} />
-        <MetricTile href="/inspections?scope=shore-review" label="Shore queue" note="Submitted and review" value={reviewCount} />
-        <MetricTile href="/inspections?scope=my-drafts" label="Draft and returned" note="Needs vessel action" value={draftCount} />
-        <MetricTile href="/inspections?scope=closed" label="Closed VIRs" note="Completed lifecycle" value={closedCount} />
-        <MetricTile href="/inspections?scope=overdue-actions" label="Overdue CARs" note="Past target date" value={overdueActionCount} />
-        <MetricTile href="/imports" label="Import queue" note="Queued and review sessions" value={importQueueCount} />
+      <section className="vir-kpi-grid">
+        <KpiCard label="Total Vessels" value={`${vessels.length}`} />
+        <KpiCard
+          label="Completed Inspection"
+          split={[
+            { label: "Sailing VIR", value: `${completedSailing}` },
+            { label: "Port VIR", value: `${completedPort}` },
+            { label: "Total VIR", value: `${completedInspections.length}` },
+          ]}
+        />
+        <KpiCard
+          label="Pending Task"
+          split={[
+            { label: "Pending Report", value: `${pendingReport}` },
+            { label: "Pending Deviation", value: `${pendingDeviation}` },
+          ]}
+        />
+        <KpiCard label="Not Synced" value={`${notSynced}`} emphasis="danger" />
+      </section>
+
+      <section className="vir-donut-grid">
+        <DonutChart
+          segments={[
+            { label: "In Window", value: inspectionStatusCounts["In Window"] ?? 0, className: "donut-segment-success" },
+            { label: "Due Range", value: inspectionStatusCounts["Due Range"] ?? 0, className: "donut-segment-warning" },
+            { label: "Overdue", value: inspectionStatusCounts["Overdue"] ?? 0, className: "donut-segment-danger" },
+          ]}
+          subtitle="Latest planner position by vessel"
+          title="Inspection Status"
+        />
+        <DonutChart
+          segments={[
+            { label: "In Order", value: reportStatusCounts["In Order"], className: "donut-segment-success" },
+            { label: "Non Compliance", value: reportStatusCounts["Non Compliance"], className: "donut-segment-danger" },
+          ]}
+          subtitle="Approved or closed versus open lifecycle"
+          title="Report Status"
+        />
+        <DonutChart
+          segments={[
+            {
+              label: "In Order",
+              value: inspectionComplianceCounts["In Order"] ?? 0,
+              className: "donut-segment-success",
+            },
+            {
+              label: "Non Compliance",
+              value: inspectionComplianceCounts["Non Compliance"] ?? 0,
+              className: "donut-segment-danger",
+            },
+          ]}
+          subtitle="Latest inspection compliance picture"
+          title="Inspection Compliance"
+        />
+        <DonutChart
+          segments={[
+            { label: "In Order", value: sailingComplianceCounts["In Order"] ?? 0, className: "donut-segment-success" },
+            {
+              label: "Non Compliance",
+              value: sailingComplianceCounts["Non Compliance"] ?? 0,
+              className: "donut-segment-danger",
+            },
+          ]}
+          subtitle="Latest sailing-mode compliance picture"
+          title="Sailing"
+        />
+      </section>
+
+      <section className="dashboard-grid dashboard-grid-equal">
+        <CompactBarChart
+          bars={[...chapterCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([label, value]) => ({ label, value }))}
+          subtitle="Open findings by questionnaire chapter"
+          title="Chapter-wise Findings"
+        />
+        <CompactBarChart
+          bars={[...vesselTypeCounts.entries()]
+            .sort((a, b) => b[1].findings - a[1].findings)
+            .slice(0, 8)
+            .map(([label, value]) => ({
+              label,
+              value: value.findings,
+              note: `${value.inspections} inspections`,
+            }))}
+          subtitle="Finding concentration by vessel class"
+          title="Vessel Type Inspection & Findings"
+        />
       </section>
 
       <section className="dashboard-grid dashboard-grid-wide">
         <div className="panel panel-elevated">
           <div className="section-header">
             <div>
-              <h3 className="panel-title">Shore review queue</h3>
-              <p className="panel-subtitle">Click through to the underlying inspection when you need to intervene.</p>
+              <h3 className="panel-title">Pending review queue</h3>
+              <p className="panel-subtitle">Open the workflow or report directly from the queue.</p>
             </div>
-            <Link className="btn-secondary" href="/inspections?scope=shore-review">
-              Open filtered register
+            <Link className="btn-secondary" href="/inspections?scope=history">
+              Open inspection history
             </Link>
           </div>
 
-          <table className="table data-table">
+          <table className="table data-table vir-data-table">
             <thead>
               <tr>
-                <th>Inspection</th>
+                <th>Progress</th>
                 <th>Vessel</th>
-                <th>Type</th>
+                <th>Ref no</th>
                 <th>Status</th>
-                <th>Open findings</th>
-                <th>Sign-offs</th>
+                <th>Place of inspection</th>
+                <th>Inspected by</th>
+                <th>Report Type</th>
+                <th>Insp.Mode</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {reviewQueue.map((inspection) => (
                 <tr key={inspection.id}>
                   <td>
-                    <Link className="table-link" href={`/inspections/${inspection.id}`}>
-                      {inspection.title}
-                    </Link>
-                    <div className="small-text">{fmt.format(inspection.inspectionDate)}</div>
+                    <div className="table-progress">
+                      <div className="table-progress-track">
+                        <div
+                          className="table-progress-fill"
+                          style={{
+                            width: `${Math.min(100, Math.max(8, Math.round((inspection.signOffs.length / 3) * 100)))}%`,
+                          }}
+                        />
+                      </div>
+                      <div className="small-text">{Math.min(100, Math.max(8, Math.round((inspection.signOffs.length / 3) * 100)))}%</div>
+                    </div>
                   </td>
                   <td>{inspection.vessel.name}</td>
-                  <td>{inspection.inspectionType.name}</td>
+                  <td>
+                    <Link className="table-link" href={`/reports/inspection/${inspection.id}`}>
+                      {inspection.externalReference ?? inspection.title}
+                    </Link>
+                  </td>
                   <td>
                     <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>
                       {inspectionStatusLabel[inspection.status]}
                     </span>
                   </td>
-                  <td>{inspection.findings.length}</td>
-                  <td>{inspection.signOffs.filter((item) => item.approved).length}</td>
+                  <td>{[inspection.port, inspection.country].filter(Boolean).join(", ") || "Not set"}</td>
+                  <td>{inspection.inspectorName ?? "Not set"}</td>
+                  <td>{inspection.inspectionType.name}</td>
+                  <td>{inferInspectionMode(inspection.title, inspection.inspectionType.name)}</td>
+                  <td>
+                    <div className="table-actions">
+                      <Link className="inline-link" href={`/inspections/${inspection.id}`}>
+                        Workflow
+                      </Link>
+                      <Link className="inline-link" href={`/reports/inspection/${inspection.id}`}>
+                        Report
+                      </Link>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -218,107 +337,44 @@ async function OfficeDashboard() {
         <div className="panel panel-elevated">
           <div className="section-header">
             <div>
-              <h3 className="panel-title">Fleet heatmap</h3>
-              <p className="panel-subtitle">Open findings and review pressure by vessel.</p>
+              <h3 className="panel-title">Approved inspections</h3>
+              <p className="panel-subtitle">Direct report-entry flow for demo walkthroughs.</p>
             </div>
-          </div>
-
-          <div className="stack-list">
-            {fleetHeatmap.map((row) => {
-              const severityWeight = row.openFindings * 12 + row.critical * 18 + row.high * 10 + row.reviewQueue * 8;
-              const barWidth = Math.max(10, Math.min(100, severityWeight));
-
-              return (
-                <div className="bar-card" key={row.id}>
-                  <div className="bar-card-header">
-                    <div>
-                      <strong>{row.name}</strong>
-                      <div className="small-text">
-                        {row.reviewQueue} in review / {row.openFindings} open findings
-                      </div>
-                    </div>
-                    <Link className="btn-secondary" href={`/inspections?vesselId=${row.id}`}>
-                      Drill down
-                    </Link>
-                  </div>
-                  <div className="bar-track">
-                    <div className="bar-fill" style={{ width: `${barWidth}%` }} />
-                  </div>
-                  <div className="mini-metrics">
-                    <span className="chip chip-danger">Critical {row.critical}</span>
-                    <span className="chip chip-warning">High {row.high}</span>
-                    <span className="chip chip-info">Review {row.reviewQueue}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      <section className="dashboard-grid dashboard-grid-equal">
-        <div className="panel panel-elevated">
-          <div className="section-header">
-            <div>
-              <h3 className="panel-title">Overdue corrective actions</h3>
-              <p className="panel-subtitle">Oldest items come first to help office push closure.</p>
-            </div>
-          </div>
-
-          <div className="stack-list">
-            {overdueActions.length === 0 ? (
-              <div className="empty-state">No overdue corrective actions are currently open.</div>
-            ) : (
-              overdueActions.map((action) => (
-                <div className="list-card" key={action.id}>
-                  <div className="meta-row">
-                    <span className="chip chip-danger">Overdue</span>
-                    <span className="chip chip-muted">{action.status}</span>
-                  </div>
-                  <div className="list-card-title">{action.actionText}</div>
-                  <div className="small-text">
-                    {action.finding.inspection.vessel.name} / {action.finding.inspection.title}
-                  </div>
-                  <div className="small-text">
-                    Target {action.targetDate ? fmt.format(action.targetDate) : "not set"} / finding {action.finding.title}
-                  </div>
-                  <Link className="inline-link" href={`/inspections/${action.finding.inspection.id}`}>
-                    Open inspection
-                  </Link>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="panel panel-elevated">
-          <div className="section-header">
-            <div>
-              <h3 className="panel-title">Import and template activity</h3>
-              <p className="panel-subtitle">Recent external content governance and review history.</p>
-            </div>
-            <Link className="btn-secondary" href="/imports">
-              Manage imports
+            <Link className="btn-secondary" href="/inspections?scope=approved">
+              Open approved inspections
             </Link>
           </div>
 
-          <div className="stack-list">
-            {importSessions.map((session) => (
-              <div className="list-card" key={session.id}>
-                <div className="meta-row">
-                  <span className="chip chip-info">{session.status}</span>
-                  {session.inspectionType ? <span className="chip chip-warning">{session.inspectionType.name}</span> : null}
-                </div>
-                <div className="list-card-title">{session.sourceFileName}</div>
-                <div className="small-text">
-                  {session.sourceSystem ?? "Unknown source"} / {fmt.format(session.createdAt)}
-                </div>
-                <div className="small-text">
-                  Confidence {session.confidenceAvg ? `${Math.round(session.confidenceAvg * 100)}%` : "n/a"}
-                </div>
-              </div>
-            ))}
-          </div>
+          <table className="table data-table vir-data-table">
+            <thead>
+              <tr>
+                <th>Vessel</th>
+                <th>Ref no</th>
+                <th>Place of inspection</th>
+                <th>Inspected by</th>
+                <th>Approved date</th>
+                <th>Synced?</th>
+              </tr>
+            </thead>
+            <tbody>
+              {approvedSnapshot.map((inspection) => (
+                <tr key={inspection.id}>
+                  <td>
+                    <Link className="table-link" href={`/reports/inspection/${inspection.id}`}>
+                      {inspection.vessel.name}
+                    </Link>
+                  </td>
+                  <td>{inspection.externalReference ?? inspection.title}</td>
+                  <td>{[inspection.port, inspection.country].filter(Boolean).join(", ") || "Not set"}</td>
+                  <td>{inspection.inspectorName ?? "Not set"}</td>
+                  <td>{inspection.signOffs[0]?.signedAt ? fmt.format(inspection.signOffs[0].signedAt) : "Not set"}</td>
+                  <td>
+                    <span className="chip chip-success">Synced</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
     </div>
@@ -327,86 +383,49 @@ async function OfficeDashboard() {
 
 async function VesselDashboard({ vesselId, vesselName }: { vesselId: string; vesselName: string }) {
   const now = new Date();
-
   const inspections = await prisma.virInspection.findMany({
-    where: { vesselId },
+    where: { vesselId, status: { not: "ARCHIVED" } },
     orderBy: [{ inspectionDate: "desc" }, { createdAt: "desc" }],
     include: {
-      inspectionType: { select: { name: true } },
-      template: {
+      vessel: {
         select: {
-          sections: {
+          name: true,
+          vesselType: true,
+          fleet: true,
+        },
+      },
+      inspectionType: { select: { name: true } },
+      findings: {
+        where: { status: { in: ["OPEN", "IN_PROGRESS", "READY_FOR_REVIEW", "CARRIED_OVER"] } },
+        include: {
+          question: {
             select: {
-              questions: {
+              section: {
                 select: {
-                  id: true,
-                  responseType: true,
-                  riskLevel: true,
-                  isMandatory: true,
-                  options: {
-                    select: { value: true, score: true },
-                  },
+                  title: true,
                 },
               },
             },
           },
         },
       },
-      answers: {
-        select: {
-          questionId: true,
-          answerText: true,
-          answerNumber: true,
-          answerBoolean: true,
-          selectedOptions: true,
-        },
-      },
-      findings: {
-        where: { status: { in: ["OPEN", "IN_PROGRESS", "READY_FOR_REVIEW", "CARRIED_OVER"] } },
-        select: {
-          id: true,
-          title: true,
-          severity: true,
-          status: true,
-          dueDate: true,
-          correctiveActions: {
-            where: { status: { in: ["OPEN", "IN_PROGRESS", "REJECTED"] } },
-            select: { id: true },
-          },
-        },
-      },
       signOffs: {
         orderBy: { signedAt: "desc" },
+        take: 2,
         select: {
           id: true,
           stage: true,
           approved: true,
+          actorName: true,
           signedAt: true,
         },
       },
     },
   });
 
-  const cards = inspections.map((inspection) => {
-    const questions = inspection.template?.sections.flatMap((section) => section.questions) ?? [];
-    const progress = summarizeProgress(questions, inspection.answers);
-    const score = calculateInspectionScore(questions, inspection.answers, inspection.findings);
-    const pendingCar = inspection.findings.reduce((sum, finding) => sum + finding.correctiveActions.length, 0);
-
-    return {
-      id: inspection.id,
-      title: inspection.title,
-      inspectionTypeName: inspection.inspectionType.name,
-      inspectionDate: inspection.inspectionDate,
-      status: inspection.status,
-      progress,
-      score: score.finalScore,
-      openFindings: inspection.findings.length,
-      pendingCar,
-      signOffs: inspection.signOffs,
-    };
-  });
-
+  const completedInspections = inspections.filter((inspection) => approvedStatuses.has(inspection.status));
+  const pendingReport = inspections.filter((inspection) => ["DRAFT", "SUBMITTED", "RETURNED"].includes(inspection.status)).length;
+  const notSynced = inspections.filter((inspection) => ["DRAFT", "RETURNED"].includes(inspection.status)).length;
   const openFindings = inspections.flatMap((inspection) =>
     inspection.findings.map((finding) => ({
       ...finding,
@@ -415,221 +434,271 @@ async function VesselDashboard({ vesselId, vesselName }: { vesselId: string; ves
     }))
   );
 
-  const draftCount = cards.filter((item) => item.status === "DRAFT" || item.status === "RETURNED").length;
-  const submissionReady = cards.filter(
-    (item) => item.progress.answeredMandatory === item.progress.mandatoryQuestions && item.status !== "CLOSED"
-  ).length;
-  const awaitingShore = cards.filter((item) => item.status === "SUBMITTED" || item.status === "SHORE_REVIEWED").length;
-  const overdueCar = openFindings.filter((finding) => finding.dueDate && finding.dueDate < now).length;
+  const latest = inspections[0] ?? null;
+  const nextDue = latest ? addDays(latest.inspectionDate, 182) : null;
+  const plannerStatus = classifyPlannerStatus(nextDue, now);
+  const chapterCounts = new Map<string, number>();
+
+  for (const finding of openFindings) {
+    const chapter = finding.question?.section.title ?? "General";
+    chapterCounts.set(chapter, (chapterCounts.get(chapter) ?? 0) + 1);
+  }
 
   return (
     <div className="page-stack">
-      <section className="hero-panel hero-panel-vessel">
-        <div>
-          <div className="eyebrow">Vessel workspace</div>
-          <h2 className="hero-title">{vesselName}</h2>
-          <p className="hero-copy">
-            Complete the questionnaire, respond to findings, progress corrective actions, and submit the VIR to office
-            once the mandatory inspection pack is ready.
-          </p>
-        </div>
-        <div className="actions-row">
-          <Link className="btn btn-compact" href="/inspections/new">
-            Start VIR
-          </Link>
-          <Link className="btn-secondary btn-compact" href="/dashboards">
-            Analytics boards
-          </Link>
-          <Link className="btn-secondary btn-compact" href="/schedule">
-            My schedule
-          </Link>
-          <Link className="btn-secondary btn-compact" href="/inspections?scope=my-drafts">
-            Open my queue
-          </Link>
+      <section className="panel panel-elevated vir-toolbar-panel">
+        <div className="vir-toolbar-row">
+          <div className="vir-toolbar-copy">
+            <strong>Vessel:</strong>
+            <span>{vesselName}</span>
+            <span>Next Due</span>
+            <span>{nextDue ? fmt.format(nextDue) : "Not set"}</span>
+          </div>
+          <div className="actions-row">
+            <Link className="btn-secondary btn-compact" href="/inspections?scope=my-drafts">
+              My VIR Queue
+            </Link>
+            <Link className="btn-secondary btn-compact" href="/inspections?scope=history">
+              Inspection history
+            </Link>
+            <Link className="btn-secondary btn-compact" href="/schedule">
+              VIR Calendar
+            </Link>
+          </div>
         </div>
       </section>
 
-      <section className="erp-metrics-grid">
-        <MetricTile href="/inspections" label="My VIRs" note="All assigned inspections" value={cards.length} />
-        <MetricTile href="/inspections?scope=my-drafts" label="Draft and returned" note="Needs vessel action" value={draftCount} />
-        <MetricTile href="/inspections?scope=ready-to-submit" label="Ready to submit" note="Mandatory questions complete" value={submissionReady} />
-        <MetricTile href="/inspections?scope=awaiting-shore" label="Awaiting office" note="Submitted or reviewed" value={awaitingShore} />
-        <MetricTile href="/inspections?scope=open-findings" label="Open findings" note="Requires follow-up" value={openFindings.length} />
-        <MetricTile href="/inspections?scope=overdue-actions" label="Overdue CARs" note="Past target date" value={overdueCar} />
+      <section className="vir-kpi-grid">
+        <KpiCard label="Completed Inspection" value={`${completedInspections.length}`} />
+        <KpiCard label="Pending Report" value={`${pendingReport}`} />
+        <KpiCard label="Pending Deviation" value={`${openFindings.length}`} />
+        <KpiCard label="Not Synced" value={`${notSynced}`} emphasis="danger" />
       </section>
 
-      <section className="dashboard-grid dashboard-grid-wide">
+      <section className="vir-donut-grid">
+        <DonutChart
+          segments={[
+            { label: plannerStatus, value: 1, className: plannerStatusTone(plannerStatus) },
+            { label: "Other", value: 0, className: "donut-segment-info" },
+          ]}
+          subtitle="Latest vessel planner status"
+          title="Inspection Status"
+        />
+        <DonutChart
+          segments={[
+            { label: "Approved", value: completedInspections.length, className: "donut-segment-success" },
+            {
+              label: "Pending",
+              value: Math.max(0, inspections.length - completedInspections.length),
+              className: "donut-segment-danger",
+            },
+          ]}
+          subtitle="Report lifecycle by vessel"
+          title="Report Status"
+        />
+        <DonutChart
+          segments={[
+            { label: "Open Findings", value: openFindings.length, className: "donut-segment-warning" },
+            {
+              label: "Closed / Clear",
+              value: Math.max(0, completedInspections.length),
+              className: "donut-segment-success",
+            },
+          ]}
+          subtitle="Finding pressure on board"
+          title="Inspection Compliance"
+        />
+        <DonutChart
+          segments={[
+            { label: "Synced", value: Math.max(0, inspections.length - notSynced), className: "donut-segment-success" },
+            { label: "Not Synced", value: notSynced, className: "donut-segment-danger" },
+          ]}
+          subtitle="Office and vessel sync visibility"
+          title="Sync Health"
+        />
+      </section>
+
+      <section className="dashboard-grid dashboard-grid-equal">
+        <CompactBarChart
+          bars={[...chapterCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([label, value]) => ({ label, value }))}
+          subtitle="Open findings by chapter"
+          title="Chapter-wise Findings"
+        />
+
         <div className="panel panel-elevated">
           <div className="section-header">
             <div>
               <h3 className="panel-title">My inspection queue</h3>
-              <p className="panel-subtitle">Readiness and progress at the inspection level.</p>
+              <p className="panel-subtitle">Open workflow or report directly from each live inspection.</p>
             </div>
           </div>
-
-          <table className="table data-table">
+          <table className="table data-table vir-data-table">
             <thead>
               <tr>
-                <th>Inspection</th>
+                <th>Ref no</th>
                 <th>Status</th>
-                <th>Completion</th>
-                <th>Mandatory</th>
-                <th>Score</th>
-                <th>Open findings</th>
+                <th>Place of inspection</th>
+                <th>Report Type</th>
+                <th>Insp.Mode</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {cards.map((inspection) => (
+              {inspections.map((inspection) => (
                 <tr key={inspection.id}>
                   <td>
-                    <Link className="table-link" href={`/inspections/${inspection.id}`}>
-                      {inspection.title}
+                    <Link className="table-link" href={`/reports/inspection/${inspection.id}`}>
+                      {inspection.externalReference ?? inspection.title}
                     </Link>
-                    <div className="small-text">
-                      {inspection.inspectionTypeName} / {fmt.format(inspection.inspectionDate)}
-                    </div>
                   </td>
                   <td>
                     <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>
                       {inspectionStatusLabel[inspection.status]}
                     </span>
                   </td>
-                  <td>{inspection.progress.completionPct}%</td>
+                  <td>{[inspection.port, inspection.country].filter(Boolean).join(", ") || "Not set"}</td>
+                  <td>{inspection.inspectionType.name}</td>
+                  <td>{inferInspectionMode(inspection.title, inspection.inspectionType.name)}</td>
                   <td>
-                    {inspection.progress.answeredMandatory}/{inspection.progress.mandatoryQuestions}
+                    <div className="table-actions">
+                      <Link className="inline-link" href={`/inspections/${inspection.id}`}>
+                        Workflow
+                      </Link>
+                      <Link className="inline-link" href={`/reports/inspection/${inspection.id}`}>
+                        Report
+                      </Link>
+                    </div>
                   </td>
-                  <td>{typeof inspection.score === "number" ? inspection.score : "n/a"}</td>
-                  <td>{inspection.openFindings}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-
-        <div className="panel panel-elevated">
-          <div className="section-header">
-            <div>
-              <h3 className="panel-title">Readiness drill-down</h3>
-              <p className="panel-subtitle">Open the exact inspection that needs the next move.</p>
-            </div>
-          </div>
-
-          <div className="stack-list">
-            {cards.map((inspection) => (
-              <div className="bar-card" key={inspection.id}>
-                <div className="bar-card-header">
-                  <div>
-                    <strong>{inspection.title}</strong>
-                    <div className="small-text">{inspection.inspectionTypeName}</div>
-                  </div>
-                  <Link className="btn-secondary" href={`/inspections/${inspection.id}`}>
-                    Open
-                  </Link>
-                </div>
-                <div className="progress-cluster">
-                  <div>
-                    <div className="small-text">Completion</div>
-                    <div className="bar-track">
-                      <div className="bar-fill bar-fill-success" style={{ width: `${inspection.progress.completionPct}%` }} />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="small-text">Mandatory</div>
-                    <div className="bar-track">
-                      <div className="bar-fill" style={{ width: `${inspection.progress.mandatoryPct}%` }} />
-                    </div>
-                  </div>
-                </div>
-                <div className="mini-metrics">
-                  <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>{inspectionStatusLabel[inspection.status]}</span>
-                  <span className="chip chip-warning">CAR {inspection.pendingCar}</span>
-                  <span className="chip chip-info">Findings {inspection.openFindings}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
       </section>
 
-      <section className="dashboard-grid dashboard-grid-equal">
-        <div className="panel panel-elevated">
-          <div className="section-header">
-            <div>
-              <h3 className="panel-title">Open findings</h3>
-              <p className="panel-subtitle">Items still driving corrective work on board.</p>
-            </div>
+      <section className="panel panel-elevated">
+        <div className="section-header">
+          <div>
+            <h3 className="panel-title">Open findings</h3>
+            <p className="panel-subtitle">Items still driving corrective work on board.</p>
           </div>
+        </div>
 
-          <div className="stack-list">
-            {openFindings.length === 0 ? (
-              <div className="empty-state">No open findings are currently assigned to this vessel.</div>
-            ) : (
-              openFindings.map((finding) => (
-                <div className="list-card" key={finding.id}>
-                  <div className="meta-row">
-                    <span className={`chip ${toneForFindingStatus(finding.status)}`}>{findingStatusLabel[finding.status]}</span>
-                    <span className="chip chip-warning">{finding.severity}</span>
-                  </div>
-                  <div className="list-card-title">{finding.title}</div>
-                  <div className="small-text">{finding.inspectionTitle}</div>
-                  <div className="small-text">
-                    Due {finding.dueDate ? fmt.format(finding.dueDate) : "not set"}
-                  </div>
-                  <Link className="inline-link" href={`/inspections/${finding.inspectionId}`}>
+        <table className="table data-table vir-data-table">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Severity</th>
+              <th>Finding</th>
+              <th>Inspection</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {openFindings.map((finding) => (
+              <tr key={finding.id}>
+                <td>
+                  <span className={`chip ${toneForFindingStatus(finding.status)}`}>{findingStatusLabel[finding.status]}</span>
+                </td>
+                <td>{finding.severity}</td>
+                <td>{finding.title}</td>
+                <td>{finding.inspectionTitle}</td>
+                <td>
+                  <Link className="inline-link" href={`/inspections/${finding.inspectionId}?pane=findings`}>
                     Open finding lane
                   </Link>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="panel panel-elevated">
-          <div className="section-header">
-            <div>
-              <h3 className="panel-title">Workflow log</h3>
-              <p className="panel-subtitle">Latest sign-off and handover checkpoints.</p>
-            </div>
-          </div>
-
-          <div className="stack-list">
-            {cards.flatMap((inspection) =>
-              inspection.signOffs.slice(0, 1).map((signOff) => (
-                <div className="list-card" key={signOff.id}>
-                  <div className="meta-row">
-                    <span className={`chip ${signOff.approved ? "chip-success" : "chip-danger"}`}>
-                      {signOff.approved ? "Approved" : "Returned"}
-                    </span>
-                    <span className="chip chip-info">{signOff.stage.replaceAll("_", " ")}</span>
-                  </div>
-                  <div className="list-card-title">{inspection.title}</div>
-                  <div className="small-text">{fmt.format(signOff.signedAt)}</div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </section>
     </div>
   );
 }
 
-function MetricTile({
-  href,
+function KpiCard({
   label,
-  note,
   value,
+  split,
+  emphasis,
 }: {
-  href: string;
   label: string;
-  note: string;
-  value: number;
+  value?: string;
+  split?: Array<{ label: string; value: string }>;
+  emphasis?: "danger";
 }) {
   return (
-    <Link className="metric-tile" href={href}>
-      <div className="metric-tile-label">{label}</div>
-      <div className="metric-tile-value">{value}</div>
-      <div className="metric-tile-note">{note}</div>
-    </Link>
+    <div className={`panel panel-elevated vir-kpi-card ${emphasis === "danger" ? "vir-kpi-card-danger" : ""}`}>
+      <div className="vir-kpi-label">{label}</div>
+      {value ? <div className="vir-kpi-value">{value}</div> : null}
+      {split ? (
+        <div className={`vir-kpi-split ${split.length === 3 ? "vir-kpi-split-three" : ""}`}>
+          {split.map((item) => (
+            <div className="vir-kpi-split-item" key={item.label}>
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
+}
+
+function inferInspectionMode(title: string, inspectionTypeName: string) {
+  const source = `${title} ${inspectionTypeName}`.toUpperCase();
+
+  if (source.includes("SAILING")) {
+    return source.includes("REMOTE") ? "Sailing (Remote)" : "Sailing";
+  }
+
+  if (source.includes("PORT")) {
+    return source.includes("REMOTE") ? "Port (Remote)" : "Port";
+  }
+
+  return "Sailing";
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function classifyPlannerStatus(nextDue: Date | null, now: Date) {
+  if (!nextDue) {
+    return "Due Range";
+  }
+
+  const days = Math.floor((nextDue.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (days < 0) {
+    return "Overdue";
+  }
+
+  if (days <= 30) {
+    return "Due Range";
+  }
+
+  return "In Window";
+}
+
+function plannerStatusTone(status: string) {
+  if (status === "Overdue") {
+    return "donut-segment-danger";
+  }
+
+  if (status === "Due Range") {
+    return "donut-segment-warning";
+  }
+
+  return "donut-segment-success";
+}
+
+function countBy(values: string[]) {
+  return values.reduce<Record<string, number>>((acc, value) => {
+    acc[value] = (acc[value] ?? 0) + 1;
+    return acc;
+  }, {});
 }

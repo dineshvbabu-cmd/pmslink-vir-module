@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Download, Eye, FileText, LayoutGrid, TableProperties } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { summarizeProgress } from "@/lib/vir/analytics";
 import { isOfficeSession, requireVirSession } from "@/lib/vir/session";
@@ -13,6 +14,7 @@ type SearchParams = {
   status?: string;
   vesselId?: string;
   view?: string;
+  q?: string;
 };
 
 type PageMode = "register" | "approved" | "history";
@@ -82,9 +84,10 @@ export default async function InspectionsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const session = await requireVirSession();
-  const { scope, status, vesselId, view } = await searchParams;
+  const { scope, status, vesselId, view, q } = await searchParams;
   const pageMode = normalizePageMode(scope, session.workspace === "OFFICE");
   const viewMode = normalizeViewMode(view);
+  const searchTerm = q?.trim().toLowerCase() ?? "";
 
   const where =
     session.workspace === "OFFICE"
@@ -181,6 +184,24 @@ export default async function InspectionsPage({
   });
 
   const filtered = enriched.filter((inspection) => {
+    if (
+      searchTerm &&
+      ![
+        inspection.title,
+        inspection.refNo,
+        inspection.vessel.name,
+        inspection.placeOfInspection,
+        inspection.inspectorName ?? "",
+        inspection.reportType,
+        inspection.inspectionMode,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(searchTerm)
+    ) {
+      return false;
+    }
+
     if (status && inspection.status !== status) {
       return false;
     }
@@ -272,38 +293,46 @@ export default async function InspectionsPage({
             </Link>
             <Link
               className={`filter-chip ${viewMode === "grid" ? "filter-chip-active" : ""}`}
-              href={modeHref(pageMode, { vesselId, status, view: "grid", scope })}
+              href={modeHref(pageMode, { vesselId, status, view: "grid", scope, q })}
             >
-              Table/Grid View
+              <TableProperties size={16} />
+              <span>Table/Grid View</span>
             </Link>
             <Link
               className={`filter-chip ${viewMode === "summary" ? "filter-chip-active" : ""}`}
-              href={modeHref(pageMode, { vesselId, status, view: "summary", scope })}
+              href={modeHref(pageMode, { vesselId, status, view: "summary", scope, q })}
             >
-              Summary View
+              <LayoutGrid size={16} />
+              <span>Summary View</span>
             </Link>
           </div>
 
-          {isOfficeSession(session) ? (
-            <form className="inline-form" method="get">
-              {scope ? <input name="scope" type="hidden" value={scope} /> : null}
-              {view ? <input name="view" type="hidden" value={view} /> : null}
-              <label className="inline-form-label" htmlFor="vesselId">
-                Vessel
-              </label>
-              <select defaultValue={vesselId ?? ""} id="vesselId" name="vesselId">
-                <option value="">All vessels</option>
-                {vessels.map((vessel) => (
-                  <option key={vessel.id} value={vessel.id}>
-                    {vessel.name}
-                  </option>
-                ))}
-              </select>
-              <button className="btn-secondary" type="submit">
-                Apply
-              </button>
-            </form>
-          ) : null}
+          <form className="inline-form inline-form-wide" method="get">
+            {scope ? <input name="scope" type="hidden" value={scope} /> : null}
+            {view ? <input name="view" type="hidden" value={view} /> : null}
+            <label className="inline-form-label" htmlFor="q">
+              Search
+            </label>
+            <input defaultValue={q ?? ""} id="q" name="q" placeholder="Search inspection, vessel, ref no, or place" />
+            {isOfficeSession(session) ? (
+              <>
+                <label className="inline-form-label" htmlFor="vesselId">
+                  Vessel
+                </label>
+                <select defaultValue={vesselId ?? ""} id="vesselId" name="vesselId">
+                  <option value="">All vessels</option>
+                  {vessels.map((vessel) => (
+                    <option key={vessel.id} value={vessel.id}>
+                      {vessel.name}
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : null}
+            <button className="btn-secondary" type="submit">
+              Apply
+            </button>
+          </form>
         </div>
 
         {viewMode === "summary" ? (
@@ -364,11 +393,21 @@ function ApprovedInspectionGrid({
         {inspections.map((inspection) => (
           <tr key={inspection.id}>
             <td>
-              <Link className="table-link" href={`/inspections/${inspection.id}`}>
+              <Link className="table-link" href={`/reports/inspection/${inspection.id}?variant=summary`}>
                 {inspection.vessel.name}
               </Link>
+              <div className="table-actions">
+                <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+                  <Eye size={14} />
+                  <span>Open report</span>
+                </Link>
+              </div>
             </td>
-            <td>{inspection.refNo}</td>
+            <td>
+              <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+                {inspection.refNo}
+              </Link>
+            </td>
             <td>{inspection.placeOfInspection}</td>
             <td>{inspection.inspectorName ?? "Not set"}</td>
             <td>{inspection.approvedSignOff?.actorName ?? inspection.shoreReviewedBy ?? "Not set"}</td>
@@ -427,9 +466,20 @@ function InspectionHistoryGrid({
             <td>{inspection.reportType}</td>
             <td>{inspection.inspectionMode}</td>
             <td>
-              <Link className="inline-link" href={`/inspections/${inspection.id}`}>
-                Open
-              </Link>
+              <div className="table-actions">
+                <Link className="inline-link" href={`/inspections/${inspection.id}`}>
+                  <Eye size={14} />
+                  <span>Workflow</span>
+                </Link>
+                <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+                  <FileText size={14} />
+                  <span>Report</span>
+                </Link>
+                <a className="inline-link" href={`/api/reports/inspection/${inspection.id}/pdf`}>
+                  <Download size={14} />
+                  <span>PDF</span>
+                </a>
+              </div>
             </td>
           </tr>
         ))}
@@ -483,7 +533,19 @@ function InspectionRegisterGrid({
             </td>
             <td>{inspection.findings.length}</td>
             <td>{inspection.overdueActions}</td>
-            <td>{inspection.signOffs.filter((item) => item.approved).length}</td>
+            <td>
+              <div className="table-actions">
+                <span>{inspection.signOffs.filter((item) => item.approved).length}</span>
+                <Link className="inline-link" href={`/inspections/${inspection.id}`}>
+                  <Eye size={14} />
+                  <span>Workflow</span>
+                </Link>
+                <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=summary`}>
+                  <FileText size={14} />
+                  <span>Report</span>
+                </Link>
+              </div>
+            </td>
           </tr>
         ))}
       </tbody>
@@ -536,9 +598,16 @@ function SummaryInspectionView({
             Inspected by {inspection.inspectorName ?? "Not set"}
             {inspection.approvedSignOff?.actorName ? ` / Approved by ${inspection.approvedSignOff.actorName}` : ""}
           </div>
-          <Link className="inline-link" href={`/inspections/${inspection.id}`}>
-            Open inspection
-          </Link>
+          <div className="table-actions" style={{ marginTop: "0.8rem" }}>
+            <Link className="inline-link" href={`/inspections/${inspection.id}`}>
+              <Eye size={14} />
+              <span>Workflow</span>
+            </Link>
+            <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+              <FileText size={14} />
+              <span>Report</span>
+            </Link>
+          </div>
         </article>
       ))}
     </div>
@@ -563,7 +632,7 @@ function normalizeViewMode(view: string | undefined): ViewMode {
 
 function modeHref(
   pageMode: PageMode,
-  params: { vesselId?: string; status?: string; view?: string; scope?: string }
+  params: { vesselId?: string; status?: string; view?: string; scope?: string; q?: string }
 ) {
   const next = new URLSearchParams();
 
@@ -585,6 +654,10 @@ function modeHref(
 
   if (params.view) {
     next.set("view", params.view);
+  }
+
+  if (params.q) {
+    next.set("q", params.q);
   }
 
   return `/inspections${next.toString() ? `?${next.toString()}` : ""}`;

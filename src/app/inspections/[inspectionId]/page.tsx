@@ -178,10 +178,19 @@ export default async function InspectionDetailPage({
         </div>
 
         <div className="actions-row">
-          <Link className="btn-secondary" href={`/reports/inspection/${inspection.id}`}>
-            Printable pack
+          <Link className="btn-secondary" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+            Detailed report
           </Link>
-          <a className="btn-secondary" href={`/api/reports/inspection/${inspection.id}/pdf`}>
+          <Link className="btn-secondary" href={`/reports/inspection/${inspection.id}?variant=summary`}>
+            Summary report
+          </Link>
+          <Link className="btn-secondary" href={`/reports/inspection/${inspection.id}?variant=findings`}>
+            Finding report
+          </Link>
+          <Link className="btn-secondary" href={`/reports/inspection/${inspection.id}?variant=consolidate`}>
+            Consolidate report
+          </Link>
+          <a className="btn-secondary" href={`/api/reports/inspection/${inspection.id}/pdf?variant=detailed`}>
             PDF
           </a>
           {isVesselSession(session) ? (

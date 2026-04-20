@@ -19,9 +19,26 @@ export const dynamic = "force-dynamic";
 
 const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 
-export default async function InspectionReportPage({ params }: { params: Promise<{ inspectionId: string }> }) {
+const reportVariants = [
+  { id: "detailed", label: "Detailed Report" },
+  { id: "summary", label: "Summary Report" },
+  { id: "findings", label: "Finding Report" },
+  { id: "consolidate", label: "Consolidate Report" },
+] as const;
+
+type ReportVariant = (typeof reportVariants)[number]["id"];
+
+export default async function InspectionReportPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ inspectionId: string }>;
+  searchParams: Promise<{ variant?: string }>;
+}) {
   const session = await requireVirSession();
   const { inspectionId } = await params;
+  const { variant } = await searchParams;
+  const selectedVariant = normalizeVariant(variant);
 
   const inspection = await prisma.virInspection.findUnique({
     where: { id: inspectionId },
@@ -38,19 +55,49 @@ export default async function InspectionReportPage({ params }: { params: Promise
       template: {
         include: {
           sections: {
+            orderBy: { sortOrder: "asc" },
             include: {
               questions: {
+                orderBy: { sortOrder: "asc" },
                 include: {
-                  options: true,
+                  options: {
+                    orderBy: { sortOrder: "asc" },
+                  },
                 },
               },
             },
           },
         },
       },
-      answers: true,
+      answers: {
+        include: {
+          question: {
+            include: {
+              section: {
+                select: {
+                  id: true,
+                  title: true,
+                },
+              },
+            },
+          },
+          photos: {
+            orderBy: { createdAt: "desc" },
+          },
+        },
+      },
       findings: {
         include: {
+          question: {
+            include: {
+              section: {
+                select: {
+                  id: true,
+                  title: true,
+                },
+              },
+            },
+          },
           correctiveActions: true,
           carriedFromFinding: {
             select: {
@@ -61,6 +108,9 @@ export default async function InspectionReportPage({ params }: { params: Promise
                 },
               },
             },
+          },
+          photos: {
+            orderBy: { createdAt: "desc" },
           },
         },
         orderBy: [{ severity: "desc" }, { createdAt: "asc" }],
@@ -81,192 +131,550 @@ export default async function InspectionReportPage({ params }: { params: Promise
   const questions = inspection.template?.sections.flatMap((section) => section.questions) ?? [];
   const progress = summarizeProgress(questions, inspection.answers);
   const score = calculateInspectionScore(questions, inspection.answers, inspection.findings);
+  const answerMap = new Map(inspection.answers.map((answer) => [answer.questionId, answer]));
+  const sectionRows =
+    inspection.template?.sections.map((section) => {
+      const sectionAnswers = inspection.answers.filter((answer) => answer.question.section.id === section.id);
+      const sectionFindings = inspection.findings.filter((finding) => finding.question?.section.id === section.id);
+      const sectionEvidence = sectionAnswers.reduce((sum, answer) => sum + answer.photos.length, 0);
+
+      return {
+        ...section,
+        answers: sectionAnswers,
+        findings: sectionFindings,
+        evidenceCount: sectionEvidence,
+        answeredCount: sectionAnswers.filter((answer) => hasRecordedAnswer(answer)).length,
+      };
+    }) ?? [];
+
+  const chapterFindingRows = sectionRows
+    .filter((section) => section.findings.length > 0)
+    .map((section) => ({
+      chapter: section.title,
+      high: section.findings.filter((finding) => finding.severity === "HIGH" || finding.severity === "CRITICAL").length,
+      medium: section.findings.filter((finding) => finding.severity === "MEDIUM").length,
+      low: section.findings.filter((finding) => finding.severity === "LOW").length,
+      total: section.findings.length,
+    }));
+
+  const outcomeRows = [
+    { label: "Questions", value: `${progress.answeredQuestions}/${progress.totalQuestions}` },
+    { label: "Mandatory", value: `${progress.answeredMandatory}/${progress.mandatoryQuestions}` },
+    { label: "Open Findings", value: `${inspection.findings.filter((finding) => finding.status !== "CLOSED").length}` },
+    { label: "Evidence", value: `${inspection.photos.length + inspection.answers.reduce((sum, answer) => sum + answer.photos.length, 0)}` },
+    { label: "Score", value: score.finalScore !== null ? `${score.finalScore}` : "n/a" },
+  ];
 
   return (
-    <div className="page-stack report-pack">
-      <section className="hero-panel report-hero">
-        <div>
-          <div className="eyebrow">Inspection report</div>
-          <h2 className="hero-title">{inspection.title}</h2>
-          <p className="hero-copy">
-            {inspection.vessel.name} / {inspection.inspectionType.name} / {fmt.format(inspection.inspectionDate)}
-          </p>
+    <div className="page-stack report-pack report-pack-live">
+      <section className="panel panel-elevated report-command-bar">
+        <div className="report-breadcrumbs">
+          <Link className="table-link" href="/inspections?scope=approved">
+            {inspection.vessel.name}
+          </Link>
+          <span>|</span>
+          <span>{inspection.externalReference ?? inspection.title}</span>
+          <span>|</span>
+          <span>{inspectionStatusLabel[inspection.status]}</span>
+          {inspection.shoreReviewedBy ? <span>({inspection.shoreReviewedBy})</span> : null}
         </div>
-        <div className="actions-row print-hidden">
+
+        <div className="report-command-actions">
+          {reportVariants.map((item) => (
+            <Link
+              className={`btn-compact ${selectedVariant === item.id ? "btn" : "btn-secondary"}`}
+              href={`/reports/inspection/${inspection.id}?variant=${item.id}`}
+              key={item.id}
+            >
+              {item.label}
+            </Link>
+          ))}
           <PrintButton />
-          <a className="btn-secondary" href={`/api/reports/inspection/${inspection.id}/pdf`}>
-            Download PDF
+          <a className="btn-secondary btn-compact" href={`/api/reports/inspection/${inspection.id}/pdf?variant=${selectedVariant}`}>
+            PDF Export
           </a>
-          <Link className="btn-secondary" href={`/inspections/${inspection.id}`}>
-            Back to workflow
+          <Link className="btn-secondary btn-compact" href={`/inspections/${inspection.id}`}>
+            Open Workflow
           </Link>
         </div>
       </section>
 
-      <section className="erp-metrics-grid">
-        <MetricTile label="Completion" note="Answered questions" value={`${progress.completionPct}%`} />
-        <MetricTile label="Mandatory" note="Required coverage" value={`${progress.answeredMandatory}/${progress.mandatoryQuestions}`} />
-        <MetricTile label="Score" note="Inspection readiness" value={score.finalScore !== null ? `${score.finalScore}` : "n/a"} />
-        <MetricTile label="Open findings" note="Not yet closed" value={`${inspection.findings.filter((finding) => finding.status !== "CLOSED").length}`} />
-        <MetricTile label="Sign-offs" note="Recorded workflow stages" value={`${inspection.signOffs.length}`} />
-        <MetricTile label="Evidence" note="Synced photo records" value={`${inspection.photos.length}`} />
-      </section>
-
-      <section className="panel panel-elevated report-panel">
-        <div className="section-header">
+      <section className="panel panel-elevated report-hero-panel">
+        <div className="report-vessel-grid">
           <div>
-            <h3 className="panel-title">Header and scope</h3>
-            <p className="panel-subtitle">Inspection header, context, and current lifecycle state.</p>
+            <div className="report-section-label">Vessel &amp; Inspection Details</div>
+            <div className="report-detail-grid">
+              <DetailRow label="Vessel Name" value={inspection.vessel.name} />
+              <DetailRow label="IMO Number" value={inspection.vessel.imoNumber ?? "Not recorded"} />
+              <DetailRow label="Flag Registry" value={inspection.vessel.flag ?? "Not recorded"} />
+              <DetailRow label="Classification" value={inspection.vessel.manager ?? "Not recorded"} />
+              <DetailRow label="Solas/Marpol/ISM Category" value={inspection.vessel.vesselType ?? "Not recorded"} />
+              <DetailRow label="Report Type" value={inspection.inspectionType.name} />
+              <DetailRow label="Inspection Mode" value={inferInspectionMode(inspection.title, inspection.inspectionType.name)} />
+              <DetailRow label="Inspection From Date" value={fmt.format(inspection.inspectionDate)} />
+              <DetailRow label="Inspection To Date" value={fmt.format(inspection.closedAt ?? inspection.inspectionDate)} />
+              <DetailRow label="Place of Inspection From" value={inspection.port ?? "Not recorded"} />
+              <DetailRow label="Place of Inspection To" value={inspection.country ?? "Not recorded"} />
+              <DetailRow label="Inspection Authority" value={inspection.inspectorCompany ?? "Not recorded"} />
+              <DetailRow label="Inspector Names" value={inspection.inspectorName ?? "Not recorded"} />
+              <DetailRow label="Previous VIR Link" value={inspection.previousInspection?.title ?? "No previous VIR linked"} />
+            </div>
           </div>
-        </div>
 
-        <div className="report-grid">
-          <div className="list-card">
-            <strong>Status</strong>
-            <div className="meta-row" style={{ marginTop: "0.5rem" }}>
-              <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>
-                {inspectionStatusLabel[inspection.status]}
-              </span>
-            </div>
-          </div>
-          <div className="list-card">
-            <strong>Inspector</strong>
-            <div className="small-text">{inspection.inspectorName ?? "Not recorded"}</div>
-          </div>
-          <div className="list-card">
-            <strong>Authority / company</strong>
-            <div className="small-text">{inspection.inspectorCompany ?? "Not recorded"}</div>
-          </div>
-          <div className="list-card">
-            <strong>Reference</strong>
-            <div className="small-text">{inspection.externalReference ?? "Not recorded"}</div>
-          </div>
-          <div className="list-card">
-            <strong>Location</strong>
-            <div className="small-text">
-              {inspection.port ?? "Port not recorded"}
-              {inspection.country ? ` / ${inspection.country}` : ""}
-            </div>
-          </div>
-          <div className="list-card">
-            <strong>Previous VIR link</strong>
-            <div className="small-text">
-              {inspection.previousInspection
-                ? `${inspection.previousInspection.title} / ${fmt.format(inspection.previousInspection.inspectionDate)}`
-                : "No previous VIR linked"}
-            </div>
-          </div>
-        </div>
-
-        <div className="list-card" style={{ marginTop: "1rem" }}>
-          <strong>Summary</strong>
-          <div className="small-text" style={{ marginTop: "0.5rem" }}>
-            {inspection.summary ?? "No inspection summary was recorded."}
+          <div className="report-hero-image-card">
+            {inspection.photos[0] ? (
+              <img alt={inspection.photos[0].caption ?? inspection.photos[0].fileName ?? inspection.title} src={inspection.photos[0].url} />
+            ) : (
+              <div className="report-image-placeholder">No cover image linked</div>
+            )}
           </div>
         </div>
       </section>
 
-      <section className="panel panel-elevated report-panel">
-        <div className="section-header">
-          <div>
-            <h3 className="panel-title">Findings and corrective actions</h3>
-            <p className="panel-subtitle">Observation log including carry-forward lineage and close-out activity.</p>
-          </div>
-        </div>
+      <section className="panel panel-elevated">
+        <div className="report-section-label">Executive Summary</div>
+        <p className="report-copy">
+          {inspection.summary ??
+            "Inspection summary not yet recorded. Use the workflow page to update the executive narrative before the final demo pack is exported."}
+        </p>
+      </section>
 
-        <div className="stack-list">
-          {inspection.findings.map((finding) => (
-            <div className="list-card" key={finding.id}>
-              <div className="meta-row">
-                <span className={`chip ${toneForRisk(finding.severity)}`}>{riskLabel[finding.severity]}</span>
-                <span className={`chip ${toneForFindingStatus(finding.status)}`}>{findingStatusLabel[finding.status]}</span>
+      <section className="vir-kpi-grid">
+        {outcomeRows.map((item) => (
+          <div className="panel panel-elevated vir-kpi-card" key={item.label}>
+            <div className="vir-kpi-label">{item.label}</div>
+            <div className="vir-kpi-value">{item.value}</div>
+          </div>
+        ))}
+      </section>
+
+      {selectedVariant === "detailed" ? (
+        <>
+          <section className="panel panel-elevated">
+            <div className="section-header">
+              <div>
+                <h3 className="panel-title">Chapterwise Finding</h3>
+                <p className="panel-subtitle">Summary by chapter before drilling into questionnaire rows.</p>
               </div>
-              <div className="list-card-title">{finding.title}</div>
-              <div className="small-text">{finding.description}</div>
-              {finding.carriedFromFinding ? (
-                <div className="small-text" style={{ marginTop: "0.5rem" }}>
-                  Carried forward from {finding.carriedFromFinding.inspection.title} / {finding.carriedFromFinding.title}
-                </div>
-              ) : null}
+            </div>
+            <ChapterFindingTable rows={chapterFindingRows} />
+          </section>
 
-              <div className="stack-list" style={{ marginTop: "0.75rem" }}>
-                {finding.correctiveActions.map((action) => (
-                  <div className="question-card" key={action.id}>
-                    <div className="section-header">
-                      <div>
-                        <strong>{action.actionText}</strong>
-                        <div className="small-text">
-                          {action.ownerName ?? "Owner not assigned"}
-                          {action.targetDate ? ` / target ${fmt.format(action.targetDate)}` : ""}
-                        </div>
-                      </div>
-                      <span className={`chip ${toneForCorrectiveActionStatus(action.status)}`}>
-                        {correctiveActionStatusLabel[action.status]}
-                      </span>
-                    </div>
+          <section className="page-stack">
+            {sectionRows.map((section) => (
+              <section className="panel panel-elevated report-section-panel" key={section.id}>
+                <div className="section-header">
+                  <div>
+                    <h3 className="panel-title">{section.title}</h3>
+                    <p className="panel-subtitle">
+                      {section.answeredCount}/{section.questions.length} answered / {section.findings.length} findings / {section.evidenceCount} evidence items
+                    </p>
                   </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="dashboard-grid dashboard-grid-equal">
-        <section className="panel panel-elevated report-panel">
-          <div className="section-header">
-            <div>
-              <h3 className="panel-title">Sign-off audit trail</h3>
-              <p className="panel-subtitle">Office and vessel checkpoints for the current VIR lifecycle.</p>
-            </div>
-          </div>
-
-          <div className="stack-list">
-            {inspection.signOffs.map((signOff) => (
-              <div className="list-card" key={`${signOff.stage}-${signOff.signedAt.toISOString()}`}>
-                <div className="meta-row">
-                  <span className={`chip ${signOff.approved ? "chip-success" : "chip-danger"}`}>
-                    {signOff.approved ? "Approved" : "Returned"}
-                  </span>
-                  <span className="chip chip-info">{signOff.stage.replaceAll("_", " ")}</span>
+                  <div className="mini-metrics">
+                    <span className="chip chip-info">Questions {section.questions.length}</span>
+                    <span className="chip chip-warning">Findings {section.findings.length}</span>
+                    <span className="chip chip-success">Images {section.evidenceCount}</span>
+                  </div>
                 </div>
-                <div className="small-text">{signOff.actorName ?? "Unknown actor"}</div>
-                <div className="small-text">{fmt.format(signOff.signedAt)}</div>
-                {signOff.comment ? <div className="small-text">{signOff.comment}</div> : null}
-              </div>
-            ))}
-          </div>
-        </section>
 
-        <section className="panel panel-elevated report-panel">
-          <div className="section-header">
-            <div>
-              <h3 className="panel-title">Photo evidence annex</h3>
-              <p className="panel-subtitle">Latest synced evidence for printable review and demo walkthrough.</p>
+                <table className="table data-table vir-data-table">
+                  <thead>
+                    <tr>
+                      <th>S.No</th>
+                      <th>Question</th>
+                      <th>Response</th>
+                      <th>Comments</th>
+                      <th>Reference</th>
+                      <th>Actual Upload</th>
+                      <th>Findings</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {section.questions.map((question, index) => {
+                      const answer = answerMap.get(question.id);
+                      const questionFindings = inspection.findings.filter((finding) => finding.questionId === question.id);
+                      return (
+                        <tr key={question.id}>
+                          <td>{index + 1}</td>
+                          <td>
+                            <div className="report-question-code">{question.code}</div>
+                            <div>{question.prompt}</div>
+                          </td>
+                          <td>{renderAnswerValue(answer)}</td>
+                          <td>{answer?.comment ?? "-"}</td>
+                          <td>
+                            {question.referenceImageUrl ? (
+                              <img
+                                alt={`${question.code} reference`}
+                                className="report-thumb report-thumb-reference"
+                                src={question.referenceImageUrl}
+                              />
+                            ) : (
+                              "-"
+                            )}
+                          </td>
+                          <td>
+                            <div className="report-thumb-row">
+                              {answer?.photos.slice(0, 3).map((photo) => (
+                                <img
+                                  alt={photo.caption ?? photo.fileName ?? question.code}
+                                  className="report-thumb"
+                                  key={photo.id}
+                                  src={photo.url}
+                                />
+                              ))}
+                              {!answer?.photos.length ? "-" : null}
+                            </div>
+                          </td>
+                          <td>{questionFindings.length}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </section>
+            ))}
+          </section>
+        </>
+      ) : null}
+
+      {selectedVariant === "summary" ? (
+        <section className="dashboard-grid dashboard-grid-equal">
+          <section className="panel panel-elevated">
+            <div className="section-header">
+              <div>
+                <h3 className="panel-title">Inspection Outcome</h3>
+                <p className="panel-subtitle">Quick review pack for office and management.</p>
+              </div>
             </div>
-          </div>
+            <ChapterFindingTable rows={chapterFindingRows} />
+          </section>
 
-          <div className="evidence-gallery">
-            {inspection.photos.map((photo) => (
-              <div className="evidence-card" key={photo.id}>
-                <img alt={photo.caption ?? photo.fileName ?? "Inspection evidence"} src={photo.url} />
-                <div className="list-card-title">{photo.caption ?? photo.fileName ?? "Inspection evidence"}</div>
-                <div className="small-text">{photo.uploadedBy ?? "Unknown uploader"}</div>
+          <section className="panel panel-elevated">
+            <div className="section-header">
+              <div>
+                <h3 className="panel-title">Section Summary</h3>
+                <p className="panel-subtitle">Per-chapter completion, evidence, and finding density.</p>
               </div>
-            ))}
-          </div>
+            </div>
+            <table className="table data-table vir-data-table">
+              <thead>
+                <tr>
+                  <th>Chapter Name</th>
+                  <th>Answered</th>
+                  <th>Findings</th>
+                  <th>Condition</th>
+                  <th>Section Images</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sectionRows.map((section) => (
+                  <tr key={section.id}>
+                    <td>{section.title}</td>
+                    <td>
+                      {section.answeredCount}/{section.questions.length}
+                    </td>
+                    <td>{section.findings.length}</td>
+                    <td>{section.findings.length > 0 ? "Review required" : "In Order"}</td>
+                    <td>{section.evidenceCount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
         </section>
-      </section>
+      ) : null}
+
+      {selectedVariant === "findings" ? (
+        <section className="page-stack">
+          <section className="panel panel-elevated">
+            <div className="section-header">
+              <div>
+                <h3 className="panel-title">Findings</h3>
+                <p className="panel-subtitle">Report-first view for all observations and corrective actions.</p>
+              </div>
+            </div>
+            <table className="table data-table vir-data-table">
+              <thead>
+                <tr>
+                  <th>S.No</th>
+                  <th>Checklist Question</th>
+                  <th>Desc of Finding</th>
+                  <th>Type of Finding</th>
+                  <th>Severity</th>
+                  <th>Status</th>
+                  <th>Finding Images</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inspection.findings.map((finding, index) => (
+                  <tr key={finding.id}>
+                    <td>{index + 1}</td>
+                    <td>{finding.question?.prompt ?? "General finding"}</td>
+                    <td>{finding.description}</td>
+                    <td>{finding.findingType}</td>
+                    <td>{finding.severity}</td>
+                    <td>
+                      <span className={`chip ${toneForFindingStatus(finding.status)}`}>{findingStatusLabel[finding.status]}</span>
+                    </td>
+                    <td>{finding.photos.length}</td>
+                    <td>{finding.correctiveActions.length}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+
+          <section className="page-stack">
+            {inspection.findings.map((finding) => (
+              <article className="panel panel-elevated finding-card" key={finding.id}>
+                <div className="meta-row">
+                  <span className={`chip ${toneForRisk(finding.severity)}`}>{riskLabel[finding.severity]}</span>
+                  <span className={`chip ${toneForFindingStatus(finding.status)}`}>{findingStatusLabel[finding.status]}</span>
+                  <span className="chip chip-info">{finding.findingType}</span>
+                </div>
+                <h3 className="panel-title">{finding.title}</h3>
+                <p className="report-copy">{finding.description}</p>
+                <div className="small-text">
+                  Chapter {finding.question?.section.title ?? "General"} / Checklist {finding.question?.prompt ?? "General finding"}
+                </div>
+                {finding.carriedFromFinding ? (
+                  <div className="small-text">
+                    Carry-forward from {finding.carriedFromFinding.inspection.title} / {finding.carriedFromFinding.title}
+                  </div>
+                ) : null}
+
+                <div className="report-thumb-row report-thumb-row-spacious">
+                  {finding.photos.map((photo) => (
+                    <img alt={photo.caption ?? photo.fileName ?? finding.title} className="report-thumb report-thumb-large" key={photo.id} src={photo.url} />
+                  ))}
+                  {!finding.photos.length ? <div className="small-text">No finding images linked.</div> : null}
+                </div>
+
+                <div className="stack-list">
+                  {finding.correctiveActions.map((action) => (
+                    <div className="question-card" key={action.id}>
+                      <div className="section-header">
+                        <div>
+                          <strong>{action.actionText}</strong>
+                          <div className="small-text">
+                            {action.ownerName ?? "Owner not assigned"}
+                            {action.targetDate ? ` / target ${fmt.format(action.targetDate)}` : ""}
+                          </div>
+                        </div>
+                        <span className={`chip ${toneForCorrectiveActionStatus(action.status)}`}>
+                          {correctiveActionStatusLabel[action.status]}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </section>
+        </section>
+      ) : null}
+
+      {selectedVariant === "consolidate" ? (
+        <section className="dashboard-grid dashboard-grid-equal">
+          <section className="panel panel-elevated">
+            <div className="section-header">
+              <div>
+                <h3 className="panel-title">Consolidated inspection summary</h3>
+                <p className="panel-subtitle">One-page review for management and approvers.</p>
+              </div>
+            </div>
+            <table className="table data-table vir-data-table">
+              <tbody>
+                <tr>
+                  <td>Status</td>
+                  <td>{inspectionStatusLabel[inspection.status]}</td>
+                </tr>
+                <tr>
+                  <td>Inspector</td>
+                  <td>{inspection.inspectorName ?? "Not recorded"}</td>
+                </tr>
+                <tr>
+                  <td>Location</td>
+                  <td>{[inspection.port, inspection.country].filter(Boolean).join(", ") || "Not recorded"}</td>
+                </tr>
+                <tr>
+                  <td>Open Findings</td>
+                  <td>{inspection.findings.filter((finding) => finding.status !== "CLOSED").length}</td>
+                </tr>
+                <tr>
+                  <td>Evidence</td>
+                  <td>{inspection.photos.length}</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section className="panel panel-elevated">
+            <div className="section-header">
+              <div>
+                <h3 className="panel-title">Workflow sign-off register</h3>
+                <p className="panel-subtitle">Office and vessel checkpoint audit trail.</p>
+              </div>
+            </div>
+            <div className="stack-list">
+              {inspection.signOffs.map((signOff) => (
+                <div className="list-card" key={`${signOff.stage}-${signOff.signedAt.toISOString()}`}>
+                  <div className="meta-row">
+                    <span className={`chip ${signOff.approved ? "chip-success" : "chip-danger"}`}>
+                      {signOff.approved ? "Approved" : "Returned"}
+                    </span>
+                    <span className="chip chip-info">{signOff.stage.replaceAll("_", " ")}</span>
+                  </div>
+                  <div className="small-text">{signOff.actorName ?? "Unknown actor"}</div>
+                  <div className="small-text">{fmt.format(signOff.signedAt)}</div>
+                  {signOff.comment ? <div className="small-text">{signOff.comment}</div> : null}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="panel panel-elevated">
+            <div className="section-header">
+              <div>
+                <h3 className="panel-title">Section review matrix</h3>
+                <p className="panel-subtitle">Condensed chapter-level readiness and evidence coverage.</p>
+              </div>
+            </div>
+            <ChapterFindingTable rows={chapterFindingRows} />
+          </section>
+
+          <section className="panel panel-elevated">
+            <div className="section-header">
+              <div>
+                <h3 className="panel-title">Photo annex</h3>
+                <p className="panel-subtitle">Branded evidence set for demo export and review.</p>
+              </div>
+            </div>
+            <div className="report-thumb-row report-thumb-row-spacious">
+              {inspection.photos.map((photo) => (
+                <img alt={photo.caption ?? photo.fileName ?? inspection.title} className="report-thumb report-thumb-large" key={photo.id} src={photo.url} />
+              ))}
+              {!inspection.photos.length ? <div className="small-text">No inspection-level photos linked.</div> : null}
+            </div>
+          </section>
+        </section>
+      ) : null}
     </div>
   );
 }
 
-function MetricTile({ label, note, value }: { label: string; note: string; value: string }) {
+function normalizeVariant(value: string | undefined): ReportVariant {
+  return reportVariants.some((item) => item.id === value) ? (value as ReportVariant) : "detailed";
+}
+
+function inferInspectionMode(title: string, inspectionTypeName: string) {
+  const source = `${title} ${inspectionTypeName}`.toUpperCase();
+
+  if (source.includes("SAILING")) {
+    return source.includes("REMOTE") ? "Sailing (Remote)" : "Sailing";
+  }
+
+  if (source.includes("PORT")) {
+    return source.includes("REMOTE") ? "Port (Remote)" : "Port";
+  }
+
+  return "Sailing";
+}
+
+function hasRecordedAnswer(answer: {
+  answerText: string | null;
+  answerNumber: number | null;
+  answerBoolean: boolean | null;
+  answerDate: Date | null;
+  selectedOptions: unknown;
+}) {
+  return Boolean(
+    answer.answerText ||
+      answer.answerNumber !== null ||
+      answer.answerBoolean !== null ||
+      answer.answerDate ||
+      (Array.isArray(answer.selectedOptions) && answer.selectedOptions.length > 0)
+  );
+}
+
+function renderAnswerValue(
+  answer:
+    | {
+        answerText: string | null;
+        answerNumber: number | null;
+        answerBoolean: boolean | null;
+        answerDate: Date | null;
+        selectedOptions: unknown;
+      }
+    | undefined
+) {
+  if (!answer) {
+    return "Pending";
+  }
+
+  if (Array.isArray(answer.selectedOptions) && answer.selectedOptions.length > 0) {
+    return answer.selectedOptions.join(", ");
+  }
+
+  if (answer.answerBoolean !== null) {
+    return answer.answerBoolean ? "Yes" : "No";
+  }
+
+  if (answer.answerNumber !== null) {
+    return `${answer.answerNumber}`;
+  }
+
+  if (answer.answerDate) {
+    return fmt.format(answer.answerDate);
+  }
+
+  return answer.answerText ?? "Pending";
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="metric-tile metric-tile-static">
-      <div className="metric-tile-label">{label}</div>
-      <div className="metric-tile-value">{value}</div>
-      <div className="metric-tile-note">{note}</div>
+    <div className="detail-row">
+      <div className="detail-row-label">{label}</div>
+      <div className="detail-row-value">{value}</div>
     </div>
+  );
+}
+
+function ChapterFindingTable({
+  rows,
+}: {
+  rows: Array<{ chapter: string; high: number; medium: number; low: number; total: number }>;
+}) {
+  return (
+    <table className="table data-table vir-data-table">
+      <thead>
+        <tr>
+          <th>Chapter</th>
+          <th>High</th>
+          <th>Medium</th>
+          <th>Low</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.length ? (
+          rows.map((row) => (
+            <tr key={row.chapter}>
+              <td>{row.chapter}</td>
+              <td>{row.high}</td>
+              <td>{row.medium}</td>
+              <td>{row.low}</td>
+              <td>{row.total}</td>
+            </tr>
+          ))
+        ) : (
+          <tr>
+            <td colSpan={5}>No chapter-level findings recorded.</td>
+          </tr>
+        )}
+      </tbody>
+    </table>
   );
 }

@@ -1,11 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { buildBrandedPdfDocument } from "@/lib/vir/pdf";
 import { prisma } from "@/lib/prisma";
 import { canAccessVessel, getVirSession } from "@/lib/vir/session";
 
-export async function GET(_: Request, context: { params: Promise<{ inspectionId: string }> }) {
+export async function GET(request: NextRequest, context: { params: Promise<{ inspectionId: string }> }) {
   const session = await getVirSession();
   const { inspectionId } = await context.params;
+  const variant = request.nextUrl.searchParams.get("variant") ?? "detailed";
 
   if (!session) {
     return NextResponse.json({ error: "Authentication is required." }, { status: 401 });
@@ -37,7 +38,7 @@ export async function GET(_: Request, context: { params: Promise<{ inspectionId:
 
   const pdf = buildBrandedPdfDocument({
     brand: "Atlantas Marine / PMSLink QHSE",
-    title: `Inspection Report - ${inspection.title}`,
+    title: `${variantLabel(variant)} - ${inspection.title}`,
     subtitleLines: [
       `${inspection.vessel.name} / ${inspection.inspectionType.name}`,
       `${inspection.inspectionDate.toISOString().slice(0, 10)} / ${inspection.port ?? "Port not recorded"} / ${inspection.country ?? "Country not recorded"}`,
@@ -98,8 +99,21 @@ export async function GET(_: Request, context: { params: Promise<{ inspectionId:
 
   return new NextResponse(pdf, {
     headers: {
-      "Content-Disposition": `attachment; filename="inspection-${inspection.id}.pdf"`,
+      "Content-Disposition": `attachment; filename="inspection-${variant}-${inspection.id}.pdf"`,
       "Content-Type": "application/pdf",
     },
   });
+}
+
+function variantLabel(variant: string) {
+  switch (variant) {
+    case "summary":
+      return "Summary Report";
+    case "findings":
+      return "Finding Report";
+    case "consolidate":
+      return "Consolidate Report";
+    default:
+      return "Detailed Report";
+  }
 }
