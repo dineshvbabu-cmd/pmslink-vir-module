@@ -9,6 +9,7 @@ import {
   updateFindingStatusAction,
   updateInspectionStatusAction,
 } from "@/app/actions";
+import { ActivityFeed } from "@/components/activity-feed";
 import { EvidenceSyncPanel } from "@/components/evidence-sync-panel";
 import { QuestionEvidenceInline } from "@/components/question-evidence-inline";
 import { SubmitButton } from "@/components/submit-button";
@@ -30,9 +31,16 @@ export const dynamic = "force-dynamic";
 
 const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 
-export default async function InspectionDetailPage({ params }: { params: Promise<{ inspectionId: string }> }) {
+export default async function InspectionDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ inspectionId: string }>;
+  searchParams: Promise<{ pane?: string; section?: string }>;
+}) {
   const session = await requireVirSession();
   const { inspectionId } = await params;
+  const { pane, section } = await searchParams;
 
   const inspection = await prisma.virInspection.findUnique({
     where: { id: inspectionId },
@@ -117,11 +125,20 @@ export default async function InspectionDetailPage({ params }: { params: Promise
   const concentratedQuestions = questions.filter((question) => question.isCicCandidate);
   const sectionNavigation =
     inspection.template?.sections.map((section, index) => ({
+      sectionId: section.id,
       id: `section-${index + 1}-${slugify(section.title)}`,
       title: section.title,
       questionCount: section.questions.length,
       mandatoryCount: section.questions.filter((question) => question.isMandatory).length,
     })) ?? [];
+  const activePane = normalizeInspectionPane(pane);
+  const selectedSectionId =
+    section && inspection.template?.sections.some((item) => item.id === section)
+      ? section
+      : inspection.template?.sections[0]?.id ?? null;
+  const selectedSection =
+    inspection.template?.sections.find((item) => item.id === selectedSectionId) ?? inspection.template?.sections[0] ?? null;
+  const activityItems = buildInspectionActivity(inspection);
 
   const saveAnswers = saveInspectionAnswersAction.bind(null, inspection.id);
   const addFinding = addFindingAction.bind(null, inspection.id);
@@ -219,25 +236,87 @@ export default async function InspectionDetailPage({ params }: { params: Promise
         <MetricBox label="Evidence" value={`${inspection.photos.length}`} note="Synced photo records" />
       </section>
 
-      <section className="detail-grid">
-        <div className="page-stack">
+      <section className="workspace-console-shell">
+        <aside className="workspace-console-rail">
           <section className="panel panel-elevated">
-            <div className="section-jump-bar">
-              <a className="filter-chip filter-chip-active" href="#questionnaire">
-                Questionnaire
-              </a>
-              <a className="filter-chip" href="#findings">
-                Findings
-              </a>
-              <a className="filter-chip" href="#evidence">
-                Evidence
-              </a>
-              <a className="filter-chip" href="#signoff">
-                Sign-off
-              </a>
+            <div className="section-header">
+              <div>
+                <div className="eyebrow">Inspection workspace</div>
+                <h3 className="panel-title">Work lanes</h3>
+              </div>
+            </div>
+            <div className="stack-list">
+              {[
+                { id: "questionnaire", label: "Questionnaire", note: `${templateQuestionCount} questions` },
+                { id: "findings", label: "Findings", note: `${inspection.findings.length} active items` },
+                { id: "evidence", label: "Evidence", note: `${inspection.photos.length} synced images` },
+                { id: "signoff", label: "Sign-off", note: `${inspection.signOffs.length} workflow records` },
+                { id: "activity", label: "Activity", note: `${activityItems.length} timeline events` },
+              ].map((item) => (
+                <Link
+                  className={`section-nav-link ${activePane === item.id ? "section-nav-link-active" : ""}`}
+                  href={`/inspections/${inspection.id}?pane=${item.id}${selectedSectionId ? `&section=${selectedSectionId}` : ""}`}
+                  key={item.id}
+                >
+                  <span>{item.label}</span>
+                  <span className="small-text">{item.note}</span>
+                </Link>
+              ))}
             </div>
           </section>
 
+          <section className="panel panel-elevated">
+            <h3 className="panel-title">Inspection metadata</h3>
+            <div className="stack-list" style={{ marginTop: "1rem" }}>
+              <div className="list-card">
+                <strong>Inspection / checklist / questionnaire</strong>
+                <div className="small-text">{inspection.inspectionType.name}</div>
+                <div className="small-text">
+                  {inspection.template ? `${inspection.template.name} / v${inspection.template.version}` : "No template attached"}
+                </div>
+                <div className="small-text">
+                  {inspection.template?.sections.length ?? 0} sections / {templateQuestionCount} questions
+                </div>
+              </div>
+              <div className="list-card">
+                <strong>Inspector / operator</strong>
+                <div className="small-text">{inspection.inspectorName ?? "Not recorded"}</div>
+              </div>
+              <div className="list-card">
+                <strong>Reference</strong>
+                <div className="small-text">{inspection.externalReference ?? "Not recorded"}</div>
+              </div>
+              {sectionNavigation.length ? (
+                <div className="list-card">
+                  <strong>Questionnaire navigation</strong>
+                  <div className="stack-list" style={{ marginTop: "0.75rem" }}>
+                    {sectionNavigation.map((sectionItem) => (
+                      <Link
+                        className={`section-nav-link ${selectedSectionId === sectionItem.sectionId ? "section-nav-link-active" : ""}`}
+                        href={`/inspections/${inspection.id}?pane=questionnaire&section=${sectionItem.sectionId}`}
+                        key={sectionItem.id}
+                      >
+                        <span>{sectionItem.title}</span>
+                        <span className="small-text">
+                          {sectionItem.questionCount} q / {sectionItem.mandatoryCount} mandatory
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </section>
+
+          <ActivityFeed
+            items={activityItems}
+            subtitle="Office and vessel actions across questionnaire, findings, evidence, and sign-off."
+            title="Inspection activity"
+          />
+        </aside>
+
+        <div className="workspace-console-main">
+          {activePane === "questionnaire" ? (
           <section className="panel panel-elevated" id="questionnaire">
             <div className="section-header">
               <div>
@@ -274,33 +353,31 @@ export default async function InspectionDetailPage({ params }: { params: Promise
                   </div>
                 ) : null}
 
-                {inspection.template.sections.map((section, sectionIndex) => (
-                  <details
-                    className="question-section question-section-accordion"
-                    id={sectionNavigation[sectionIndex]?.id}
-                    key={section.id}
-                    open={sectionIndex < 2}
-                  >
-                    <summary className="question-section-summary">
+                {selectedSection ? (
+                  <section className="workspace-detail-frame">
+                    <div className="workspace-detail-header">
                       <div>
-                        <strong>{section.title}</strong>
+                        <h4 className="section-title">{selectedSection.title}</h4>
                         <div className="small-text">
-                          {section.questions.length} questions /{" "}
-                          {section.questions.filter((question) => question.isMandatory).length} mandatory
+                          {selectedSection.questions.length} questions /{" "}
+                          {selectedSection.questions.filter((question) => question.isMandatory).length} mandatory /{" "}
+                          {selectedSection.questions.filter((question) => question.isCicCandidate).length} CIR focus
                         </div>
                       </div>
                       <div className="meta-row">
-                        <span className="chip chip-info">{section.code ?? "SECTION"}</span>
-                        {section.questions.some((question) => question.isCicCandidate) ? (
-                          <span className="chip chip-danger">CIR focus in section</span>
-                        ) : null}
+                        <span className="chip chip-info">{selectedSection.code ?? "SECTION"}</span>
+                        <span className="chip chip-success">
+                          Section {inspection.template.sections.findIndex((item) => item.id === selectedSection.id) + 1} of{" "}
+                          {inspection.template.sections.length}
+                        </span>
                       </div>
-                    </summary>
+                    </div>
 
-                    {section.guidance ? <p className="small-text" style={{ marginTop: "0.8rem" }}>{section.guidance}</p> : null}
+                    {selectedSection.guidance ? <p className="small-text">{selectedSection.guidance}</p> : null}
 
-                    <div className="stack-list" style={{ marginTop: "0.85rem" }}>
-                      {[...section.questions]
+                    <div className="question-list-viewport" style={{ marginTop: "1rem" }}>
+                      <div className="stack-list">
+                      {[...selectedSection.questions]
                         .sort((a, b) => Number(b.isCicCandidate) - Number(a.isCicCandidate) || a.sortOrder - b.sortOrder)
                         .map((question) => {
                           const answer = answerMap.get(question.id);
@@ -397,15 +474,20 @@ export default async function InspectionDetailPage({ params }: { params: Promise
                             </div>
                           );
                         })}
+                      </div>
                     </div>
-                  </details>
-                ))}
+                  </section>
+                ) : (
+                  <div className="empty-state">No questionnaire section is currently available.</div>
+                )}
 
                 {isVesselSession(session) ? <SubmitButton className="btn">Save questionnaire answers</SubmitButton> : null}
               </form>
             )}
           </section>
+          ) : null}
 
+          {activePane === "findings" ? (
           <section className="panel panel-elevated" id="findings">
             <div className="section-header">
               <div>
@@ -588,7 +670,9 @@ export default async function InspectionDetailPage({ params }: { params: Promise
               )}
             </div>
           </section>
+          ) : null}
 
+          {activePane === "evidence" ? (
           <div id="evidence">
             <EvidenceSyncPanel
               canUpload={isVesselSession(session)}
@@ -605,72 +689,33 @@ export default async function InspectionDetailPage({ params }: { params: Promise
               questionOptions={questionOptions}
             />
           </div>
-        </div>
+          ) : null}
 
-        <div className="page-stack">
-          <section className="panel panel-elevated sticky-panel">
-            <h3 className="panel-title">Inspection metadata</h3>
-            <div className="stack-list" style={{ marginTop: "1rem" }}>
-              <div className="list-card">
-                <strong>Inspection / checklist / questionnaire</strong>
-                <div className="small-text">{inspection.inspectionType.name}</div>
-                <div className="small-text">
-                  {inspection.template ? `${inspection.template.name} / v${inspection.template.version}` : "No template attached"}
-                </div>
-                <div className="small-text">
-                  {inspection.template?.sections.length ?? 0} sections / {templateQuestionCount} questions
-                </div>
-              </div>
-              <div className="list-card">
-                <strong>Inspector / operator</strong>
-                <div className="small-text">{inspection.inspectorName ?? "Not recorded"}</div>
-              </div>
-              <div className="list-card">
-                <strong>Authority / company</strong>
-                <div className="small-text">{inspection.inspectorCompany ?? "Not recorded"}</div>
-              </div>
-              <div className="list-card">
-                <strong>Reference</strong>
-                <div className="small-text">{inspection.externalReference ?? "Not recorded"}</div>
-              </div>
-              <div className="list-card">
-                <strong>Previous VIR</strong>
-                <div className="small-text">
-                  {inspection.previousInspection
-                    ? `${inspection.previousInspection.title} / ${fmt.format(inspection.previousInspection.inspectionDate)}`
-                    : "No prior linked inspection"}
-                </div>
-              </div>
-              <div className="list-card">
-                <strong>Summary</strong>
-                <div className="small-text">{inspection.summary ?? "No summary captured yet."}</div>
-              </div>
-              {sectionNavigation.length ? (
-                <div className="list-card">
-                  <strong>Questionnaire navigation</strong>
-                  <div className="stack-list" style={{ marginTop: "0.75rem" }}>
-                    {sectionNavigation.map((section) => (
-                      <a className="section-nav-link" href={`#${section.id}`} key={section.id}>
-                        <span>{section.title}</span>
-                        <span className="small-text">
-                          {section.questionCount} q / {section.mandatoryCount} mandatory
-                        </span>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </section>
-
+          {activePane === "signoff" ? (
           <section className="panel panel-elevated" id="signoff">
             <div className="section-header">
               <div>
                 <h3 className="panel-title">Sign-off trail</h3>
                 <p className="panel-subtitle">
-                  Separate vessel and office approvals are captured here before final closure.
+                  Interactive workflow board for vessel submission, office review, and final acknowledgement before closure.
                 </p>
               </div>
+            </div>
+
+            <div className="signoff-stage-grid">
+              {buildSignoffStages(inspection.signOffs).map((stage) => (
+                <div className="list-card signoff-stage-card" key={stage.key}>
+                  <div className="meta-row">
+                    <span className={`chip ${stage.approved ? "chip-success" : stage.present ? "chip-warning" : "chip-muted"}`}>
+                      {stage.approved ? "Approved" : stage.present ? "Captured" : "Pending"}
+                    </span>
+                    <span className="chip chip-info">{stage.label}</span>
+                  </div>
+                  <div className="list-card-title">{stage.actor ?? "Awaiting action"}</div>
+                  <div className="small-text">{stage.comment ?? "No note recorded yet."}</div>
+                  <div className="small-text">{stage.timeLabel ?? "No timestamp yet."}</div>
+                </div>
+              ))}
             </div>
 
             <form action={addSignOff} className="form-grid" style={{ marginBottom: "1rem" }}>
@@ -729,6 +774,15 @@ export default async function InspectionDetailPage({ params }: { params: Promise
               )}
             </div>
           </section>
+          ) : null}
+
+          {activePane === "activity" ? (
+            <ActivityFeed
+              items={activityItems}
+              subtitle="Role-aware timeline of actions across the inspection."
+              title="Inspection activity feed"
+            />
+          ) : null}
         </div>
       </section>
     </div>
@@ -747,6 +801,128 @@ function MetricBox({ label, value, note }: { label: string; value: string; note:
 
 function slugify(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function normalizeInspectionPane(value: string | undefined) {
+  if (value === "findings" || value === "evidence" || value === "signoff" || value === "activity") {
+    return value;
+  }
+
+  return "questionnaire";
+}
+
+function buildSignoffStages(
+  signOffs: Array<{
+    stage: string;
+    approved: boolean;
+    actorName: string | null;
+    comment: string | null;
+    signedAt: Date;
+  }>
+) {
+  const stageOrder = [
+    { key: "VESSEL_SUBMISSION", label: "Vessel submission" },
+    { key: "SHORE_REVIEW", label: "Office review" },
+    { key: "FINAL_ACKNOWLEDGEMENT", label: "Vessel final acknowledgement" },
+  ];
+
+  return stageOrder.map((stage) => {
+    const latest = signOffs.find((record) => record.stage === stage.key) ?? null;
+    return {
+      ...stage,
+      present: Boolean(latest),
+      approved: Boolean(latest?.approved),
+      actor: latest?.actorName ?? null,
+      comment: latest?.comment ?? null,
+      timeLabel: latest ? fmt.format(latest.signedAt) : null,
+    };
+  });
+}
+
+function buildInspectionActivity(
+  inspection: {
+    id: string;
+    title: string;
+    createdAt: Date;
+    updatedAt: Date;
+    inspectorName: string | null;
+    status: string;
+    answers: Array<{ id: string; questionId: string; answeredBy: string | null; answeredAt: Date | null; updatedAt?: Date }>;
+    findings: Array<{
+      id: string;
+      title: string;
+      ownerName: string | null;
+      createdAt: Date;
+      status: string;
+      correctiveActions: Array<{ id: string; actionText: string; ownerName: string | null; createdAt: Date; status: string }>;
+    }>;
+    signOffs: Array<{ id: string; stage: string; actorName: string | null; approved: boolean; signedAt: Date }>;
+    photos: Array<{ id: string; caption: string | null; uploadedBy: string | null; createdAt: Date }>;
+  }
+) {
+  const items = [
+    {
+      id: `${inspection.id}-created`,
+      title: "Inspection created",
+      detail: `${inspection.title} entered the VIR workflow.`,
+      timeLabel: fmt.format(inspection.createdAt),
+      actor: inspection.inspectorName,
+      tone: "success" as const,
+    },
+    {
+      id: `${inspection.id}-status`,
+      title: "Latest inspection status",
+      detail: inspection.status.replaceAll("_", " "),
+      timeLabel: fmt.format(inspection.updatedAt),
+      tone: "info" as const,
+    },
+    ...inspection.answers
+      .filter((answer) => answer.answeredAt)
+      .map((answer) => ({
+        id: answer.id,
+        title: "Questionnaire answer saved",
+        detail: `Question ${answer.questionId} updated.`,
+        timeLabel: fmt.format(answer.answeredAt ?? inspection.updatedAt),
+        actor: answer.answeredBy,
+        tone: "info" as const,
+      })),
+    ...inspection.findings.flatMap((finding) => [
+      {
+        id: finding.id,
+        title: "Finding raised",
+        detail: `${finding.title} / ${finding.status.replaceAll("_", " ")}`,
+        timeLabel: fmt.format(finding.createdAt),
+        actor: finding.ownerName,
+        tone: "warning" as const,
+      },
+      ...finding.correctiveActions.map((action) => ({
+        id: action.id,
+        title: "Corrective action updated",
+        detail: `${action.actionText} / ${action.status.replaceAll("_", " ")}`,
+        timeLabel: fmt.format(action.createdAt),
+        actor: action.ownerName,
+        tone: action.status === "VERIFIED" ? ("success" as const) : ("info" as const),
+      })),
+    ]),
+    ...inspection.signOffs.map((signOff) => ({
+      id: signOff.id,
+      title: signOff.approved ? "Sign-off approved" : "Sign-off returned",
+      detail: signOff.stage.replaceAll("_", " "),
+      timeLabel: fmt.format(signOff.signedAt),
+      actor: signOff.actorName,
+      tone: signOff.approved ? ("success" as const) : ("danger" as const),
+    })),
+    ...inspection.photos.map((photo) => ({
+      id: photo.id,
+      title: "Evidence synced",
+      detail: photo.caption ?? "Inspection evidence uploaded.",
+      timeLabel: fmt.format(photo.createdAt),
+      actor: photo.uploadedBy,
+      tone: "info" as const,
+    })),
+  ];
+
+  return items.sort((left, right) => right.timeLabel.localeCompare(left.timeLabel)).slice(0, 80);
 }
 
 function QuestionInput({

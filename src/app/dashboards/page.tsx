@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CompactBarChart, DonutChart, TrendLineChart } from "@/components/erp-charts";
 import { prisma } from "@/lib/prisma";
 import { calculateInspectionScore } from "@/lib/vir/analytics";
 import {
@@ -12,6 +13,7 @@ import { inspectionStatusLabel, toneForInspectionStatus } from "@/lib/vir/workfl
 export const dynamic = "force-dynamic";
 
 type BoardKey = "overview" | "tmsa" | "class" | "psc-sire";
+type RangeKey = "30" | "90" | "180" | "365";
 
 const boardOptions: Array<{ key: BoardKey; label: string }> = [
   { key: "overview", label: "Fleet / vessel overview" },
@@ -26,10 +28,12 @@ function toSearchParams({
   board,
   scope,
   vesselCode,
+  range,
 }: {
   board: BoardKey;
   scope?: string | null;
   vesselCode?: string | null;
+  range?: string | null;
 }) {
   const params = new URLSearchParams();
   params.set("board", board);
@@ -40,6 +44,10 @@ function toSearchParams({
 
   if (vesselCode) {
     params.set("vesselCode", vesselCode);
+  }
+
+  if (range) {
+    params.set("range", range);
   }
 
   return `/dashboards?${params.toString()}`;
@@ -53,6 +61,7 @@ export default async function DashboardBoardsPage({
   const session = await requireVirSession();
   const params = await searchParams;
   const board = normalizeBoard(params.board);
+  const range = normalizeRange(typeof params.range === "string" ? params.range : undefined);
   const scope = typeof params.scope === "string" ? params.scope : null;
   const requestedVesselCode = typeof params.vesselCode === "string" ? params.vesselCode : null;
   const defaultScopedCodes = defaultDashboardScopedVesselCodes(session);
@@ -67,7 +76,7 @@ export default async function DashboardBoardsPage({
 
   const now = new Date();
   const sinceDate = new Date();
-  sinceDate.setDate(now.getDate() - 180);
+  sinceDate.setDate(now.getDate() - Number(range));
   const dueSoonDate = new Date();
   dueSoonDate.setDate(now.getDate() + 45);
 
@@ -301,7 +310,7 @@ export default async function DashboardBoardsPage({
           {boardOptions.map((option) => (
             <Link
               className={`board-tab ${board === option.key ? "board-tab-active" : ""}`}
-              href={toSearchParams({ board: option.key, scope, vesselCode: requestedVesselCode })}
+              href={toSearchParams({ board: option.key, scope, vesselCode: requestedVesselCode, range })}
               key={option.key}
             >
               {option.label}
@@ -311,16 +320,25 @@ export default async function DashboardBoardsPage({
 
         <div className="filter-toolbar" style={{ marginTop: "1rem" }}>
           <div className="filter-chips">
+            {(["30", "90", "180", "365"] as RangeKey[]).map((option) => (
+              <Link
+                className={`filter-chip ${range === option ? "filter-chip-active" : ""}`}
+                href={toSearchParams({ board, scope, vesselCode: requestedVesselCode, range: option })}
+                key={option}
+              >
+                {option}d
+              </Link>
+            ))}
             <Link
               className={`filter-chip ${!requestedVesselCode ? "filter-chip-active" : ""}`}
-              href={toSearchParams({ board, scope, vesselCode: null })}
+              href={toSearchParams({ board, scope, vesselCode: null, range })}
             >
               All visible vessels
             </Link>
             {vessels.map((vessel) => (
               <Link
                 className={`filter-chip ${requestedVesselCode === vessel.code ? "filter-chip-active" : ""}`}
-                href={toSearchParams({ board, scope, vesselCode: vessel.code })}
+                href={toSearchParams({ board, scope, vesselCode: vessel.code, range })}
                 key={vessel.code}
               >
                 {vessel.name}
@@ -332,19 +350,32 @@ export default async function DashboardBoardsPage({
             <div className="filter-chips">
               <Link
                 className={`filter-chip ${!showExpandedScope ? "filter-chip-active" : ""}`}
-                href={toSearchParams({ board, scope: "default", vesselCode: requestedVesselCode })}
+                href={toSearchParams({ board, scope: "default", vesselCode: requestedVesselCode, range })}
               >
                 Assigned scope
               </Link>
               <Link
                 className={`filter-chip ${showExpandedScope ? "filter-chip-active" : ""}`}
-                href={toSearchParams({ board, scope: "all", vesselCode: requestedVesselCode })}
+                href={toSearchParams({ board, scope: "all", vesselCode: requestedVesselCode, range })}
               >
                 Expand to fleet
               </Link>
             </div>
           ) : null}
         </div>
+      </section>
+
+      <section className="dashboard-grid dashboard-grid-equal">
+        <TrendLineChart
+          points={buildInspectionTrend(filteredInspections, Number(range))}
+          subtitle={`Inspection activity trend over the last ${range} days.`}
+          title="Inspection trend"
+        />
+        <DonutChart
+          segments={buildStatusSegments(filteredInspections)}
+          subtitle="Live status mix in the current board scope."
+          title="Status distribution"
+        />
       </section>
 
       {board === "overview" ? (
@@ -444,6 +475,27 @@ export default async function DashboardBoardsPage({
               </div>
             </section>
           </section>
+
+          <section className="dashboard-grid dashboard-grid-equal">
+            <CompactBarChart
+              bars={latestByVessel.slice(0, 8).map((row) => ({
+                label: row.vessel.name,
+                value: row.openFindings,
+                note: `Critical ${row.criticalFindings} / score ${row.averageScore ?? "n/a"}`,
+              }))}
+              subtitle="Open issue concentration by vessel."
+              title="Fleet exposure bars"
+            />
+            <CompactBarChart
+              bars={buildInspectionFamilySummary(inspectionScores).slice(0, 8).map((family) => ({
+                label: family.label,
+                value: family.count,
+                note: `Findings ${family.findings} / score ${family.score ?? "n/a"}`,
+              }))}
+              subtitle="Inspection family volume in the selected range."
+              title="Inspection family mix"
+            />
+          </section>
         </>
       ) : null}
 
@@ -530,6 +582,27 @@ export default async function DashboardBoardsPage({
               </div>
             </section>
           </section>
+
+          <section className="dashboard-grid dashboard-grid-equal">
+            <CompactBarChart
+              bars={buildTmsaMatrix(tmsaInspections).map((item) => ({
+                label: item.title,
+                value: item.score,
+                note: item.note,
+              }))}
+              subtitle="TMSA element readiness at a glance."
+              title="TMSA readiness bars"
+            />
+            <DonutChart
+              segments={[
+                { label: "Approved", value: tmsaInspections.filter((item) => ["SHORE_REVIEWED", "CLOSED"].includes(item.inspection.status)).length, className: "donut-segment-success" },
+                { label: "In progress", value: tmsaInspections.filter((item) => ["DRAFT", "RETURNED", "SUBMITTED"].includes(item.inspection.status)).length, className: "donut-segment-warning" },
+                { label: "Open gaps", value: tmsaInspections.reduce((sum, item) => sum + item.inspection.findings.length, 0), className: "donut-segment-danger" },
+              ]}
+              subtitle="TMSA workflow distribution in the selected timeline."
+              title="TMSA workflow pie"
+            />
+          </section>
         </>
       ) : null}
 
@@ -615,6 +688,23 @@ export default async function DashboardBoardsPage({
                 ))}
               </div>
             </section>
+          </section>
+
+          <section className="dashboard-grid dashboard-grid-equal">
+            <CompactBarChart
+              bars={latestByVessel.slice(0, 8).map((row) => ({
+                label: row.vessel.name,
+                value: row.criticalFindings + row.openFindings,
+                note: `Critical ${row.criticalFindings} / review ${row.openFindings}`,
+              }))}
+              subtitle="Class/statutory burden by vessel."
+              title="Class burden bars"
+            />
+            <TrendLineChart
+              points={buildInspectionTrend(classInspections.map((item) => item.inspection), Number(range))}
+              subtitle={`Class and statutory inspection volume over the last ${range} days.`}
+              title="Class trend"
+            />
           </section>
         </>
       ) : null}
@@ -725,6 +815,27 @@ export default async function DashboardBoardsPage({
               </div>
             </section>
           </section>
+
+          <section className="dashboard-grid dashboard-grid-equal">
+            <CompactBarChart
+              bars={buildInspectionFamilySummary(pscSireInspections).map((family) => ({
+                label: family.label,
+                value: family.cicCount,
+                note: `${family.count} inspections / findings ${family.findings}`,
+              }))}
+              subtitle="Concentrated-topic intensity by inspection family."
+              title="CIR focus bars"
+            />
+            <DonutChart
+              segments={[
+                { label: "PSC", value: pscSireInspections.filter((item) => item.inspection.inspectionType.category === "PSC").length, className: "donut-segment-info" },
+                { label: "Vetting", value: pscSireInspections.filter((item) => item.inspection.inspectionType.category === "VETTING").length, className: "donut-segment-success" },
+                { label: "Critical findings", value: pscSireInspections.reduce((sum, item) => sum + item.inspection.findings.filter((finding) => finding.severity === "CRITICAL").length, 0), className: "donut-segment-danger" },
+              ]}
+              subtitle="PSC/SIRE/vetting mix in the selected range."
+              title="PSC / SIRE pie"
+            />
+          </section>
         </>
       ) : null}
 
@@ -781,6 +892,14 @@ function normalizeBoard(value: string | string[] | undefined): BoardKey {
   }
 
   return "overview";
+}
+
+function normalizeRange(value: string | undefined): RangeKey {
+  if (value === "30" || value === "90" || value === "365") {
+    return value;
+  }
+
+  return "180";
 }
 
 function average(values: number[]) {
@@ -856,6 +975,56 @@ function buildInspectionFamilySummary(
     cicCount: value.cicCount,
     score: average(value.scoreValues),
   }));
+}
+
+function buildInspectionTrend(
+  inspections: Array<{
+    inspectionDate: Date;
+  }>,
+  rangeDays: number
+) {
+  const bucketCount = Math.min(8, Math.max(4, Math.round(rangeDays / 30)));
+  const bucketSize = Math.max(1, Math.round(rangeDays / bucketCount));
+  const now = new Date();
+  const buckets = Array.from({ length: bucketCount }, (_, index) => {
+    const bucketStart = new Date(now);
+    bucketStart.setDate(now.getDate() - rangeDays + index * bucketSize);
+    const bucketEnd = new Date(bucketStart);
+    bucketEnd.setDate(bucketStart.getDate() + bucketSize);
+
+    return {
+      label: bucketStart.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }),
+      value: inspections.filter((inspection) => inspection.inspectionDate >= bucketStart && inspection.inspectionDate < bucketEnd).length,
+    };
+  });
+
+  return buckets;
+}
+
+function buildStatusSegments(
+  inspections: Array<{
+    status: string;
+  }>
+) {
+  const groups = [
+    {
+      label: "Draft / return",
+      value: inspections.filter((inspection) => ["DRAFT", "RETURNED"].includes(inspection.status)).length,
+      className: "donut-segment-warning",
+    },
+    {
+      label: "Submitted / review",
+      value: inspections.filter((inspection) => ["SUBMITTED", "SHORE_REVIEWED"].includes(inspection.status)).length,
+      className: "donut-segment-info",
+    },
+    {
+      label: "Closed",
+      value: inspections.filter((inspection) => inspection.status === "CLOSED").length,
+      className: "donut-segment-success",
+    },
+  ];
+
+  return groups;
 }
 
 function MetricTile({ label, note, value }: { label: string; note: string; value: number | string | null }) {

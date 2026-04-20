@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ExternalReportConsole } from "@/app/imports/external-report-console";
 import { TemplateImportConsole } from "@/app/imports/template-import-console";
+import { ActivityFeed } from "@/components/activity-feed";
 import { prisma } from "@/lib/prisma";
 import { isOfficeSession, requireVirSession } from "@/lib/vir/session";
 
@@ -11,7 +12,7 @@ const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", y
 export default async function ImportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ session?: string }>;
+  searchParams: Promise<{ session?: string; section?: string }>;
 }) {
   const currentSession = await requireVirSession();
 
@@ -34,7 +35,7 @@ export default async function ImportsPage({
     );
   }
 
-  const { session } = await searchParams;
+  const { session, section } = await searchParams;
 
   const sessions = await prisma.virImportSession.findMany({
     orderBy: { createdAt: "desc" },
@@ -48,6 +49,14 @@ export default async function ImportsPage({
   });
   const selectedSession = session ? sessions.find((record) => record.id === session) ?? null : sessions[0] ?? null;
   const selectedPayload = unwrapTemplatePayload(selectedSession?.payload);
+  const sectionCodes = selectedPayload?.template.sections.map((item) => item.code) ?? [];
+  const selectedSectionCode =
+    section && sectionCodes.includes(section) ? section : selectedPayload?.template.sections[0]?.code ?? null;
+  const selectedSection =
+    selectedPayload?.template.sections.find((item) => item.code === selectedSectionCode) ??
+    selectedPayload?.template.sections[0] ??
+    null;
+  const sessionActivity = selectedSession ? buildImportActivity(selectedSession) : [];
 
   return (
     <div className="page-stack">
@@ -55,7 +64,38 @@ export default async function ImportsPage({
       <ExternalReportConsole />
 
       {selectedSession && selectedPayload ? (
-        <section className="panel panel-elevated">
+        <section className="workspace-console-shell">
+          <aside className="workspace-console-rail">
+            <section className="panel panel-elevated">
+              <div className="section-header">
+                <div>
+                  <div className="eyebrow">Import navigator</div>
+                  <h2 className="panel-title">Checklist review lanes</h2>
+                </div>
+              </div>
+
+              <div className="stack-list">
+                {selectedPayload.template.sections.map((item) => (
+                  <Link
+                    className={`section-nav-link ${item.code === selectedSectionCode ? "section-nav-link-active" : ""}`}
+                    href={`/imports?session=${selectedSession.id}&section=${item.code}`}
+                    key={item.code}
+                  >
+                    <span>{item.title}</span>
+                    <span className="small-text">{item.questions.length} q</span>
+                  </Link>
+                ))}
+              </div>
+            </section>
+
+            <ActivityFeed
+              items={sessionActivity}
+              subtitle="Who created, reviewed, and committed this import session."
+              title="Import activity"
+            />
+          </aside>
+
+          <section className="panel panel-elevated workspace-console-main">
           <div className="section-header">
             <div>
               <div className="eyebrow">Template review workspace</div>
@@ -126,45 +166,49 @@ export default async function ImportsPage({
             </div>
           ) : null}
 
-          <div className="stack-list" style={{ marginTop: "1rem" }}>
-            {selectedPayload.template.sections.map((section) => (
-              <details className="question-section question-section-accordion" key={section.code} open={false}>
-                <summary className="question-section-summary">
+          {selectedSection ? (
+            <div className="stack-list" style={{ marginTop: "1rem" }}>
+              <section className="panel question-section">
+                <div className="section-header">
                   <div>
-                    <strong>{section.title}</strong>
-                    <div className="small-text">
-                      {section.code} / {section.questions.length} questions
-                    </div>
+                    <h3 className="panel-title">{selectedSection.title}</h3>
+                    <p className="panel-subtitle">
+                      {selectedSection.code} / {selectedSection.questions.length} questions /{" "}
+                      {selectedSection.questions.filter((question) => question.isMandatory).length} mandatory
+                    </p>
                   </div>
                   <div className="meta-row">
-                    <span className="chip chip-info">Checklist</span>
-                    <span className="chip chip-muted">
-                      {section.questions.filter((question) => question.isMandatory).length} mandatory
+                    <span className="chip chip-info">Checklist group</span>
+                    <span className="chip chip-danger">
+                      {selectedSection.questions.filter((question) => question.isCicCandidate).length} CIR focus
                     </span>
                   </div>
-                </summary>
-
-                <div className="stack-list" style={{ marginTop: "0.85rem" }}>
-                  {section.questions.map((question) => (
-                    <div className="question-card question-card-compact" key={question.code}>
-                      <div className="question-card-compact-main">
-                        <div className="question-code">{question.code}</div>
-                        <p className="question-prompt">{question.prompt}</p>
-                        {question.helpText ? <div className="small-text">{question.helpText}</div> : null}
-                      </div>
-                      <div className="question-card-flags">
-                        <span className="chip chip-info">{question.responseType}</span>
-                        {question.isMandatory ? <span className="chip chip-warning">Mandatory</span> : null}
-                        {question.isCicCandidate ? <span className="chip chip-danger">CIR focus</span> : null}
-                        {question.referenceImageUrl ? <span className="chip chip-info">Reference image</span> : null}
-                        {question.allowsPhoto ? <span className="chip chip-success">Actual upload enabled</span> : null}
-                      </div>
-                    </div>
-                  ))}
                 </div>
-              </details>
-            ))}
-          </div>
+
+                <div className="question-list-viewport">
+                  <div className="stack-list">
+                    {selectedSection.questions.map((question) => (
+                      <div className="question-card question-card-compact" key={question.code}>
+                        <div className="question-card-compact-main">
+                          <div className="question-code">{question.code}</div>
+                          <p className="question-prompt">{question.prompt}</p>
+                          {question.helpText ? <div className="small-text">{question.helpText}</div> : null}
+                        </div>
+                        <div className="question-card-flags">
+                          <span className="chip chip-info">{question.responseType}</span>
+                          {question.isMandatory ? <span className="chip chip-warning">Mandatory</span> : null}
+                          {question.isCicCandidate ? <span className="chip chip-danger">CIR focus</span> : null}
+                          {question.referenceImageUrl ? <span className="chip chip-info">Reference image</span> : null}
+                          {question.allowsPhoto ? <span className="chip chip-success">Actual upload enabled</span> : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            </div>
+          ) : null}
+          </section>
         </section>
       ) : null}
 
@@ -300,4 +344,42 @@ function unwrapTemplatePayload(payload: unknown): TemplateReviewPayload | null {
       ? record.warnings.filter((value): value is string => typeof value === "string")
       : [],
   };
+}
+
+function buildImportActivity(
+  session: {
+    id: string;
+    createdAt: Date;
+    createdBy: string | null;
+    status: string;
+    sourceFileName: string;
+    fieldReviews: Array<{ id: string; fieldPath: string; reviewedAt: Date | null; reviewerName: string | null; accepted: boolean | null }>;
+  }
+) {
+  const fmtTime = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+
+  const items = [
+    {
+      id: `session-${session.id}`,
+      title: `Import session ${session.status.toLowerCase()}`,
+      detail: `${session.sourceFileName} entered the review lane.`,
+      timeLabel: fmtTime.format(session.createdAt),
+      actor: session.createdBy,
+      tone: session.status === "COMMITTED" ? ("success" as const) : ("info" as const),
+    },
+    ...session.fieldReviews.map((review) => ({
+      id: review.id,
+      title: review.accepted === false ? "Field overridden" : "Field reviewed",
+      detail: review.fieldPath,
+      timeLabel: review.reviewedAt ? fmtTime.format(review.reviewedAt) : "Pending review",
+      actor: review.reviewerName,
+      tone: review.accepted === false ? ("warning" as const) : ("success" as const),
+    })),
+  ];
+
+  return items.sort((left, right) => right.timeLabel.localeCompare(left.timeLabel));
 }
