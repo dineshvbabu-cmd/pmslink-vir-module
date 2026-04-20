@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ActivityFeed } from "@/components/activity-feed";
+import { FloatingActivityFeed } from "@/components/floating-activity-feed";
 import { prisma } from "@/lib/prisma";
 import { isOfficeSession, requireVirSession } from "@/lib/vir/session";
 
@@ -130,11 +130,6 @@ export default async function TemplatesPage({
             </section>
           ) : null}
 
-          <ActivityFeed
-            items={templateActivity}
-            subtitle="Template creation, import review, and governance activity."
-            title="Template activity"
-          />
         </aside>
 
         <section className="panel panel-elevated workspace-console-main">
@@ -225,6 +220,12 @@ export default async function TemplatesPage({
         )}
         </section>
       </section>
+
+      <FloatingActivityFeed
+        items={templateActivity}
+        subtitle="Template creation, import review, and governance activity."
+        title="Template activity"
+      />
     </div>
   );
 }

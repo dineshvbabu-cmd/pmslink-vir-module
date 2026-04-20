@@ -9,8 +9,8 @@ import {
   updateFindingStatusAction,
   updateInspectionStatusAction,
 } from "@/app/actions";
-import { ActivityFeed } from "@/components/activity-feed";
 import { EvidenceSyncPanel } from "@/components/evidence-sync-panel";
+import { FloatingActivityFeed } from "@/components/floating-activity-feed";
 import { QuestionEvidenceInline } from "@/components/question-evidence-inline";
 import { SubmitButton } from "@/components/submit-button";
 import { prisma } from "@/lib/prisma";
@@ -255,12 +255,11 @@ export default async function InspectionDetailPage({
               </div>
             </div>
             <div className="stack-list">
-              {[
+              {[ 
                 { id: "questionnaire", label: "Questionnaire", note: `${templateQuestionCount} questions` },
                 { id: "findings", label: "Findings", note: `${inspection.findings.length} active items` },
                 { id: "evidence", label: "Evidence", note: `${inspection.photos.length} synced images` },
                 { id: "signoff", label: "Sign-off", note: `${inspection.signOffs.length} workflow records` },
-                { id: "activity", label: "Activity", note: `${activityItems.length} timeline events` },
               ].map((item) => (
                 <Link
                   className={`section-nav-link ${activePane === item.id ? "section-nav-link-active" : ""}`}
@@ -316,12 +315,6 @@ export default async function InspectionDetailPage({
               ) : null}
             </div>
           </section>
-
-          <ActivityFeed
-            items={activityItems}
-            subtitle="Office and vessel actions across questionnaire, findings, evidence, and sign-off."
-            title="Inspection activity"
-          />
         </aside>
 
         <div className="workspace-console-main">
@@ -784,16 +777,14 @@ export default async function InspectionDetailPage({
             </div>
           </section>
           ) : null}
-
-          {activePane === "activity" ? (
-            <ActivityFeed
-              items={activityItems}
-              subtitle="Role-aware timeline of actions across the inspection."
-              title="Inspection activity feed"
-            />
-          ) : null}
         </div>
       </section>
+
+      <FloatingActivityFeed
+        items={activityItems}
+        subtitle="Office and vessel actions across questionnaire, findings, evidence, and sign-off."
+        title="Inspection activity"
+      />
     </div>
   );
 }
@@ -813,7 +804,7 @@ function slugify(value: string) {
 }
 
 function normalizeInspectionPane(value: string | undefined) {
-  if (value === "findings" || value === "evidence" || value === "signoff" || value === "activity") {
+  if (value === "findings" || value === "evidence" || value === "signoff") {
     return value;
   }
 

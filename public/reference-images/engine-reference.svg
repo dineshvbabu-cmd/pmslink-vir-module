@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 420" role="img" aria-labelledby="title desc">
+  <title id="title">Engine room reference</title>
+  <desc id="desc">Reference illustration showing clear machinery spaces, guarded rotating equipment, and marked walkways.</desc>
+  <rect width="720" height="420" fill="#e9eef5"/>
+  <rect y="310" width="720" height="110" fill="#51606d"/>
+  <rect x="82" y="100" width="220" height="180" rx="16" fill="#2a7bcf"/>
+  <rect x="120" y="136" width="150" height="76" rx="10" fill="#f8c94d"/>
+  <rect x="362" y="124" width="250" height="118" rx="14" fill="#7a8b99"/>
+  <circle cx="426" cy="298" r="28" fill="#223245"/>
+  <circle cx="556" cy="298" r="28" fill="#223245"/>
+  <rect x="390" y="154" width="184" height="36" rx="8" fill="#d8e6f5"/>
+  <path d="M96 332h540" stroke="#f6d879" stroke-width="10" stroke-linecap="round" stroke-dasharray="22 16"/>
+  <path d="M304 188h58m250 0h42" stroke="#223245" stroke-width="14" stroke-linecap="round"/>
+</svg>

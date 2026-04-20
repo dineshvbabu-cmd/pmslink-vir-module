@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 420" role="img" aria-labelledby="title desc">
+  <title id="title">Life-saving appliance reference</title>
+  <desc id="desc">Reference illustration showing a clear lifeboat embarkation area with safety netting and unobstructed launch path.</desc>
+  <rect width="720" height="420" fill="#dff1ff"/>
+  <rect y="290" width="720" height="130" fill="#58728d"/>
+  <rect x="88" y="118" width="196" height="148" rx="12" fill="#f5fbff" stroke="#58728d" stroke-width="8"/>
+  <path d="M404 202c0-52 42-94 94-94h74c34 0 62 28 62 62v12c0 28-22 50-50 50H404z" fill="#ff8b45"/>
+  <path d="M428 308l48-106m162 106l-38-106" stroke="#41525f" stroke-width="10" stroke-linecap="round"/>
+  <path d="M102 328h520" stroke="#f6d879" stroke-width="10" stroke-linecap="round" stroke-dasharray="18 18"/>
+  <rect x="140" y="146" width="88" height="28" rx="6" fill="#73b5f3"/>
+  <rect x="150" y="188" width="68" height="18" rx="6" fill="#73b5f3"/>
+</svg>

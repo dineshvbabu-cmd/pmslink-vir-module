@@ -135,11 +135,11 @@ const standardDefaults: Record<
     description: "Normalized SIRE 2.0 question bank imported into the VIR questionnaire model.",
   },
   INTERNAL_AUDIT: {
-    inspectionTypeCode: "INTERNAL_AUDIT",
-    inspectionTypeName: "Internal Audit",
+    inspectionTypeCode: "OWNERS_INSPECTION_INTERNAL",
+    inspectionTypeName: "Owner's Inspection (Internal)",
     inspectionCategory: "INTERNAL",
-    templateName: "Internal Audit Checklist Import",
-    description: "Normalized internal audit checklist imported into the standard VIR model.",
+    templateName: "Internal VIR Questionnaire Import",
+    description: "Normalized internal vessel inspection checklist imported into the standard VIR model.",
   },
   EXTERNAL_AUDIT: {
     inspectionTypeCode: "EXTERNAL_AUDIT",

@@ -472,6 +472,37 @@ textarea {
   gap: 0.85rem;
 }
 
+.instruction-manual-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.instruction-legend-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.instruction-line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.instruction-step-no {
+  display: grid;
+  place-items: center;
+  min-width: 1.8rem;
+  min-height: 1.8rem;
+  border-radius: 999px;
+  background: var(--color-blue-soft);
+  color: var(--color-blue);
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
 .activity-item {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -516,6 +547,88 @@ textarea {
   justify-content: space-between;
   gap: 0.75rem;
   align-items: flex-start;
+}
+
+.activity-fab {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 36;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 3.25rem;
+  padding: 0 1rem;
+  border: 1px solid rgba(16, 32, 51, 0.12);
+  border-radius: 999px;
+  background: linear-gradient(145deg, #16345a, #0f2340);
+  color: white;
+  box-shadow: 0 18px 36px rgba(16, 32, 51, 0.18);
+  cursor: pointer;
+}
+
+.activity-fab-open {
+  background: linear-gradient(145deg, #1a74d8, #0f59b6);
+}
+
+.activity-fab-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.activity-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 33;
+  border: 0;
+  background: rgba(9, 21, 36, 0.34);
+  cursor: pointer;
+}
+
+.activity-drawer {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 35;
+  width: min(420px, calc(100vw - 2rem));
+  padding: 1rem;
+  border-left: 1px solid rgba(16, 32, 51, 0.08);
+  background: rgba(238, 243, 248, 0.98);
+  box-shadow: -16px 0 40px rgba(16, 32, 51, 0.14);
+  transform: translateX(calc(100% + 1.5rem));
+  transition: transform 0.24s ease;
+  overflow: auto;
+}
+
+.activity-drawer-open {
+  transform: translateX(0);
+}
+
+.activity-drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+  margin-bottom: 0.85rem;
+}
+
+.activity-drawer-close {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--color-ink);
+  cursor: pointer;
 }
 
 .chart-card {
@@ -1650,6 +1763,8 @@ textarea {
 
   .dashboard-grid-wide,
   .dashboard-grid-equal,
+  .instruction-manual-grid,
+  .instruction-legend-grid,
   .inspection-summary-grid,
   .detail-grid,
   .workspace-console-shell,
@@ -1700,6 +1815,18 @@ textarea {
 
   .erp-metrics-grid {
     grid-template-columns: 1fr;
+  }
+
+  .activity-fab {
+    right: 1rem;
+    bottom: 1rem;
+  }
+
+  .activity-drawer {
+    top: 0.75rem;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    width: calc(100vw - 1.5rem);
   }
 }
 

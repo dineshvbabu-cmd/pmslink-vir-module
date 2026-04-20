@@ -44,9 +44,9 @@ const formatOptions: VirTemplateInputFormat[] = ["ROW_TABLE", "PLAIN_TEXT", "CAN
 
 export function TemplateImportConsole() {
   const router = useRouter();
-  const [sourceStandard, setSourceStandard] = useState<VirTemplateSourceStandard>("PSC");
+  const [sourceStandard, setSourceStandard] = useState<VirTemplateSourceStandard>("INTERNAL_AUDIT");
   const [inputFormat, setInputFormat] = useState<VirTemplateInputFormat>("ROW_TABLE");
-  const [content, setContent] = useState(getImportSample("PSC", "ROW_TABLE"));
+  const [content, setContent] = useState(getImportSample("INTERNAL_AUDIT", "ROW_TABLE"));
   const [result, setResult] = useState<ImportResult | null>(null);
   const [isPending, setIsPending] = useState(false);
   const [editorStatus, setEditorStatus] = useState(

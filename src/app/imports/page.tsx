@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ExternalReportConsole } from "@/app/imports/external-report-console";
 import { TemplateImportConsole } from "@/app/imports/template-import-console";
-import { ActivityFeed } from "@/components/activity-feed";
+import { FloatingActivityFeed } from "@/components/floating-activity-feed";
 import { prisma } from "@/lib/prisma";
 import { isOfficeSession, requireVirSession } from "@/lib/vir/session";
 
@@ -88,11 +88,6 @@ export default async function ImportsPage({
               </div>
             </section>
 
-            <ActivityFeed
-              items={sessionActivity}
-              subtitle="Who created, reviewed, and committed this import session."
-              title="Import activity"
-            />
           </aside>
 
           <section className="panel panel-elevated workspace-console-main">
@@ -253,6 +248,12 @@ export default async function ImportsPage({
           ))}
         </div>
       </section>
+
+      <FloatingActivityFeed
+        items={sessionActivity}
+        subtitle="Who created, reviewed, and committed this import session."
+        title="Import activity"
+      />
     </div>
   );
 }

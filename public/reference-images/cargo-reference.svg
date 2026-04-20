@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 420" role="img" aria-labelledby="title desc">
+  <title id="title">Cargo system reference</title>
+  <desc id="desc">Reference illustration showing manifold area, drip trays, and a clearly painted cargo line zone.</desc>
+  <rect width="720" height="420" fill="#eef3f8"/>
+  <rect y="300" width="720" height="120" fill="#36536b"/>
+  <rect x="80" y="126" width="560" height="112" rx="14" fill="#f6fafc" stroke="#607589" stroke-width="8"/>
+  <rect x="142" y="156" width="140" height="52" rx="8" fill="#82d0b7"/>
+  <rect x="328" y="156" width="110" height="52" rx="8" fill="#82d0b7"/>
+  <rect x="476" y="156" width="106" height="52" rx="8" fill="#82d0b7"/>
+  <path d="M112 274h492" stroke="#f6d879" stroke-width="10" stroke-linecap="round" stroke-dasharray="20 16"/>
+  <path d="M178 120v-48m208 48V72m164 48V72" stroke="#607589" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="206" cy="310" r="24" fill="#f08f4c"/>
+  <circle cx="516" cy="310" r="24" fill="#f08f4c"/>
+</svg>
