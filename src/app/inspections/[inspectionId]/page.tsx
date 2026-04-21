@@ -16,6 +16,7 @@ import { SubmitButton } from "@/components/submit-button";
 import { prisma } from "@/lib/prisma";
 import { calculateInspectionScore, summarizeProgress } from "@/lib/vir/analytics";
 import { canAccessVessel, isOfficeSession, isVesselSession, requireVirSession } from "@/lib/vir/session";
+import { buildVesselProfile } from "@/lib/vir/vessel-profile";
 import {
   correctiveActionStatusLabel,
   findingStatusLabel,
@@ -139,6 +140,7 @@ export default async function InspectionDetailPage({
   const selectedSection =
     inspection.template?.sections.find((item) => item.id === selectedSectionId) ?? inspection.template?.sections[0] ?? null;
   const activityItems = buildInspectionActivity(inspection);
+  const vesselProfile = buildVesselProfile(inspection.vessel);
 
   const saveAnswers = saveInspectionAnswersAction.bind(null, inspection.id);
   const addFinding = addFindingAction.bind(null, inspection.id);
@@ -243,6 +245,43 @@ export default async function InspectionDetailPage({
           note="Workflow audit trail"
         />
         <MetricBox label="Evidence" value={`${inspection.photos.length}`} note="Synced photo records" />
+      </section>
+
+      <section className="panel panel-elevated">
+        <div className="section-header">
+          <div>
+            <h3 className="panel-title">Vessel workflow snapshot</h3>
+            <p className="panel-subtitle">Operational particulars and machinery context carried into the live inspection review.</p>
+          </div>
+          <Link className="btn-secondary btn-compact" href={`/vessels/${inspection.vesselId}`}>
+            Open vessel details
+          </Link>
+        </div>
+
+        <div className="report-detail-grid">
+          {vesselProfile.principalParticulars.slice(0, 8).map((item) => (
+            <MetricBox key={item.label} label={item.label} value={item.value} note="Vessel particulars" />
+          ))}
+        </div>
+
+        <div className="table-shell table-shell-compact" style={{ marginTop: "1.25rem" }}>
+          <table className="table data-table vir-data-table">
+            <thead>
+              <tr>
+                <th>Component</th>
+                <th>Configuration</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vesselProfile.componentConfiguration.slice(0, 8).map((item) => (
+                <tr key={item.label}>
+                  <td>{item.label}</td>
+                  <td>{item.value}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="workspace-console-shell">

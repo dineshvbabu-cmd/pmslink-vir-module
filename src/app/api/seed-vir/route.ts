@@ -427,6 +427,9 @@ async function runSeed(request: Request) {
 
   results.push(`Upserted ${vessels.length} anonymized demo vessels across multiple fleets and vessel classes.`);
 
+  await clearSeededDemoData(vessels.map((vessel) => vessel.id));
+  results.push("Cleared previously seeded VIR inspections so the demo dataset can be rebuilt cleanly.");
+
   const inspectionTypeRecords = await prisma.virInspectionType.findMany({
     where: {
       code: {
@@ -618,17 +621,28 @@ async function upsertTemplate(inspectionTypeId: string, normalized: ReturnType<t
   }));
 
   if (existing) {
+    const linkedInspectionCount = await prisma.virInspection.count({
+      where: { templateId: existing.id },
+    });
+
     await prisma.virTemplate.update({
       where: { id: existing.id },
-      data: {
-        name: normalized.templateName,
-        description: normalized.description,
-        isActive: true,
-        sections: {
-          deleteMany: {},
-          create: sectionCreateData,
-        },
-      },
+      data:
+        linkedInspectionCount > 0
+          ? {
+              name: normalized.templateName,
+              description: normalized.description,
+              isActive: true,
+            }
+          : {
+              name: normalized.templateName,
+              description: normalized.description,
+              isActive: true,
+              sections: {
+                deleteMany: {},
+                create: sectionCreateData,
+              },
+            },
     });
 
     return loadTemplateRecord(existing.id);
@@ -933,6 +947,26 @@ async function seedImportSessions(inspectionTypeMap: Map<string, { id: string; c
   await prisma.virImportFieldReview.deleteMany({});
   await prisma.virImportSession.deleteMany({});
   return 0;
+}
+
+async function clearSeededDemoData(vesselIds: string[]) {
+  await prisma.virInspection.updateMany({
+    where: {
+      vesselId: { in: vesselIds },
+      inspectorCompany: "PMSLink Marine Assurance",
+    },
+    data: {
+      previousInspectionId: null,
+      importSessionId: null,
+    },
+  });
+
+  await prisma.virInspection.deleteMany({
+    where: {
+      vesselId: { in: vesselIds },
+      inspectorCompany: "PMSLink Marine Assurance",
+    },
+  });
 }
 
 function buildPreviousScenario(index: number): DemoScenario {
@@ -1359,5 +1393,21 @@ function buildQuestion(
   };
 }
 
-export const GET = runSeed;
-export const POST = runSeed;
+async function safeRunSeed(request: Request) {
+  try {
+    return await runSeed(request);
+  } catch (error) {
+    console.error("VIR seed failed", error);
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "Unknown seed error",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export const GET = safeRunSeed;
+export const POST = safeRunSeed;

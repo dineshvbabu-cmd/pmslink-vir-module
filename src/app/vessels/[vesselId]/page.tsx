@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { canAccessVessel, requireVirSession } from "@/lib/vir/session";
+import { buildVesselProfile } from "@/lib/vir/vessel-profile";
 import { inspectionStatusLabel, toneForInspectionStatus } from "@/lib/vir/workflow";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +48,7 @@ export default async function VesselDetailsPage({
 
   const latestInspection = vessel.inspections[0] ?? null;
   const pendingDeviationCount = vessel.inspections.reduce((sum, inspection) => sum + inspection.findings.length, 0);
+  const vesselProfile = buildVesselProfile(vessel);
 
   return (
     <div className="page-stack">
@@ -78,6 +80,141 @@ export default async function VesselDetailsPage({
           <DetailRow label="Manager" value={vessel.manager ?? "Not recorded"} />
           <DetailRow label="Latest VIR" value={latestInspection ? fmt.format(latestInspection.inspectionDate) : "Not recorded"} />
           <DetailRow label="Pending deviations" value={`${pendingDeviationCount}`} />
+        </div>
+      </section>
+
+      <section className="panel panel-elevated">
+        <div className="section-header">
+          <div>
+            <h3 className="panel-title">Vessel particulars</h3>
+            <p className="panel-subtitle">Principal particulars, management information, and reference data for vessel workflow drill-down.</p>
+          </div>
+        </div>
+
+        <div className="report-detail-grid">
+          {vesselProfile.principalParticulars.map((item) => (
+            <DetailRow key={item.label} label={item.label} value={item.value} />
+          ))}
+        </div>
+      </section>
+
+      <section className="panel panel-elevated">
+        <div className="section-header">
+          <div>
+            <h3 className="panel-title">Ship specific component list</h3>
+            <p className="panel-subtitle">One-time vessel configuration used to support inspection planning and questionnaire interpretation.</p>
+          </div>
+        </div>
+
+        <div className="table-shell table-shell-compact">
+          <table className="table data-table vir-data-table">
+            <thead>
+              <tr>
+                <th>Component</th>
+                <th>Configuration</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vesselProfile.componentConfiguration.map((item) => (
+                <tr key={item.label}>
+                  <td>{item.label}</td>
+                  <td>{item.value}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="panel panel-elevated">
+        <div className="section-header">
+          <div>
+            <h3 className="panel-title">Machinery particulars</h3>
+            <p className="panel-subtitle">Engine, auxiliary, boiler, and gas-system particulars for the deeper vessel workflow.</p>
+          </div>
+        </div>
+
+        <div className="stack-list">
+          {vesselProfile.machineryBlocks.map((block) => (
+            <div className="list-card" key={block.title}>
+              <div className="list-card-title">{block.title}</div>
+              <div className="report-detail-grid" style={{ marginTop: "1rem" }}>
+                {block.rows.map((item) => (
+                  <DetailRow key={`${block.title}-${item.label}`} label={item.label} value={item.value} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel panel-elevated">
+        <div className="section-header">
+          <div>
+            <h3 className="panel-title">Vessel rating guide</h3>
+            <p className="panel-subtitle">Shared rating logic for sailing and port inspection review, matching the deeper workflow expectation.</p>
+          </div>
+        </div>
+
+        <div className="table-shell table-shell-compact">
+          <table className="table data-table vir-data-table">
+            <thead>
+              <tr>
+                <th>Vessel rating</th>
+                <th>Sailing inspection</th>
+                <th>P/S inspection</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vesselProfile.vesselRatingGuide.map((item) => (
+                <tr key={item.rating}>
+                  <td>{item.rating}</td>
+                  <td>{item.sailingInspection}</td>
+                  <td>{item.portInspection}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="panel panel-elevated">
+        <div className="section-header">
+          <div>
+            <h3 className="panel-title">Vessel condition guide</h3>
+            <p className="panel-subtitle">Condition scoring reference used during chapter review and section-summary reasoning.</p>
+          </div>
+        </div>
+
+        <div className="table-shell table-shell-compact">
+          <table className="table data-table vir-data-table">
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th>Criteria</th>
+                <th>Score range</th>
+                <th>Reference</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vesselProfile.vesselConditionGuide.map((item, index) => (
+                <tr key={`${item.description}-${index + 1}`}>
+                  <td>{item.description}</td>
+                  <td>{item.criteria}</td>
+                  <td>{item.scoreRange}</td>
+                  <td>
+                    {item.referenceImageUrl ? (
+                      <a className="inline-link" href={item.referenceImageUrl} target="_blank" rel="noreferrer">
+                        View reference
+                      </a>
+                    ) : (
+                      "n/a"
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
 
