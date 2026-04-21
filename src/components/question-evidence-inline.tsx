@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { addQueuedEvidence, removeQueuedEvidence, type QueuedEvidence } from "@/lib/vir/evidence-queue";
-import { compressEvidenceImage } from "@/lib/vir/evidence-client";
+import { prepareEvidenceFile } from "@/lib/vir/evidence-client";
 
 export function QuestionEvidenceInline({
   canUpload,
@@ -22,7 +22,7 @@ export function QuestionEvidenceInline({
   const [caption, setCaption] = useState("");
   const [status, setStatus] = useState(
     canUpload
-      ? "Attach actual vessel evidence directly against this questionnaire item."
+      ? "Attach actual vessel evidence or supporting documents directly against this questionnaire item."
       : `${existingCount} synced evidence item${existingCount === 1 ? "" : "s"} linked to this questionnaire item.`
   );
   const [isPending, startTransition] = useTransition();
@@ -37,18 +37,18 @@ export function QuestionEvidenceInline({
     const queueItems: QueuedEvidence[] = [];
 
     for (const file of Array.from(files)) {
-      const compressed = await compressEvidenceImage(file);
+      const prepared = await prepareEvidenceFile(file);
       queueItems.push({
         id: crypto.randomUUID(),
         inspectionId,
         questionId,
         findingId: null,
         caption: caption.trim() || `${questionCode} evidence`,
-        fileName: compressed.fileName,
-        contentType: compressed.contentType,
-        fileSizeKb: compressed.fileSizeKb,
+        fileName: prepared.fileName,
+        contentType: prepared.contentType,
+        fileSizeKb: prepared.fileSizeKb,
         takenAt: new Date().toISOString(),
-        dataUrl: compressed.dataUrl,
+        dataUrl: prepared.dataUrl,
       });
     }
 
@@ -126,11 +126,10 @@ export function QuestionEvidenceInline({
             value={caption}
           />
           <label className="btn-secondary btn-compact" htmlFor={`question-upload-${questionId}`}>
-            {isPending ? "Uploading..." : "Upload actual image"}
+            {isPending ? "Uploading..." : "Upload documents and images"}
           </label>
           <input
-            accept="image/*"
-            capture="environment"
+            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
             hidden
             id={`question-upload-${questionId}`}
             multiple

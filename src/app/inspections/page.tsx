@@ -424,6 +424,7 @@ function ApprovedInspectionGrid({
             <th>Approved date</th>
             <th>Report Type</th>
             <th>Synced?</th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -452,6 +453,21 @@ function ApprovedInspectionGrid({
               <td>{inspection.reportType}</td>
               <td>
                 <span className={`chip ${inspection.syncLabel === "Synced" ? "chip-success" : "chip-danger"}`}>{inspection.syncLabel}</span>
+              </td>
+              <td>
+                <div className="table-actions">
+                  <Link className="inline-link" href={`/vessels/${inspection.vessel.id}`}>
+                    <span>Vessel details</span>
+                  </Link>
+                  <Link className="inline-link" href={`/inspections/${inspection.id}`}>
+                    <Eye size={14} />
+                    <span>Workflow</span>
+                  </Link>
+                  <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+                    <FileText size={14} />
+                    <span>Report</span>
+                  </Link>
+                </div>
               </td>
             </tr>
           ))}
@@ -564,6 +580,7 @@ function InspectionRegisterGrid({
             <th>Open findings</th>
             <th>Open CAR</th>
             <th>Sign-offs</th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -592,6 +609,13 @@ function InspectionRegisterGrid({
               <td>
                 <div className="table-actions">
                   <span>{inspection.signOffs.filter((item) => item.approved).length}</span>
+                </div>
+              </td>
+              <td>
+                <div className="table-actions">
+                  <Link className="inline-link" href={`/vessels/${inspection.vessel.id}`}>
+                    <span>Vessel details</span>
+                  </Link>
                   <Link className="inline-link" href={`/inspections/${inspection.id}`}>
                     <Eye size={14} />
                     <span>Workflow</span>
@@ -600,6 +624,12 @@ function InspectionRegisterGrid({
                     <FileText size={14} />
                     <span>Report</span>
                   </Link>
+                  {inspection.findings.length > 0 ? (
+                    <Link className="inline-link" href={`/deviations/${inspection.id}?vesselId=${inspection.vessel.id}`}>
+                      <TriangleAlert size={14} />
+                      <span>Deviation</span>
+                    </Link>
+                  ) : null}
                 </div>
               </td>
             </tr>

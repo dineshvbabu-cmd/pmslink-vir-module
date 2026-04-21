@@ -115,6 +115,8 @@ export default async function InspectionDetailPage({
     notFound();
   }
 
+  const canEditInspection = canAccessVessel(session, inspection.vesselId);
+
   const questions = inspection.template?.sections.flatMap((section) => section.questions) ?? [];
   const progress = summarizeProgress(questions, inspection.answers);
   const score = calculateInspectionScore(questions, inspection.answers, inspection.findings);
@@ -364,11 +366,10 @@ export default async function InspectionDetailPage({
                 <h3 className="panel-title">Questionnaire execution</h3>
                 <p className="panel-subtitle">
                   {isOfficeSession(session)
-                    ? "Office can review the live answer set while vessel keeps ownership of execution."
+                    ? "Office and vessel can both update the live answer set, upload evidence, and leave a tracked activity trail."
                     : "Answer mandatory questions, capture evidence notes, and prepare for submission."}
                 </p>
               </div>
-              {isOfficeSession(session) ? <span className="chip chip-muted">Read only</span> : null}
             </div>
 
             {!inspection.template ? (
@@ -520,7 +521,7 @@ export default async function InspectionDetailPage({
                                 <div className="question-card-main">
                                   <QuestionInput
                                     answer={answer}
-                                    disabled={isOfficeSession(session)}
+                                    disabled={!canEditInspection}
                                     question={question}
                                     selectedOptions={selectedOptions}
                                   />
@@ -529,7 +530,7 @@ export default async function InspectionDetailPage({
                                     <label htmlFor={`comment:${question.id}`}>Observation / evidence note</label>
                                     <textarea
                                       defaultValue={answer?.comment ?? ""}
-                                      disabled={isOfficeSession(session)}
+                                      disabled={!canEditInspection}
                                       id={`comment:${question.id}`}
                                       name={`comment:${question.id}`}
                                       placeholder="Record narrative, evidence note, or inspector observation."
@@ -551,7 +552,7 @@ export default async function InspectionDetailPage({
                                   ) : null}
 
                                   <QuestionEvidenceInline
-                                    canUpload={isVesselSession(session)}
+                                    canUpload={canEditInspection}
                                     existingCount={answer?.photos.length ?? 0}
                                     inspectionId={inspection.id}
                                     questionCode={question.code}
@@ -599,7 +600,7 @@ export default async function InspectionDetailPage({
                   <div className="empty-state">No questionnaire section is currently available.</div>
                 )}
 
-                {isVesselSession(session) ? <SubmitButton className="btn">Save questionnaire answers</SubmitButton> : null}
+                {canEditInspection ? <SubmitButton className="btn">Save questionnaire answers</SubmitButton> : null}
               </form>
             )}
           </section>
@@ -793,8 +794,8 @@ export default async function InspectionDetailPage({
           {activePane === "evidence" ? (
           <div id="evidence">
             <EvidenceSyncPanel
-              canUpload={isVesselSession(session)}
-              existingPhotos={inspection.photos.map((photo) => ({
+              canUpload={canEditInspection}
+              existingEvidence={inspection.photos.map((photo) => ({
                 id: photo.id,
                 url: photo.url,
                 caption: photo.caption,

@@ -77,11 +77,11 @@ export default async function InstructionPage() {
           </p>
         </div>
         <div className="actions-row">
-          <a className="btn-secondary btn-compact" href="/api/reports/manual/pdf?kind=web">
-            Web manual PDF
+          <a className="btn-secondary btn-compact" href="/instruction" rel="noreferrer" target="_blank">
+            Web manual
           </a>
-          <a className="btn-secondary btn-compact" href="/api/reports/manual/pdf?kind=offline">
-            Offline manual PDF
+          <a className="btn-secondary btn-compact" href="/api/reports/manual/pdf?kind=offline" rel="noreferrer" target="_blank">
+            Offline manual
           </a>
         </div>
       </section>

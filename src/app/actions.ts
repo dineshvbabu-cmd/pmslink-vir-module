@@ -34,6 +34,71 @@ function revalidateVirPaths(inspectionId?: string) {
   }
 }
 
+function toBooleanFlag(value: FormDataEntryValue | null) {
+  const normalized = toStringOrNull(value)?.toUpperCase();
+  if (normalized === "YES" || normalized === "TRUE") {
+    return true;
+  }
+
+  if (normalized === "NO" || normalized === "FALSE") {
+    return false;
+  }
+
+  return null;
+}
+
+function buildInspectionMetadata(formData: FormData, inspectionTypeName: string) {
+  return {
+    reportType: toStringOrNull(formData.get("reportType")),
+    inspectionMode: toStringOrNull(formData.get("inspectionMode")),
+    inspectionFromDate: toStringOrNull(formData.get("inspectionFromDate")),
+    inspectionToDate: toStringOrNull(formData.get("inspectionToDate")),
+    dateLastInspected: toStringOrNull(formData.get("dateLastInspected")),
+    placeLastInspected: toStringOrNull(formData.get("placeLastInspected")),
+    placeOfInspectionFrom: toStringOrNull(formData.get("placeOfInspectionFrom")),
+    durationOnBoard: toStringOrNull(formData.get("durationOnBoard")),
+    location: toStringOrNull(formData.get("location")),
+    alongsideBy: toStringOrNull(formData.get("alongsideBy")),
+    operationsAtInspection: toStringOrNull(formData.get("operationsAtInspection")),
+    otherPartiesInspected: toStringOrNull(formData.get("otherPartiesInspected")),
+    draftAft: toStringOrNull(formData.get("draftAft")),
+    lastPortOfCall: toStringOrNull(formData.get("lastPortOfCall")),
+    inspectionBasedOnIncidents: toBooleanFlag(formData.get("inspectionBasedOnIncidents")),
+    inspectionBasedOnExternal: toBooleanFlag(formData.get("inspectionBasedOnExternal")),
+    inspectionAuthority: toStringOrNull(formData.get("inspectionAuthority")),
+    crewParticulars: {
+      nationalityOfMasterAndChiefEngineer: toStringOrNull(formData.get("nationalityOfMasterAndChiefEngineer")),
+      numberAndNationalityOfOfficers: toStringOrNull(formData.get("numberAndNationalityOfOfficers")),
+      numberAndNationalityOfCrew: toStringOrNull(formData.get("numberAndNationalityOfCrew")),
+      minimumSafeManningCrew: toStringOrNull(formData.get("minimumSafeManningCrew")),
+      mastersName: toStringOrNull(formData.get("mastersName")),
+      chiefEngineersName: toStringOrNull(formData.get("chiefEngineersName")),
+    },
+    screenSelections: {
+      causeAnalysisTarget: toStringOrNull(formData.get("causeAnalysisTarget")),
+      correctiveActionPlanTarget: toStringOrNull(formData.get("correctiveActionPlanTarget")),
+    },
+    inspectionTypeName,
+  };
+}
+
+function buildInspectionTitle({
+  inspectionTypeName,
+  reportType,
+  inspectionMode,
+}: {
+  inspectionTypeName: string;
+  reportType: string | null;
+  inspectionMode: string | null;
+}) {
+  const primary = reportType ?? inspectionTypeName;
+  if (inspectionMode) {
+    return `${primary} / ${inspectionMode}`;
+  }
+
+  return primary;
+}
+
 function ensureOffice(session: VirSession, message = "Office workspace required for this action.") {
   if (!isOfficeSession(session)) {
     throw new Error(message);
@@ -70,15 +135,42 @@ export async function createInspectionAction(formData: FormData) {
   const requestedVesselId = toStringOrNull(formData.get("vesselId"));
   const inspectionTypeId = toStringOrNull(formData.get("inspectionTypeId"));
   const templateIdInput = toStringOrNull(formData.get("templateId"));
-  const title = toStringOrNull(formData.get("title"));
   const vesselId = isVesselSession(session) ? session.vesselId : requestedVesselId;
-  const inspectionDate = toDateOrNull(formData.get("inspectionDate")) ?? new Date();
+  const inspectionDate =
+    toDateOrNull(formData.get("inspectionFromDate")) ?? toDateOrNull(formData.get("inspectionDate")) ?? new Date();
+  const reportType = toStringOrNull(formData.get("reportType"));
+  const inspectionMode = toStringOrNull(formData.get("inspectionMode"));
+  const inspectionAuthority = toStringOrNull(formData.get("inspectionAuthority"));
+  const causeAnalysisTarget = toStringOrNull(formData.get("causeAnalysisTarget"));
+  const correctiveActionPlanTarget = toStringOrNull(formData.get("correctiveActionPlanTarget"));
 
-  if (!vesselId || !inspectionTypeId || !title) {
-    throw new Error("Vessel, inspection type, and title are required.");
+  if (
+    !vesselId ||
+    !inspectionTypeId ||
+    !reportType ||
+    !inspectionMode ||
+    !inspectionAuthority ||
+    !causeAnalysisTarget ||
+    !correctiveActionPlanTarget
+  ) {
+    throw new Error("Vessel, inspection type, report type, inspection mode, inspection authority, cause analysis, and corrective action target are required.");
   }
 
   let templateId = templateIdInput;
+  const [inspectionType, vessel] = await Promise.all([
+    prisma.virInspectionType.findUnique({
+      where: { id: inspectionTypeId },
+      select: { id: true, name: true },
+    }),
+    prisma.vessel.findUnique({
+      where: { id: vesselId },
+      select: { id: true, name: true },
+    }),
+  ]);
+
+  if (!inspectionType || !vessel) {
+    throw new Error("Vessel or inspection type could not be found.");
+  }
 
   if (!templateId) {
     const latestTemplate = await prisma.virTemplate.findFirst({
@@ -91,23 +183,35 @@ export async function createInspectionAction(formData: FormData) {
   }
 
   const carryForwardSource = await findCarryForwardSourceInspection(vesselId, inspectionTypeId, inspectionDate);
+  const metadata = buildInspectionMetadata(formData, inspectionType.name);
+  const title =
+    toStringOrNull(formData.get("title")) ??
+    buildInspectionTitle({
+      inspectionTypeName: inspectionType.name,
+      reportType,
+      inspectionMode,
+    });
 
   const inspection = await prisma.virInspection.create({
     data: {
       vesselId,
       inspectionTypeId,
       templateId,
-      title,
+      title: `${vessel.name} / ${title}`,
       inspectionDate,
-      port: toStringOrNull(formData.get("port")),
-      country: toStringOrNull(formData.get("country")),
+      port:
+        toStringOrNull(formData.get("placeOfInspectionFrom")) ??
+        toStringOrNull(formData.get("location")) ??
+        toStringOrNull(formData.get("port")),
+      country: toStringOrNull(formData.get("placeLastInspected")) ?? toStringOrNull(formData.get("country")),
       inspectorName: toStringOrNull(formData.get("inspectorName")) ?? session.actorName,
-      inspectorCompany: toStringOrNull(formData.get("inspectorCompany")),
+      inspectorCompany: inspectionAuthority,
       externalReference: toStringOrNull(formData.get("externalReference")),
       summary: toStringOrNull(formData.get("summary")),
       status: "DRAFT",
       previousInspectionId: carryForwardSource?.id ?? null,
       metadata: {
+        ...metadata,
         createdByWorkspace: session.workspace,
         createdByActor: session.actorName,
         carryForwardCandidateCount: carryForwardSource?.findings.length ?? 0,
@@ -283,10 +387,6 @@ export async function updateInspectionStatusAction(inspectionId: string, nextSta
 
 export async function saveInspectionAnswersAction(inspectionId: string, formData: FormData) {
   const { session, inspection } = await getInspectionAccess(inspectionId);
-
-  if (!isVesselSession(session)) {
-    throw new Error("Questionnaire answers are maintained from the vessel workspace.");
-  }
 
   const inspectionTemplate = await prisma.virInspection.findUnique({
     where: { id: inspection.id },

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { uploadToR2 } from "@/lib/r2";
-import { canAccessVessel, getVirSession, isVesselSession } from "@/lib/vir/session";
+import { canAccessVessel, getVirSession } from "@/lib/vir/session";
 
 const syncPayloadSchema = z.object({
   inspectionId: z.string().min(1),
@@ -17,7 +17,7 @@ const syncPayloadSchema = z.object({
         contentType: z.string().min(1),
         fileSizeKb: z.number().nullable().optional(),
         takenAt: z.string().nullable().optional(),
-        dataUrl: z.string().startsWith("data:image/"),
+        dataUrl: z.string().startsWith("data:"),
       })
     )
     .min(1)
@@ -29,10 +29,6 @@ export async function POST(request: Request) {
 
   if (!session) {
     return NextResponse.json({ error: "Authentication is required." }, { status: 401 });
-  }
-
-  if (!isVesselSession(session)) {
-    return NextResponse.json({ error: "Only vessel workspace can sync evidence." }, { status: 403 });
   }
 
   const payload = syncPayloadSchema.safeParse(await request.json());

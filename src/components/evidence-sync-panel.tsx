@@ -9,7 +9,7 @@ import {
   registerEvidenceBackgroundSync,
   removeQueuedEvidence,
 } from "@/lib/vir/evidence-queue";
-import { compressEvidenceImage } from "@/lib/vir/evidence-client";
+import { prepareEvidenceFile } from "@/lib/vir/evidence-client";
 
 type SelectOption = {
   id: string;
@@ -29,7 +29,7 @@ const MAX_LOCAL_QUEUE = 30;
 
 export function EvidenceSyncPanel({
   canUpload,
-  existingPhotos,
+  existingEvidence,
   findingOptions,
   inspectionId,
   questionOptions,
@@ -38,7 +38,7 @@ export function EvidenceSyncPanel({
   canUpload: boolean;
   questionOptions: SelectOption[];
   findingOptions: SelectOption[];
-  existingPhotos: ExistingEvidence[];
+  existingEvidence: ExistingEvidence[];
 }) {
   const router = useRouter();
   const [queue, setQueue] = useState<QueuedEvidence[]>([]);
@@ -165,18 +165,18 @@ export function EvidenceSyncPanel({
     const nextItems: QueuedEvidence[] = [];
 
     for (const file of files) {
-      const compressed = await compressEvidenceImage(file);
+      const prepared = await prepareEvidenceFile(file);
       nextItems.push({
         id: crypto.randomUUID(),
         inspectionId,
         questionId: selectedQuestionId || null,
         findingId: selectedFindingId || null,
         caption: caption.trim() || null,
-        fileName: compressed.fileName,
-        contentType: compressed.contentType,
-        fileSizeKb: compressed.fileSizeKb,
+        fileName: prepared.fileName,
+        contentType: prepared.contentType,
+        fileSizeKb: prepared.fileSizeKb,
         takenAt: new Date().toISOString(),
-        dataUrl: compressed.dataUrl,
+        dataUrl: prepared.dataUrl,
       });
     }
 
@@ -185,8 +185,8 @@ export function EvidenceSyncPanel({
     setQueue(refreshedQueue);
     setStatusMessage(
       navigator.onLine
-        ? `${nextItems.length} image${nextItems.length > 1 ? "s" : ""} queued. Sync will start automatically.`
-        : `${nextItems.length} image${nextItems.length > 1 ? "s" : ""} saved offline for later sync.`
+        ? `${nextItems.length} evidence file${nextItems.length > 1 ? "s" : ""} queued. Sync will start automatically.`
+        : `${nextItems.length} evidence file${nextItems.length > 1 ? "s" : ""} saved offline for later sync.`
     );
     event.target.value = "";
 
@@ -228,7 +228,7 @@ export function EvidenceSyncPanel({
           <span className={`chip ${queue.length > 0 ? "chip-warning" : "chip-success"}`}>
             Queue {queue.length}
           </span>
-          <span className="chip chip-info">Synced {existingPhotos.length}</span>
+          <span className="chip chip-info">Synced {existingEvidence.length}</span>
         </div>
       </div>
 
@@ -280,11 +280,10 @@ export function EvidenceSyncPanel({
 
           <div className="actions-row">
             <label className="btn" htmlFor="evidence-file-input">
-              Capture / upload evidence
+              Upload documents and images
             </label>
             <input
-              accept="image/*"
-              capture="environment"
+              accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
               hidden
               id="evidence-file-input"
               multiple
@@ -311,7 +310,7 @@ export function EvidenceSyncPanel({
         </div>
       ) : (
         <div className="empty-state">
-          Office workspace is read-only for onboard evidence capture. Synced vessel photos appear here once uploaded.
+          Upload permission is not available in the current workspace. Synced inspection images and documents appear here once uploaded.
         </div>
       )}
 
@@ -370,10 +369,14 @@ export function EvidenceSyncPanel({
       ) : null}
 
       <div className="evidence-gallery" style={{ marginTop: "1rem" }}>
-        {existingPhotos.map((photo) => (
+        {existingEvidence.map((photo) => (
           <div className="evidence-card" key={photo.id}>
             <div className="evidence-thumb">
-              <img alt={photo.caption ?? photo.fileName ?? "Inspection evidence"} src={photo.url} />
+              {isImageEvidence(photo) ? (
+                <img alt={photo.caption ?? photo.fileName ?? "Inspection evidence"} src={photo.url} />
+              ) : (
+                <div className="evidence-file-tile">{documentGlyph(photo.fileName)}</div>
+              )}
             </div>
             <div className="list-card-title">{photo.caption ?? photo.fileName ?? "Inspection evidence"}</div>
             <div className="small-text">
@@ -384,4 +387,26 @@ export function EvidenceSyncPanel({
       </div>
     </section>
   );
+}
+
+function isImageEvidence(photo: ExistingEvidence) {
+  return photo.url.startsWith("data:image/") || Boolean(photo.fileName?.match(/\.(png|jpe?g|webp|gif|svg)$/i));
+}
+
+function documentGlyph(fileName: string | null) {
+  const value = fileName?.toLowerCase() ?? "";
+
+  if (value.endsWith(".pdf")) {
+    return "PDF";
+  }
+
+  if (value.endsWith(".doc") || value.endsWith(".docx")) {
+    return "DOC";
+  }
+
+  if (value.endsWith(".xls") || value.endsWith(".xlsx")) {
+    return "XLS";
+  }
+
+  return "FILE";
 }

@@ -39,6 +39,7 @@ export function buildVesselProfile(vessel: VesselProfileInput): VesselProfile {
   const seed = hashCode(`${vessel.code}-${vessel.name}-${vessel.vesselType ?? ""}`);
   const vesselType = vessel.vesselType ?? "TANKER";
   const isGasCarrier = vesselType.includes("LPG") || vesselType.includes("LNG");
+  const isOilTanker = vesselType.includes("OIL") || vesselType.includes("ASPHALT") || vesselType.includes("CHEM");
   const portRegistry = pick(["MAJURO", "SINGAPORE", "PANAMA", "MONROVIA", "HONG KONG"], seed, 0);
   const classNotation = pick(["BV", "LR", "ABS", "NK", "DNV"], seed, 1);
   const owner = pick(
@@ -103,11 +104,17 @@ export function buildVesselProfile(vessel: VesselProfileInput): VesselProfile {
       { label: "Deck Crane", value: pick(["Yes", "No"], seed, 14) },
       { label: "Elevator", value: pick(["Yes", "No"], seed, 15) },
       { label: "Bow Thruster", value: pick(["Yes", "No"], seed, 16) },
-      { label: "Inert Gas System", value: isGasCarrier ? "Inert gas / cargo reliquefaction support" : "Boiler uptake / IG generator" },
-      { label: "For Oil Tankers", value: vesselType.includes("OIL") ? "Pump room / FRAMO / Deepwell mix" : "Not applicable" },
+      {
+        label: "Inert Gas System",
+        value: isGasCarrier ? "Inert gas / cargo reliquefaction support" : "Boiler uptake / IG generator / Other",
+      },
+      {
+        label: "For Oil Tankers",
+        value: isOilTanker ? "Pump room / FRAMO / MARFLEX / Submersible pumps" : "Not applicable",
+      },
       { label: "LNG Bunker System", value: vesselType.includes("LNG") ? "Yes" : "No" },
       { label: "UMS System", value: pick(["Yes", "No"], seed, 17) },
-      { label: "COW System", value: vesselType.includes("OIL") ? "Yes" : "No" },
+      { label: "COW System", value: isOilTanker ? "Yes" : "No" },
       { label: "Helicopter", value: pick(["Yes", "No"], seed, 18) },
       { label: "Hatch Cover", value: vesselType.includes("TANKER") ? "Not applicable" : pick(["Yes", "No"], seed, 19) },
       { label: "AMP System", value: pick(["Yes", "No"], seed, 20) },
@@ -130,8 +137,8 @@ export function buildVesselProfile(vessel: VesselProfileInput): VesselProfile {
           { label: "Maker", value: auxMaker },
           { label: "Model / Type", value: `${auxMaker} / ${auxModel}` },
           { label: "Number of Auxiliary Engines", value: `${2 + (seed % 3)}` },
-          { label: "Rated Power", value: `${900 + (seed % 650)} kW` },
-          { label: "Alternator", value: `Taiyo Electric / ${950 + (seed % 240)} kW / 900 rpm` },
+          { label: "Rated Power", value: `${900 + (seed % 650)} kW @ 900 rpm` },
+          { label: "Alternators", value: `${2 + (seed % 3)}` },
         ],
       },
       {
@@ -145,8 +152,8 @@ export function buildVesselProfile(vessel: VesselProfileInput): VesselProfile {
       {
         title: "Exhaust Gas Boiler Details",
         rows: [
-          { label: "Manufacturer", value: boilerMaker },
-          { label: "Type", value: pick(["TBH", "Composite", "Economiser"], seed, 24) },
+          { label: "Manufacturer", value: `${boilerMaker} Composite` },
+          { label: "Type", value: pick(["Composite", "Economiser", "PC3101P13"], seed, 24) },
           { label: "Evaporation Rate", value: `${4 + (seed % 6)} t/hr` },
         ],
       },
@@ -155,7 +162,7 @@ export function buildVesselProfile(vessel: VesselProfileInput): VesselProfile {
         rows: [
           { label: "Manufacturer", value: iggMaker },
           { label: "Type", value: iggMaker === "N/A" ? "N/A" : pick(["Deck mounted", "Skid mounted", "Integrated"], seed, 25) },
-          { label: "Capacity", value: iggMaker === "N/A" ? "N/A" : `${4800 + (seed % 1600)} m3/hr` },
+          { label: "Capacity", value: iggMaker === "N/A" ? "N/A" : `${4500 + (seed % 1800)} Nm3/h` },
         ],
       },
       {
@@ -166,22 +173,49 @@ export function buildVesselProfile(vessel: VesselProfileInput): VesselProfile {
           { label: "Purity", value: nitrogenMaker === "N/A" ? "N/A" : `Up to ${95 + (seed % 4)}%` },
         ],
       },
+      {
+        title: "Cargo Pumps and Power Packs",
+        rows: [
+          { label: "Manufacturer", value: isOilTanker ? pick(["FRAMO", "Marflex", "Hamworthy"], seed, 27) : "N/A" },
+          { label: "Type", value: isOilTanker ? pick(["Hydraulic deepwell", "Submerged cargo pump", "Pump room driven"], seed, 28) : "N/A" },
+        ],
+      },
+      {
+        title: "Cargo Booster Pumps",
+        rows: [
+          { label: "Manufacturer", value: isOilTanker ? pick(["FRAMO", "Marflex", "N/A"], seed, 29) : "N/A" },
+          { label: "Type", value: isOilTanker ? pick(["Vertical booster", "Horizontal booster", "N/A"], seed, 30) : "N/A" },
+        ],
+      },
+      {
+        title: "Steering gear / Emergency Steering",
+        rows: [
+          { label: "Manufacturer", value: pick(["Rolls Royce", "Tenfjord", "Kawasaki"], seed, 31) },
+          { label: "Type", value: pick(["Denison T7DSB42", "Rotary vane", "Electro-hydraulic ram"], seed, 32) },
+        ],
+      },
     ],
     vesselRatingGuide: [
       {
         rating: "HIGH (Good Vessel)",
-        sailingInspection: "Irrespective of severity, number of mandatory questions answered with findings should be ≤ 10% of total mandatory questions.",
-        portInspection: "Irrespective of severity, number of mandatory questions answered with findings should be ≤ 10% of total mandatory questions.",
+        sailingInspection:
+          'Irrespective of severity, number of mandatory questions answered with findings should be <= 10% of total mandatory questions for "Sailing" option.',
+        portInspection:
+          'Irrespective of severity, number of mandatory questions answered with findings should be <= 10% of total mandatory questions for "P/S" option.',
       },
       {
-        rating: "MEDIUM (Vessel can be improved to HIGH rating)",
-        sailingInspection: "Mandatory questions answered with findings should be > 10% and ≤ 20% of total mandatory questions.",
-        portInspection: "Mandatory questions answered with findings should be > 10% and ≤ 20% of total mandatory questions.",
+        rating: 'MEDIUM (Vessel can be improved to "HIGH" rating)',
+        sailingInspection:
+          'Irrespective of severity, number of mandatory questions answered with findings should be > 10% and <= 20% of total mandatory questions for "Sailing" option.',
+        portInspection:
+          'Irrespective of severity, number of mandatory questions answered with findings should be > 10% and <= 20% of total mandatory questions for "P/S" option.',
       },
       {
         rating: "LOW (Concern Vessel)",
-        sailingInspection: "Mandatory questions answered with findings should be > 20% of total mandatory questions.",
-        portInspection: "Mandatory questions answered with findings should be > 20% of total mandatory questions.",
+        sailingInspection:
+          'Irrespective of severity, number of mandatory questions answered with findings should be > 20% of total mandatory questions for "Sailing" option.',
+        portInspection:
+          'Irrespective of severity, number of mandatory questions answered with findings should be > 20% of total mandatory questions for "P/S" option.',
       },
     ],
     vesselConditionGuide: [

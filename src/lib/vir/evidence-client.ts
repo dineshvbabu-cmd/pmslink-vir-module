@@ -1,3 +1,12 @@
+async function fileToDataUrl(file: Blob) {
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Unable to read selected file."));
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.readAsDataURL(file);
+  });
+}
+
 export async function compressEvidenceImage(file: File) {
   const imageBitmap = await createImageBitmap(file);
   const scale = Math.min(1, 1200 / Math.max(imageBitmap.width, imageBitmap.height));
@@ -24,17 +33,25 @@ export async function compressEvidenceImage(file: File) {
     }, "image/webp", 0.75);
   });
 
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Unable to read image."));
-    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.readAsDataURL(blob);
-  });
+  const dataUrl = await fileToDataUrl(blob);
 
   return {
     contentType: blob.type || "image/webp",
     dataUrl,
     fileName: file.name.replace(/\.[^.]+$/, "") + ".webp",
     fileSizeKb: Math.max(1, Math.round(blob.size / 1024)),
+  };
+}
+
+export async function prepareEvidenceFile(file: File) {
+  if (file.type.startsWith("image/")) {
+    return compressEvidenceImage(file);
+  }
+
+  return {
+    contentType: file.type || "application/octet-stream",
+    dataUrl: await fileToDataUrl(file),
+    fileName: file.name,
+    fileSizeKb: Math.max(1, Math.round(file.size / 1024)),
   };
 }

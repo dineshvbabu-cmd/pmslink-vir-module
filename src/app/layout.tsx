@@ -63,6 +63,19 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
               <div className="sidebar-footer">
                 <div className="sync-stamp">Last synced 20/04/2026</div>
+                <div className="sidebar-footer-links">
+                  <Link className="nav-secondary-link" href="/instruction" rel="noreferrer" target="_blank">
+                    Web manual
+                  </Link>
+                  <a
+                    className="nav-secondary-link"
+                    href="/api/reports/manual/pdf?kind=offline"
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    Offline manual
+                  </a>
+                </div>
                 <Link className="nav-secondary-link" href="/login">
                   Switch workspace
                 </Link>
@@ -119,6 +132,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     aria-label="Instruction"
                     className="topbar-help-link"
                     href={buildWorkspaceHref("/instruction", session.workspace, workspaceFilter)}
+                    rel="noreferrer"
+                    target="_blank"
                   >
                     <HelpCircle size={18} />
                     <span>Help</span>
