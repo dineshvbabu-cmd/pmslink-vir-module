@@ -140,6 +140,8 @@ export async function createInspectionAction(formData: FormData) {
     toDateOrNull(formData.get("inspectionFromDate")) ?? toDateOrNull(formData.get("inspectionDate")) ?? new Date();
   const reportType = toStringOrNull(formData.get("reportType"));
   const inspectionMode = toStringOrNull(formData.get("inspectionMode"));
+  const alongsideBy = toStringOrNull(formData.get("alongsideBy"));
+  const operationsAtInspection = toStringOrNull(formData.get("operationsAtInspection"));
   const inspectionAuthority = toStringOrNull(formData.get("inspectionAuthority"));
   const causeAnalysisTarget = toStringOrNull(formData.get("causeAnalysisTarget"));
   const correctiveActionPlanTarget = toStringOrNull(formData.get("correctiveActionPlanTarget"));
@@ -149,11 +151,15 @@ export async function createInspectionAction(formData: FormData) {
     !inspectionTypeId ||
     !reportType ||
     !inspectionMode ||
+    !alongsideBy ||
+    !operationsAtInspection ||
     !inspectionAuthority ||
     !causeAnalysisTarget ||
     !correctiveActionPlanTarget
   ) {
-    throw new Error("Vessel, inspection type, report type, inspection mode, inspection authority, cause analysis, and corrective action target are required.");
+    throw new Error(
+      "Vessel, inspection type, report type, inspection mode, alongside selection, operations at inspection, inspection authority, cause analysis, and corrective action target are required."
+    );
   }
 
   let templateId = templateIdInput;

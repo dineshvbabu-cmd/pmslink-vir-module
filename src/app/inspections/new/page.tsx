@@ -5,8 +5,14 @@ import { isOfficeSession, requireVirSession } from "@/lib/vir/session";
 
 export const dynamic = "force-dynamic";
 
-export default async function NewInspectionPage() {
+export default async function NewInspectionPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ vesselId?: string }>;
+}) {
   const session = await requireVirSession();
+  const params = searchParams ? await searchParams : undefined;
+  const requestedVesselId = typeof params?.vesselId === "string" ? params.vesselId : undefined;
 
   const [vessels, inspectionTypes, templates] = await Promise.all([
     isOfficeSession(session)
@@ -49,7 +55,7 @@ export default async function NewInspectionPage() {
 
         <InspectionLaunchForm
           action={createInspectionAction}
-          defaultVesselId={isOfficeSession(session) ? undefined : session.vesselId ?? undefined}
+          defaultVesselId={isOfficeSession(session) ? requestedVesselId : session.vesselId ?? undefined}
           inspectionTypes={inspectionTypes.map((type) => ({
             id: type.id,
             name: type.name,

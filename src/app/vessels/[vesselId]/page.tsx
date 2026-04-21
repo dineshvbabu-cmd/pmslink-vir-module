@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Eye, FileText, LayoutGrid, TriangleAlert } from "lucide-react";
+import { ActionIconLink } from "@/components/action-icon-link";
 import { prisma } from "@/lib/prisma";
 import { canAccessVessel, requireVirSession } from "@/lib/vir/session";
 import { buildVesselProfile } from "@/lib/vir/vessel-profile";
@@ -60,6 +62,9 @@ export default async function VesselDetailsPage({
             <p className="hero-copy">Vessel particulars and inspection history drill-down for office and vessel workflows.</p>
           </div>
           <div className="actions-row">
+            <Link className="btn-secondary btn-compact" href={`/inspections/new?vesselId=${vessel.id}`}>
+              Create inspection-new format
+            </Link>
             <Link className="btn-secondary btn-compact" href={`/inspections?scope=history&vesselId=${vessel.id}`}>
               Open inspection history
             </Link>
@@ -256,17 +261,22 @@ export default async function VesselDetailsPage({
                     <td>{inspection.inspectionType.name}</td>
                     <td>{inspection.findings.length}</td>
                     <td>
-                      <div className="table-actions">
-                        <Link className="inline-link" href={`/inspections/${inspection.id}`}>
-                          Workflow
-                        </Link>
-                        <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
-                          Report
-                        </Link>
+                      <div className="table-actions table-actions-icons">
+                        <ActionIconLink href={`/vessels/${vessel.id}`} icon={LayoutGrid} label="Vessel details" />
+                        <ActionIconLink href={`/inspections/${inspection.id}`} icon={Eye} label="Inspection workflow" tone="primary" />
+                        <ActionIconLink
+                          href={`/reports/inspection/${inspection.id}?variant=detailed`}
+                          icon={FileText}
+                          label="Detailed report"
+                          tone="success"
+                        />
                         {inspection.findings.length ? (
-                          <Link className="inline-link" href={`/deviations/${inspection.id}?vesselId=${vessel.id}`}>
-                            Deviation
-                          </Link>
+                          <ActionIconLink
+                            href={`/deviations/${inspection.id}?vesselId=${vessel.id}`}
+                            icon={TriangleAlert}
+                            label="Deviation approval flow"
+                            tone="warning"
+                          />
                         ) : null}
                       </div>
                     </td>

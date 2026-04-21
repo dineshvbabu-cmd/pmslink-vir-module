@@ -1,6 +1,7 @@
 import type { VirInspectionTypeCategory } from "@prisma/client";
 import Link from "next/link";
 import { Eye, FileText, LayoutGrid, TableProperties, TriangleAlert } from "lucide-react";
+import { ActionIconLink } from "@/components/action-icon-link";
 import { prisma } from "@/lib/prisma";
 import { summarizeProgress } from "@/lib/vir/analytics";
 import { getVirWorkspaceFilter, isOfficeSession, requireVirSession } from "@/lib/vir/session";
@@ -435,10 +436,12 @@ function ApprovedInspectionGrid({
                   {inspection.vessel.name}
                 </Link>
                 <div className="table-actions">
-                  <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
-                    <Eye size={14} />
-                    <span>Open report</span>
-                  </Link>
+                  <ActionIconLink
+                    href={`/reports/inspection/${inspection.id}?variant=detailed`}
+                    icon={Eye}
+                    label="Open approved report"
+                    tone="primary"
+                  />
                 </div>
               </td>
               <td>
@@ -455,18 +458,15 @@ function ApprovedInspectionGrid({
                 <span className={`chip ${inspection.syncLabel === "Synced" ? "chip-success" : "chip-danger"}`}>{inspection.syncLabel}</span>
               </td>
               <td>
-                <div className="table-actions">
-                  <Link className="inline-link" href={`/vessels/${inspection.vessel.id}`}>
-                    <span>Vessel details</span>
-                  </Link>
-                  <Link className="inline-link" href={`/inspections/${inspection.id}`}>
-                    <Eye size={14} />
-                    <span>Workflow</span>
-                  </Link>
-                  <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
-                    <FileText size={14} />
-                    <span>Report</span>
-                  </Link>
+                <div className="table-actions table-actions-icons">
+                  <ActionIconLink href={`/vessels/${inspection.vessel.id}`} icon={LayoutGrid} label="Vessel details" />
+                  <ActionIconLink href={`/inspections/${inspection.id}`} icon={Eye} label="Inspection workflow" tone="primary" />
+                  <ActionIconLink
+                    href={`/reports/inspection/${inspection.id}?variant=detailed`}
+                    icon={FileText}
+                    label="Detailed report"
+                    tone="success"
+                  />
                 </div>
               </td>
             </tr>
@@ -528,26 +528,22 @@ function InspectionHistoryGrid({
               <td>{inspection.reportType}</td>
               <td>{inspection.inspectionMode}</td>
               <td>
-                <div className="table-actions">
-                  <Link className="inline-link" href={`/vessels/${inspection.vessel.id}`}>
-                    <span>Vessel details</span>
-                  </Link>
-                  <Link className="inline-link" href={`/inspections/${inspection.id}`}>
-                    <Eye size={14} />
-                    <span>Workflow</span>
-                  </Link>
-                  <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
-                    <FileText size={14} />
-                    <span>Report</span>
-                  </Link>
+                <div className="table-actions table-actions-icons">
+                  <ActionIconLink href={`/vessels/${inspection.vessel.id}`} icon={LayoutGrid} label="Vessel details" />
+                  <ActionIconLink href={`/inspections/${inspection.id}`} icon={Eye} label="Inspection workflow" tone="primary" />
+                  <ActionIconLink
+                    href={`/reports/inspection/${inspection.id}?variant=detailed`}
+                    icon={FileText}
+                    label="Detailed report"
+                    tone="success"
+                  />
                   {inspection.findings.length > 0 ? (
-                    <Link
-                      className="inline-link"
+                    <ActionIconLink
                       href={`/deviations/${inspection.id}${selectedVesselId ? `?vesselId=${encodeURIComponent(selectedVesselId)}` : ""}`}
-                    >
-                      <TriangleAlert size={14} />
-                      <span>Pending deviations</span>
-                    </Link>
+                      icon={TriangleAlert}
+                      label="Pending deviations"
+                      tone="warning"
+                    />
                   ) : null}
                 </div>
               </td>
@@ -612,23 +608,22 @@ function InspectionRegisterGrid({
                 </div>
               </td>
               <td>
-                <div className="table-actions">
-                  <Link className="inline-link" href={`/vessels/${inspection.vessel.id}`}>
-                    <span>Vessel details</span>
-                  </Link>
-                  <Link className="inline-link" href={`/inspections/${inspection.id}`}>
-                    <Eye size={14} />
-                    <span>Workflow</span>
-                  </Link>
-                  <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
-                    <FileText size={14} />
-                    <span>Report</span>
-                  </Link>
+                <div className="table-actions table-actions-icons">
+                  <ActionIconLink href={`/vessels/${inspection.vessel.id}`} icon={LayoutGrid} label="Vessel details" />
+                  <ActionIconLink href={`/inspections/${inspection.id}`} icon={Eye} label="Inspection workflow" tone="primary" />
+                  <ActionIconLink
+                    href={`/reports/inspection/${inspection.id}?variant=detailed`}
+                    icon={FileText}
+                    label="Detailed report"
+                    tone="success"
+                  />
                   {inspection.findings.length > 0 ? (
-                    <Link className="inline-link" href={`/deviations/${inspection.id}?vesselId=${inspection.vessel.id}`}>
-                      <TriangleAlert size={14} />
-                      <span>Deviation</span>
-                    </Link>
+                    <ActionIconLink
+                      href={`/deviations/${inspection.id}?vesselId=${inspection.vessel.id}`}
+                      icon={TriangleAlert}
+                      label="Deviation approval flow"
+                      tone="warning"
+                    />
                   ) : null}
                 </div>
               </td>
@@ -685,15 +680,15 @@ function SummaryInspectionView({
             Inspected by {inspection.inspectorName ?? "Not set"}
             {inspection.approvedSignOff?.actorName ? ` / Approved by ${inspection.approvedSignOff.actorName}` : ""}
           </div>
-          <div className="table-actions" style={{ marginTop: "0.8rem" }}>
-            <Link className="inline-link" href={`/inspections/${inspection.id}`}>
-              <Eye size={14} />
-              <span>Workflow</span>
-            </Link>
-            <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
-              <FileText size={14} />
-              <span>Report</span>
-            </Link>
+          <div className="table-actions table-actions-icons" style={{ marginTop: "0.8rem" }}>
+            <ActionIconLink href={`/vessels/${inspection.vessel.id}`} icon={LayoutGrid} label="Vessel details" />
+            <ActionIconLink href={`/inspections/${inspection.id}`} icon={Eye} label="Inspection workflow" tone="primary" />
+            <ActionIconLink
+              href={`/reports/inspection/${inspection.id}?variant=detailed`}
+              icon={FileText}
+              label="Detailed report"
+              tone="success"
+            />
           </div>
         </article>
       ))}

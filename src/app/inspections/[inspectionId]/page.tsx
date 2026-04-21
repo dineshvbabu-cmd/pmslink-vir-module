@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Eye, FileText, TriangleAlert } from "lucide-react";
 import {
   addCorrectiveActionAction,
   addFindingAction,
@@ -9,6 +10,7 @@ import {
   updateFindingStatusAction,
   updateInspectionStatusAction,
 } from "@/app/actions";
+import { ActionIconLink } from "@/components/action-icon-link";
 import { EvidenceSyncPanel } from "@/components/evidence-sync-panel";
 import { FloatingActivityFeed } from "@/components/floating-activity-feed";
 import { QuestionEvidenceInline } from "@/components/question-evidence-inline";
@@ -284,6 +286,35 @@ export default async function InspectionDetailPage({
             </tbody>
           </table>
         </div>
+
+        <div className="stack-list" style={{ marginTop: "1.25rem" }}>
+          <div className="list-card">
+            <div className="list-card-title">Machinery particulars</div>
+            <div className="report-detail-grid" style={{ marginTop: "1rem" }}>
+              {vesselProfile.machineryBlocks.slice(0, 4).flatMap((block) =>
+                block.rows.slice(0, 2).map((item) => (
+                  <DetailRow key={`${block.title}-${item.label}`} label={`${block.title} / ${item.label}`} value={item.value} />
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="list-card">
+            <div className="list-card-title">Inspection scoring guides</div>
+            <div className="report-detail-grid" style={{ marginTop: "1rem" }}>
+              <DetailRow
+                label="Vessel rating"
+                value={`${vesselProfile.vesselRatingGuide[0]?.rating ?? "High"} / ${vesselProfile.vesselRatingGuide[1]?.rating ?? "Medium"} / ${vesselProfile.vesselRatingGuide[2]?.rating ?? "Low"}`}
+              />
+              <DetailRow
+                label="Condition scoring"
+                value={`${vesselProfile.vesselConditionGuide.length} reference rows available`}
+              />
+              <DetailRow label="Section configuration" value={`${inspection.template?.sections.length ?? 0} questionnaire sections`} />
+              <DetailRow label="Question bank" value={`${templateQuestionCount} inspection questions`} />
+            </div>
+          </div>
+        </div>
       </section>
 
       <section className="workspace-console-shell">
@@ -469,18 +500,27 @@ export default async function InspectionDetailPage({
                            Open the matching report, findings lane, or section summary without leaving the inspection workspace.
                          </div>
                        </div>
-                       <div className="actions-row">
-                         <Link className="btn-secondary btn-compact" href={`/reports/inspection/${inspection.id}?variant=summary`}>
-                           Section summary
-                         </Link>
-                         <Link className="btn-secondary btn-compact" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
-                           Detailed report
-                         </Link>
-                         <Link className="btn-secondary btn-compact" href={`/inspections/${inspection.id}?pane=findings`}>
-                           Raise / review findings
-                         </Link>
-                       </div>
-                     </div>
+                        <div className="table-actions table-actions-icons">
+                          <ActionIconLink
+                            href={`/reports/inspection/${inspection.id}?variant=summary`}
+                            icon={Eye}
+                            label="Section summary"
+                            tone="primary"
+                          />
+                          <ActionIconLink
+                            href={`/reports/inspection/${inspection.id}?variant=detailed`}
+                            icon={FileText}
+                            label="Detailed report"
+                            tone="success"
+                          />
+                          <ActionIconLink
+                            href={`/inspections/${inspection.id}?pane=findings`}
+                            icon={TriangleAlert}
+                            label="Raise or review findings"
+                            tone="warning"
+                          />
+                        </div>
+                      </div>
 
                      <div className="question-list-viewport" style={{ marginTop: "1rem" }}>
                        <div className="stack-list">
@@ -579,16 +619,25 @@ export default async function InspectionDetailPage({
                                 </div>
                               ) : null}
 
-                              <div className="actions-row question-inline-actions">
-                                <Link className="inline-link" href={`/inspections/${inspection.id}?pane=findings`}>
-                                  Open finding lane
-                                </Link>
-                                <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
-                                  View in detailed report
-                                </Link>
-                                <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=summary`}>
-                                  View section summary
-                                </Link>
+                              <div className="table-actions table-actions-icons question-inline-actions">
+                                <ActionIconLink
+                                  href={`/inspections/${inspection.id}?pane=findings`}
+                                  icon={TriangleAlert}
+                                  label="Open finding lane"
+                                  tone="warning"
+                                />
+                                <ActionIconLink
+                                  href={`/reports/inspection/${inspection.id}?variant=detailed`}
+                                  icon={FileText}
+                                  label="View in detailed report"
+                                  tone="success"
+                                />
+                                <ActionIconLink
+                                  href={`/reports/inspection/${inspection.id}?variant=summary`}
+                                  icon={Eye}
+                                  label="View section summary"
+                                  tone="primary"
+                                />
                               </div>
                             </div>
                           );
@@ -912,6 +961,15 @@ function MetricBox({ label, value, note }: { label: string; value: string; note:
       <div className="metric-tile-label">{label}</div>
       <div className="metric-tile-value">{value}</div>
       <div className="metric-tile-note">{note}</div>
+    </div>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="detail-row">
+      <div className="detail-row-label">{label}</div>
+      <div className="detail-row-value">{value}</div>
     </div>
   );
 }

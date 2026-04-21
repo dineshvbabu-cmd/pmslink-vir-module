@@ -174,8 +174,8 @@ export function InspectionLaunchForm({
           </div>
 
           <div className="field">
-            <label htmlFor="alongsideBy">Alongside by</label>
-            <select defaultValue="" id="alongsideBy" name="alongsideBy">
+            <label htmlFor="alongsideBy">Alongside by *</label>
+            <select defaultValue="" id="alongsideBy" name="alongsideBy" required>
               <option value="">Select</option>
               {alongsideByOptions.map((option) => (
                 <option key={option} value={option}>
@@ -186,8 +186,8 @@ export function InspectionLaunchForm({
           </div>
 
           <div className="field">
-            <label htmlFor="operationsAtInspection">Operations at the time of inspection</label>
-            <select defaultValue="" id="operationsAtInspection" name="operationsAtInspection">
+            <label htmlFor="operationsAtInspection">Operations at the time of inspection *</label>
+            <select defaultValue="" id="operationsAtInspection" name="operationsAtInspection" required>
               <option value="">Select operation</option>
               {inspectionOperationsOptions.map((option) => (
                 <option key={option} value={option}>
@@ -225,7 +225,7 @@ export function InspectionLaunchForm({
           </div>
 
           <div className="inspection-launch-radio-row">
-            <span className="inspection-launch-radio-label">Inspection based on incidents?</span>
+            <span className="inspection-launch-radio-label">Inspection based on incidents? *</span>
             <label>
               <input defaultChecked={false} name="inspectionBasedOnIncidents" type="radio" value="YES" />
               <span>Yes</span>
@@ -237,7 +237,7 @@ export function InspectionLaunchForm({
           </div>
 
           <div className="inspection-launch-radio-row">
-            <span className="inspection-launch-radio-label">Inspection based on external?</span>
+            <span className="inspection-launch-radio-label">Inspection based on external? *</span>
             <label>
               <input defaultChecked={false} name="inspectionBasedOnExternal" type="radio" value="YES" />
               <span>Yes</span>
