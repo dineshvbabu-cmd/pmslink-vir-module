@@ -1,7 +1,7 @@
-import type { VirInspectionTypeCategory } from "@prisma/client";
+import type { VirFindingStatus, VirInspectionStatus, VirInspectionTypeCategory, VirRiskLevel } from "@prisma/client";
 import Link from "next/link";
 import { FileDown } from "lucide-react";
-import { CompactBarChart, DonutChart } from "@/components/erp-charts";
+import { CompactBarChart, DonutChart, DualMetricBarChart } from "@/components/erp-charts";
 import { prisma } from "@/lib/prisma";
 import { findingStatusLabel, inspectionStatusLabel, toneForFindingStatus, toneForInspectionStatus } from "@/lib/vir/workflow";
 import { getVirWorkspaceFilter, isOfficeSession, requireVirSession } from "@/lib/vir/session";
@@ -16,6 +16,75 @@ type DashboardSearchParams = {
   range?: string;
   fleet?: string;
   vesselId?: string;
+  focus?: string;
+};
+
+type DashboardFocus =
+  | "total-vessels"
+  | "sailing-vir"
+  | "port-vir"
+  | "total-vir"
+  | "pending-report"
+  | "pending-deviation"
+  | "not-synced"
+  | "planner-in-window"
+  | "planner-due-range"
+  | "planner-overdue"
+  | "report-in-order"
+  | "report-non-compliance"
+  | "inspection-in-order"
+  | "inspection-non-compliance"
+  | "sailing-in-order"
+  | "sailing-non-compliance";
+
+type DashboardInspectionRow = {
+  id: string;
+  title: string;
+  externalReference: string | null;
+  status: VirInspectionStatus;
+  inspectionDate: Date;
+  port: string | null;
+  country: string | null;
+  vessel: {
+    id: string;
+    name: string;
+    vesselType: string | null;
+    fleet: string | null;
+  };
+  inspectionType: {
+    name: string;
+  };
+  findings: Array<{
+    id: string;
+  }>;
+};
+
+type DashboardFindingRow = {
+  id: string;
+  title: string;
+  severity: VirRiskLevel;
+  status: VirFindingStatus;
+  question: {
+    section: {
+      title: string;
+    } | null;
+  } | null;
+  inspection: DashboardInspectionRow;
+};
+
+type DashboardVesselRow = {
+  vessel: {
+    id: string;
+    name: string;
+    vesselType: string | null;
+    fleet: string | null;
+  };
+  latest: DashboardInspectionRow | null;
+  nextDue: Date | null;
+  latestMode: string;
+  plannerStatus: string;
+  inspectionCompliance: string;
+  sailingCompliance: string;
 };
 
 export default async function DashboardPage({
@@ -47,6 +116,7 @@ async function OfficeDashboard({
   const sinceDate = addDays(now, -rangeDays);
   const selectedFleet = requestedFleet !== undefined ? requestedFleet : workspaceFilter?.fleet ?? "";
   const selectedVesselId = requestedVesselId !== undefined ? requestedVesselId : workspaceFilter?.vesselId ?? "";
+  const selectedFocus = normalizeDashboardFocus(searchParams.focus);
 
   const [vessels, inspections] = await Promise.all([
     prisma.vessel.findMany({
@@ -166,22 +236,35 @@ async function OfficeDashboard({
   const inspectionComplianceCounts = countBy(latestByVessel.map((item) => item.inspectionCompliance));
   const sailingComplianceCounts = countBy(latestByVessel.map((item) => item.sailingCompliance));
 
-  const chapterCounts = new Map<string, number>();
+  const chapterSeverityCounts = new Map<string, { high: number; medium: number; low: number; total: number }>();
 
   for (const inspection of inspections) {
     for (const finding of inspection.findings) {
       const chapter = finding.question?.section.title ?? "General";
-      chapterCounts.set(chapter, (chapterCounts.get(chapter) ?? 0) + 1);
+      const current = chapterSeverityCounts.get(chapter) ?? { high: 0, medium: 0, low: 0, total: 0 };
+      const severityBucket = finding.severity === "CRITICAL" || finding.severity === "HIGH" ? "high" : finding.severity === "MEDIUM" ? "medium" : "low";
+      current[severityBucket] += 1;
+      current.total += 1;
+      chapterSeverityCounts.set(chapter, current);
     }
   }
 
-  const vesselTypeCounts = new Map<string, { inspections: number; findings: number }>();
+  const vesselTypeCounts = new Map<string, { inspections: number; findings: number; high: number; medium: number; low: number }>();
 
   for (const inspection of inspections) {
     const vesselType = inspection.vessel.vesselType ?? "Unspecified";
-    const current = vesselTypeCounts.get(vesselType) ?? { inspections: 0, findings: 0 };
+    const current = vesselTypeCounts.get(vesselType) ?? { inspections: 0, findings: 0, high: 0, medium: 0, low: 0 };
     current.inspections += 1;
     current.findings += inspection.findings.length;
+    for (const finding of inspection.findings) {
+      if (finding.severity === "CRITICAL" || finding.severity === "HIGH") {
+        current.high += 1;
+      } else if (finding.severity === "MEDIUM") {
+        current.medium += 1;
+      } else {
+        current.low += 1;
+      }
+    }
     vesselTypeCounts.set(vesselType, current);
   }
 
@@ -189,6 +272,20 @@ async function OfficeDashboard({
     .filter((inspection) => ["SUBMITTED", "RETURNED", "SHORE_REVIEWED"].includes(inspection.status))
     .slice(0, 12);
   const approvedSnapshot = completedInspections.slice(0, 12);
+  const openFindings = inspections.flatMap((inspection) =>
+    inspection.findings.map((finding) => ({
+      ...finding,
+      inspection,
+    }))
+  );
+
+  const focusContent = buildDashboardFocusContent({
+    focus: selectedFocus,
+    latestByVessel,
+    inspections,
+    completedInspections,
+    openFindings,
+  });
 
   return (
     <div className="page-stack">
@@ -258,6 +355,7 @@ async function OfficeDashboard({
               </option>
             ))}
           </select>
+          {selectedFocus ? <input name="focus" type="hidden" value={selectedFocus} /> : null}
           <button className="btn-secondary" type="submit">
             Apply
           </button>
@@ -265,39 +363,98 @@ async function OfficeDashboard({
       </section>
 
       <section className="vir-kpi-grid">
-        <KpiCard label="Total Vessels" value={`${vessels.length}`} />
+        <KpiCard
+          href={buildDashboardPageHref({ range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId, focus: "total-vessels" })}
+          label="Total Vessels"
+          value={`${vessels.length}`}
+        />
         <KpiCard
           label="Completed Inspection"
           split={[
-            { label: "Sailing VIR", value: `${completedSailing}` },
-            { label: "Port VIR", value: `${completedPort}` },
-            { label: "Total VIR", value: `${completedInspections.length}` },
+            {
+              label: "Sailing VIR",
+              value: `${completedSailing}`,
+              href: buildDashboardPageHref({ range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId, focus: "sailing-vir" }),
+            },
+            {
+              label: "Port VIR",
+              value: `${completedPort}`,
+              href: buildDashboardPageHref({ range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId, focus: "port-vir" }),
+            },
+            {
+              label: "Total VIR",
+              value: `${completedInspections.length}`,
+              href: buildDashboardPageHref({ range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId, focus: "total-vir" }),
+            },
           ]}
         />
         <KpiCard
           label="Pending Task"
           split={[
-            { label: "Pending Report", value: `${pendingReport}` },
-            { label: "Pending Deviation", value: `${pendingDeviation}` },
+            {
+              label: "Pending Report",
+              value: `${pendingReport}`,
+              href: buildDashboardPageHref({ range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId, focus: "pending-report" }),
+            },
+            {
+              label: "Pending Deviation",
+              value: `${pendingDeviation}`,
+              href: buildDashboardPageHref({ range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId, focus: "pending-deviation" }),
+            },
           ]}
         />
-        <KpiCard label="Not Synced" value={`${notSynced}`} emphasis="danger" />
+        <KpiCard
+          href={buildDashboardPageHref({ range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId, focus: "not-synced" })}
+          label="Not Synced"
+          value={`${notSynced}`}
+          emphasis="danger"
+        />
       </section>
 
       <section className="vir-donut-grid">
         <DonutChart
           segments={[
-            { label: "In Window", value: inspectionStatusCounts["In Window"] ?? 0, className: "donut-segment-success" },
-            { label: "Due Range", value: inspectionStatusCounts["Due Range"] ?? 0, className: "donut-segment-warning" },
-            { label: "Overdue", value: inspectionStatusCounts["Overdue"] ?? 0, className: "donut-segment-danger" },
+            {
+              label: "In Window",
+              value: inspectionStatusCounts["In Window"] ?? 0,
+              className: "donut-segment-success",
+              href: buildDashboardPageHref({ range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId, focus: "planner-in-window" }),
+              title: `In Window: ${inspectionStatusCounts["In Window"] ?? 0}`,
+            },
+            {
+              label: "Due Range",
+              value: inspectionStatusCounts["Due Range"] ?? 0,
+              className: "donut-segment-warning",
+              href: buildDashboardPageHref({ range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId, focus: "planner-due-range" }),
+              title: `Due Range: ${inspectionStatusCounts["Due Range"] ?? 0}`,
+            },
+            {
+              label: "Overdue",
+              value: inspectionStatusCounts["Overdue"] ?? 0,
+              className: "donut-segment-danger",
+              href: buildDashboardPageHref({ range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId, focus: "planner-overdue" }),
+              title: `Overdue: ${inspectionStatusCounts["Overdue"] ?? 0}`,
+            },
           ]}
           subtitle="Latest planner position by vessel"
           title="Inspection Status"
         />
         <DonutChart
           segments={[
-            { label: "In Order", value: reportStatusCounts["In Order"], className: "donut-segment-success" },
-            { label: "Non Compliance", value: reportStatusCounts["Non Compliance"], className: "donut-segment-danger" },
+            {
+              label: "In Order",
+              value: reportStatusCounts["In Order"],
+              className: "donut-segment-success",
+              href: buildDashboardPageHref({ range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId, focus: "report-in-order" }),
+              title: `In Order: ${reportStatusCounts["In Order"]}`,
+            },
+            {
+              label: "Non Compliance",
+              value: reportStatusCounts["Non Compliance"],
+              className: "donut-segment-danger",
+              href: buildDashboardPageHref({ range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId, focus: "report-non-compliance" }),
+              title: `Non Compliance: ${reportStatusCounts["Non Compliance"]}`,
+            },
           ]}
           subtitle="Approved or closed versus open lifecycle"
           title="Report Status"
@@ -308,11 +465,20 @@ async function OfficeDashboard({
               label: "In Order",
               value: inspectionComplianceCounts["In Order"] ?? 0,
               className: "donut-segment-success",
+              href: buildDashboardPageHref({ range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId, focus: "inspection-in-order" }),
+              title: `In Order: ${inspectionComplianceCounts["In Order"] ?? 0}`,
             },
             {
               label: "Non Compliance",
               value: inspectionComplianceCounts["Non Compliance"] ?? 0,
               className: "donut-segment-danger",
+              href: buildDashboardPageHref({
+                range: rangeDays,
+                fleet: selectedFleet,
+                vesselId: selectedVesselId,
+                focus: "inspection-non-compliance",
+              }),
+              title: `Non Compliance: ${inspectionComplianceCounts["Non Compliance"] ?? 0}`,
             },
           ]}
           subtitle="Latest inspection compliance picture"
@@ -320,11 +486,24 @@ async function OfficeDashboard({
         />
         <DonutChart
           segments={[
-            { label: "In Order", value: sailingComplianceCounts["In Order"] ?? 0, className: "donut-segment-success" },
+            {
+              label: "In Order",
+              value: sailingComplianceCounts["In Order"] ?? 0,
+              className: "donut-segment-success",
+              href: buildDashboardPageHref({ range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId, focus: "sailing-in-order" }),
+              title: `In Order: ${sailingComplianceCounts["In Order"] ?? 0}`,
+            },
             {
               label: "Non Compliance",
               value: sailingComplianceCounts["Non Compliance"] ?? 0,
               className: "donut-segment-danger",
+              href: buildDashboardPageHref({
+                range: rangeDays,
+                fleet: selectedFleet,
+                vesselId: selectedVesselId,
+                focus: "sailing-non-compliance",
+              }),
+              title: `Non Compliance: ${sailingComplianceCounts["Non Compliance"] ?? 0}`,
             },
           ]}
           subtitle="Latest sailing-mode compliance picture"
@@ -332,20 +511,64 @@ async function OfficeDashboard({
         />
       </section>
 
+      {focusContent ? (
+        <section className="panel panel-elevated dashboard-focus-panel" id="dashboard-data">
+          <div className="section-header">
+            <div>
+              <h3 className="panel-title">{focusContent.title}</h3>
+              <p className="panel-subtitle">{focusContent.subtitle}</p>
+            </div>
+            <Link
+              className="btn-secondary btn-compact"
+              href={buildDashboardPageHref({ range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId })}
+            >
+              Clear selection
+            </Link>
+          </div>
+
+          {focusContent.kind === "vessels" ? (
+            <DashboardVesselTable rows={focusContent.rows} />
+          ) : focusContent.kind === "inspections" ? (
+            <DashboardInspectionTable rows={focusContent.rows} />
+          ) : (
+            <DashboardFindingTable rows={focusContent.rows} />
+          )}
+        </section>
+      ) : (
+        <section className="panel panel-elevated dashboard-focus-panel" id="dashboard-data">
+          <div className="dashboard-focus-empty">Select a KPI tile or a donut legend segment to open the underlying live data table here.</div>
+        </section>
+      )}
+
       <section className="dashboard-grid dashboard-grid-equal">
         <CompactBarChart
-          bars={[...chapterCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([label, value]) => ({ label, value }))}
+          bars={[...chapterSeverityCounts.entries()]
+            .sort((a, b) => b[1].total - a[1].total)
+            .slice(0, 8)
+            .map(([label, value]) => ({
+              label,
+              value: value.total,
+              note: `${value.total} findings`,
+              title: `High: ${value.high} | Medium: ${value.medium} | Low: ${value.low} | Total: ${value.total}`,
+              segments: [
+                { label: "High", value: value.high, className: "chart-bar-segment-danger" },
+                { label: "Medium", value: value.medium, className: "chart-bar-segment-warning" },
+                { label: "Low", value: value.low, className: "chart-bar-segment-success" },
+              ],
+            }))}
           subtitle="Open findings by questionnaire chapter"
           title="Chapter-wise Findings"
         />
-        <CompactBarChart
+        <DualMetricBarChart
           bars={[...vesselTypeCounts.entries()]
             .sort((a, b) => b[1].findings - a[1].findings)
             .slice(0, 8)
             .map(([label, value]) => ({
               label,
-              value: value.findings,
-              note: `${value.inspections} inspections`,
+              note: `${value.findings} findings / ${value.inspections} inspections`,
+              title: `Findings: ${value.findings} | Inspections: ${value.inspections} | High: ${value.high} | Medium: ${value.medium} | Low: ${value.low}`,
+              primary: { label: "Findings", value: value.findings, className: "chart-bar-segment-findings" },
+              secondary: { label: "Inspections", value: value.inspections, className: "chart-bar-segment-inspections" },
             }))}
           subtitle="Finding concentration by vessel class"
           title="Vessel Type Inspection & Findings"
@@ -737,26 +960,47 @@ function KpiCard({
   value,
   split,
   emphasis,
+  href,
 }: {
   label: string;
   value?: string;
-  split?: Array<{ label: string; value: string }>;
+  split?: Array<{ label: string; value: string; href?: string }>;
   emphasis?: "danger";
+  href?: string;
 }) {
-  return (
-    <div className={`panel panel-elevated vir-kpi-card ${emphasis === "danger" ? "vir-kpi-card-danger" : ""}`}>
+  const content = (
+    <>
       <div className="vir-kpi-label">{label}</div>
       {value ? <div className="vir-kpi-value">{value}</div> : null}
       {split ? (
         <div className={`vir-kpi-split ${split.length === 3 ? "vir-kpi-split-three" : ""}`}>
-          {split.map((item) => (
-            <div className="vir-kpi-split-item" key={item.label}>
-              <span>{item.label}</span>
-              <strong>{item.value}</strong>
-            </div>
-          ))}
+          {split.map((item) =>
+            item.href ? (
+              <Link className="vir-kpi-split-item vir-kpi-split-item-link" href={item.href} key={item.label}>
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+              </Link>
+            ) : (
+              <div className="vir-kpi-split-item" key={item.label}>
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+              </div>
+            )
+          )}
         </div>
       ) : null}
+    </>
+  );
+
+  return (
+    <div className={`panel panel-elevated vir-kpi-card ${emphasis === "danger" ? "vir-kpi-card-danger" : ""}`}>
+      {href ? (
+        <Link className="vir-kpi-card-link" href={href}>
+          {content}
+        </Link>
+      ) : (
+        content
+      )}
     </div>
   );
 }
@@ -823,6 +1067,33 @@ function normalizeDashboardRange(value: string | undefined) {
   return [90, 180, 365].includes(parsed) ? parsed : 180;
 }
 
+function normalizeDashboardFocus(value: string | undefined): DashboardFocus | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const allowed: DashboardFocus[] = [
+    "total-vessels",
+    "sailing-vir",
+    "port-vir",
+    "total-vir",
+    "pending-report",
+    "pending-deviation",
+    "not-synced",
+    "planner-in-window",
+    "planner-due-range",
+    "planner-overdue",
+    "report-in-order",
+    "report-non-compliance",
+    "inspection-in-order",
+    "inspection-non-compliance",
+    "sailing-in-order",
+    "sailing-non-compliance",
+  ];
+
+  return allowed.includes(value as DashboardFocus) ? (value as DashboardFocus) : undefined;
+}
+
 function buildDashboardExportHref(
   kind: "dashboard" | "analytics",
   filters: { range: number; fleet?: string; vesselId?: string }
@@ -840,6 +1111,26 @@ function buildDashboardExportHref(
   }
 
   return `/api/reports/dashboard/pdf?${params.toString()}`;
+}
+
+function buildDashboardPageHref(filters: { range: number; fleet?: string; vesselId?: string; focus?: DashboardFocus }) {
+  const params = new URLSearchParams();
+  params.set("range", `${filters.range}`);
+
+  if (filters.fleet) {
+    params.set("fleet", filters.fleet);
+  }
+
+  if (filters.vesselId) {
+    params.set("vesselId", filters.vesselId);
+  }
+
+  if (filters.focus) {
+    params.set("focus", filters.focus);
+  }
+
+  const query = params.toString();
+  return `${query ? `/?${query}` : "/"}${filters.focus ? "#dashboard-data" : ""}`;
 }
 
 function buildInspectionListHref(scope: "approved" | "history", vesselId?: string) {
@@ -881,5 +1172,304 @@ function DashboardExportMenu({
         ))}
       </div>
     </details>
+  );
+}
+
+function buildDashboardFocusContent({
+  focus,
+  latestByVessel,
+  inspections,
+  completedInspections,
+  openFindings,
+}: {
+  focus: DashboardFocus | undefined;
+  latestByVessel: DashboardVesselRow[];
+  inspections: DashboardInspectionRow[];
+  completedInspections: DashboardInspectionRow[];
+  openFindings: DashboardFindingRow[];
+}) {
+  if (!focus) {
+    return null;
+  }
+
+  switch (focus) {
+    case "total-vessels":
+      return {
+        kind: "vessels" as const,
+        title: "Total vessels",
+        subtitle: "Fleet and vessel master filtered by the current dashboard selection.",
+        rows: latestByVessel,
+      };
+    case "sailing-vir":
+      return {
+        kind: "inspections" as const,
+        title: "Completed sailing VIR",
+        subtitle: "Approved or closed sailing-mode VIR records.",
+        rows: completedInspections.filter((inspection) => inferInspectionMode(inspection.title, inspection.inspectionType.name).includes("Sailing")),
+      };
+    case "port-vir":
+      return {
+        kind: "inspections" as const,
+        title: "Completed port VIR",
+        subtitle: "Approved or closed port-mode VIR records.",
+        rows: completedInspections.filter((inspection) => inferInspectionMode(inspection.title, inspection.inspectionType.name) === "Port"),
+      };
+    case "total-vir":
+      return {
+        kind: "inspections" as const,
+        title: "Completed total VIR",
+        subtitle: "All approved or closed VIR records within the selected period.",
+        rows: completedInspections,
+      };
+    case "pending-report":
+      return {
+        kind: "inspections" as const,
+        title: "Pending report",
+        subtitle: "Inspections still in draft, submitted, or returned lifecycle.",
+        rows: inspections.filter((inspection) => ["DRAFT", "SUBMITTED", "RETURNED"].includes(inspection.status)),
+      };
+    case "pending-deviation":
+      return {
+        kind: "findings" as const,
+        title: "Pending deviation register",
+        subtitle: "Open findings and corrective items currently driving deviation load.",
+        rows: openFindings,
+      };
+    case "not-synced":
+      return {
+        kind: "inspections" as const,
+        title: "Not synced",
+        subtitle: "Inspection packages still not fully synchronized between vessel and office.",
+        rows: inspections.filter((inspection) => ["DRAFT", "RETURNED"].includes(inspection.status)),
+      };
+    case "planner-in-window":
+      return {
+        kind: "vessels" as const,
+        title: "Planner status: In Window",
+        subtitle: "Vessels currently in the acceptable planning window.",
+        rows: latestByVessel.filter((item) => item.plannerStatus === "In Window"),
+      };
+    case "planner-due-range":
+      return {
+        kind: "vessels" as const,
+        title: "Planner status: Due Range",
+        subtitle: "Vessels approaching the next VIR due date.",
+        rows: latestByVessel.filter((item) => item.plannerStatus === "Due Range"),
+      };
+    case "planner-overdue":
+      return {
+        kind: "vessels" as const,
+        title: "Planner status: Overdue",
+        subtitle: "Vessels beyond the current VIR due date threshold.",
+        rows: latestByVessel.filter((item) => item.plannerStatus === "Overdue"),
+      };
+    case "report-in-order":
+      return {
+        kind: "inspections" as const,
+        title: "Report status: In Order",
+        subtitle: "Approved or closed records counted as report-ready.",
+        rows: completedInspections,
+      };
+    case "report-non-compliance":
+      return {
+        kind: "inspections" as const,
+        title: "Report status: Non Compliance",
+        subtitle: "Inspection records not yet approved or closed.",
+        rows: inspections.filter((inspection) => !approvedStatuses.has(inspection.status)),
+      };
+    case "inspection-in-order":
+      return {
+        kind: "vessels" as const,
+        title: "Inspection compliance: In Order",
+        subtitle: "Latest inspection record is compliant for the vessel.",
+        rows: latestByVessel.filter((item) => item.inspectionCompliance === "In Order"),
+      };
+    case "inspection-non-compliance":
+      return {
+        kind: "vessels" as const,
+        title: "Inspection compliance: Non Compliance",
+        subtitle: "Latest inspection record remains non-compliant for the vessel.",
+        rows: latestByVessel.filter((item) => item.inspectionCompliance === "Non Compliance"),
+      };
+    case "sailing-in-order":
+      return {
+        kind: "vessels" as const,
+        title: "Sailing compliance: In Order",
+        subtitle: "Latest sailing-mode record is compliant for the vessel.",
+        rows: latestByVessel.filter((item) => item.sailingCompliance === "In Order"),
+      };
+    case "sailing-non-compliance":
+      return {
+        kind: "vessels" as const,
+        title: "Sailing compliance: Non Compliance",
+        subtitle: "Latest sailing-mode record remains non-compliant for the vessel.",
+        rows: latestByVessel.filter((item) => item.sailingCompliance === "Non Compliance"),
+      };
+    default:
+      return null;
+  }
+}
+
+function DashboardVesselTable({
+  rows,
+}: {
+  rows: DashboardVesselRow[];
+}) {
+  return (
+    <div className="table-shell table-shell-compact">
+      <table className="table data-table vir-data-table">
+        <thead>
+          <tr>
+            <th>Vessel</th>
+            <th>Type</th>
+            <th>Fleet</th>
+            <th>Last VIR done date</th>
+            <th>Last VIR inspection mode</th>
+            <th>Next due date</th>
+            <th>Inspection status</th>
+            <th>Inspection compliance</th>
+            <th>Sailing compliance</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length ? (
+            rows.map((item) => (
+              <tr key={item.vessel.id}>
+                <td>{item.vessel.name}</td>
+                <td>{item.vessel.vesselType ?? "Unspecified"}</td>
+                <td>{item.vessel.fleet ?? "Unassigned"}</td>
+                <td>{item.latest ? fmt.format(item.latest.inspectionDate) : "Not recorded"}</td>
+                <td>{item.latestMode}</td>
+                <td>{item.nextDue ? fmt.format(item.nextDue) : "Not set"}</td>
+                <td>{item.plannerStatus}</td>
+                <td>{item.inspectionCompliance}</td>
+                <td>{item.sailingCompliance}</td>
+                <td>
+                  <div className="table-actions">
+                    <Link className="inline-link" href={`/vessels/${item.vessel.id}`}>
+                      Vessel details
+                    </Link>
+                    {item.latest ? (
+                      <Link className="inline-link" href={`/reports/inspection/${item.latest.id}?variant=detailed`}>
+                        Report
+                      </Link>
+                    ) : null}
+                  </div>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={10}>No vessel records matched this dashboard selection.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DashboardInspectionTable({ rows }: { rows: DashboardInspectionRow[] }) {
+  return (
+    <div className="table-shell table-shell-compact">
+      <table className="table data-table vir-data-table">
+        <thead>
+          <tr>
+            <th>Inspection</th>
+            <th>Vessel</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Place of inspection</th>
+            <th>Inspection date</th>
+            <th>Open findings</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length ? (
+            rows.map((inspection) => (
+              <tr key={inspection.id}>
+                <td>{inspection.externalReference ?? inspection.title}</td>
+                <td>{inspection.vessel.name}</td>
+                <td>{inspection.inspectionType.name}</td>
+                <td>
+                  <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>
+                    {inspectionStatusLabel[inspection.status]}
+                  </span>
+                </td>
+                <td>{[inspection.port, inspection.country].filter(Boolean).join(", ") || "Not set"}</td>
+                <td>{fmt.format(inspection.inspectionDate)}</td>
+                <td>{inspection.findings.length}</td>
+                <td>
+                  <div className="table-actions">
+                    <Link className="inline-link" href={`/inspections/${inspection.id}`}>
+                      Workflow
+                    </Link>
+                    <Link className="inline-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+                      Report
+                    </Link>
+                  </div>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={8}>No inspection records matched this dashboard selection.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DashboardFindingTable({ rows }: { rows: DashboardFindingRow[] }) {
+  return (
+    <div className="table-shell table-shell-compact">
+      <table className="table data-table vir-data-table">
+        <thead>
+          <tr>
+            <th>Vessel</th>
+            <th>Inspection</th>
+            <th>Chapter</th>
+            <th>Finding</th>
+            <th>Severity</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length ? (
+            rows.map((finding) => (
+              <tr key={finding.id}>
+                <td>{finding.inspection.vessel.name}</td>
+                <td>{finding.inspection.externalReference ?? finding.inspection.title}</td>
+                <td>{finding.question?.section?.title ?? "General"}</td>
+                <td>{finding.title}</td>
+                <td>{finding.severity}</td>
+                <td>
+                  <span className={`chip ${toneForFindingStatus(finding.status)}`}>{findingStatusLabel[finding.status]}</span>
+                </td>
+                <td>
+                  <div className="table-actions">
+                    <Link className="inline-link" href={`/inspections/${finding.inspection.id}?pane=findings`}>
+                      Open finding
+                    </Link>
+                    <Link className="inline-link" href={`/deviations/${finding.inspection.id}?vesselId=${finding.inspection.vessel.id}`}>
+                      Deviation
+                    </Link>
+                  </div>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={7}>No finding records matched this dashboard selection.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
   );
 }
