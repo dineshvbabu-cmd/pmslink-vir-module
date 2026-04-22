@@ -43,6 +43,7 @@ const officeNavigation: WorkspaceNavItem[] = [
   { href: "/inspections/new", label: "Create VIR", note: "Schedule or launch" },
   { href: "/templates", label: "Template Library", note: "Questionnaires" },
   { href: "/imports", label: "Import Engine", note: "Checklist normalization" },
+  { href: "/instruction", label: "Instruction", note: "Workflow and manuals" },
 ];
 
 const vesselNavigation: WorkspaceNavItem[] = [
@@ -53,6 +54,7 @@ const vesselNavigation: WorkspaceNavItem[] = [
   { href: "/inspections?scope=my-drafts", label: "My VIR Queue", note: "Draft and return" },
   { href: "/inspections", label: "Inspection Register", note: "Assigned to vessel" },
   { href: "/inspections/new", label: "Start VIR", note: "Self assessment" },
+  { href: "/instruction", label: "Instruction", note: "Workflow and manuals" },
 ];
 
 function secret() {

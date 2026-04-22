@@ -25,13 +25,21 @@ function addDays(date: Date, days: number) {
 export default async function SchedulePage({
   searchParams,
 }: {
-  searchParams: Promise<{ vesselId?: string }>;
+  searchParams: Promise<{
+    vesselId?: string;
+    view?: string;
+    plannerStatus?: string;
+    compliance?: string;
+  }>;
 }) {
   const session = await requireVirSession();
   const isOffice = isOfficeSession(session);
   const workspaceFilter = isOffice ? await getVirWorkspaceFilter() : null;
   const params = await searchParams;
   const requestedVesselId = typeof params.vesselId === "string" ? params.vesselId.trim() : undefined;
+  const selectedView = normalizeScheduleView(typeof params.view === "string" ? params.view : undefined);
+  const selectedPlannerStatus = typeof params.plannerStatus === "string" ? params.plannerStatus : "ALL";
+  const selectedCompliance = typeof params.compliance === "string" ? params.compliance : "ALL";
   const selectedVesselId =
     isOffice
       ? requestedVesselId !== undefined
@@ -110,6 +118,26 @@ export default async function SchedulePage({
     })
     .sort((left, right) => left.vessel.name.localeCompare(right.vessel.name));
 
+  const filteredRows = vesselRows.filter((row) => {
+    if (selectedPlannerStatus !== "ALL" && row.plannerStatus !== selectedPlannerStatus) {
+      return false;
+    }
+
+    if (selectedCompliance === "NO_2_VIR" && row.inspectionCompliance !== "No 2 VIR") {
+      return false;
+    }
+
+    if (selectedCompliance === "NO_SAILING" && row.sailingCompliance !== "No Sailing") {
+      return false;
+    }
+
+    if (selectedCompliance === "IN_ORDER" && row.inspectionCompliance !== "In Order" && row.sailingCompliance !== "In Order") {
+      return false;
+    }
+
+    return true;
+  });
+
   return (
     <div className="page-stack">
       <section className="hero-panel">
@@ -135,126 +163,231 @@ export default async function SchedulePage({
       </section>
 
       <section className="erp-metrics-grid">
-        <MetricTile label="Total vessels" note="Visible planner scope" value={vesselRows.length} />
-        <MetricTile label="Approved" note="Last inspection approved" value={vesselRows.filter((row) => row.lastInspection && ["SHORE_REVIEWED", "CLOSED"].includes(row.lastInspection.status)).length} />
-        <MetricTile label="Due Range" note="Due inside 30 days" value={vesselRows.filter((row) => row.plannerStatus === "Due Range").length} />
-        <MetricTile label="Overdue" note="Past next due" value={vesselRows.filter((row) => row.plannerStatus === "Overdue").length} />
-        <MetricTile label="No 2 VIR" note="Inspection compliance exception" value={vesselRows.filter((row) => row.inspectionCompliance === "No 2 VIR").length} />
-        <MetricTile label="No Sailing" note="Sailing compliance exception" value={vesselRows.filter((row) => row.sailingCompliance === "No Sailing").length} />
+        <MetricTile label="Total vessels" note="Visible planner scope" value={filteredRows.length} />
+        <MetricTile label="Approved" note="Last inspection approved" value={filteredRows.filter((row) => row.lastInspection && ["SHORE_REVIEWED", "CLOSED"].includes(row.lastInspection.status)).length} />
+        <MetricTile label="Due Range" note="Due inside 30 days" value={filteredRows.filter((row) => row.plannerStatus === "Due Range").length} />
+        <MetricTile label="Overdue" note="Past next due" value={filteredRows.filter((row) => row.plannerStatus === "Overdue").length} />
+        <MetricTile label="No 2 VIR" note="Inspection compliance exception" value={filteredRows.filter((row) => row.inspectionCompliance === "No 2 VIR").length} />
+        <MetricTile label="No Sailing" note="Sailing compliance exception" value={filteredRows.filter((row) => row.sailingCompliance === "No Sailing").length} />
       </section>
 
       <section className="panel panel-elevated">
         <div className="section-header">
           <div>
             <h3 className="panel-title">Inspection planner &amp; compliance status</h3>
-            <p className="panel-subtitle">Workbook-style planner grid aligned to vessel, type, fleet, previous inspection, last inspection, and next due status.</p>
+            <p className="panel-subtitle">Switch between the workbook table and the gantt lane to avoid one long vessel-based scroll.</p>
+          </div>
+          <div className="actions-row">
+            <Link
+              className={`board-tab ${selectedView === "table" ? "board-tab-active" : ""}`}
+              href={buildScheduleHref({
+                vesselId: selectedVesselId,
+                view: "table",
+                plannerStatus: selectedPlannerStatus,
+                compliance: selectedCompliance,
+              })}
+              scroll={false}
+            >
+              Table view
+            </Link>
+            <Link
+              className={`board-tab ${selectedView === "gantt" ? "board-tab-active" : ""}`}
+              href={buildScheduleHref({
+                vesselId: selectedVesselId,
+                view: "gantt",
+                plannerStatus: selectedPlannerStatus,
+                compliance: selectedCompliance,
+              })}
+              scroll={false}
+            >
+              Gantt view
+            </Link>
           </div>
         </div>
 
-        <div className="planner-table-scroll">
-          <table className="table data-table planner-table">
-            <thead>
-              <tr>
-                <th colSpan={3}>VESSEL / TYPE / FLEET</th>
-                <th colSpan={6}>PREVIOUS VESSEL INSPECTION</th>
-                <th colSpan={6}>LAST VESSEL INSPECTION</th>
-                <th colSpan={5}>INSPECTION PLANNER &amp; COMPLIANCE STATUS</th>
-              </tr>
-              <tr>
-                <th>Vessel Name</th>
-                <th>Vessel Type</th>
-                <th>Group Name</th>
-                <th>From Date</th>
-                <th>To Date</th>
-                <th>Inspection Mode</th>
-                <th>From Location</th>
-                <th>To Location</th>
-                <th>Status</th>
-                <th>From Date</th>
-                <th>To Date</th>
-                <th>Inspection Mode</th>
-                <th>From Location</th>
-                <th>To Location</th>
-                <th>Status</th>
-                <th>Next Due</th>
-                <th>Next Inspection Mode</th>
-                <th>Inspection Status</th>
-                <th>Inspection Compliance</th>
-                <th>Sailing Compliance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vesselRows.map((row) => (
-                <tr key={row.vessel.id}>
-                  <td>{row.vessel.name}</td>
-                  <td>{row.vessel.vesselType ?? "Not set"}</td>
-                  <td>{row.vessel.fleet ?? "Not set"}</td>
-                  <td>{row.previousInspection ? fullFmt.format(row.previousInspection.inspectionDate) : "-"}</td>
-                  <td>{row.previousInspection ? fullFmt.format(row.previousInspection.inspectionDate) : "-"}</td>
-                  <td>{row.previousInspection ? inferInspectionMode(row.previousInspection.title, row.previousInspection.inspectionType.name) : "-"}</td>
-                  <td>{row.previousInspection?.port ?? "-"}</td>
-                  <td>{row.previousInspection?.country ?? "-"}</td>
-                  <td>
-                    {row.previousInspection ? (
-                      <span className={`chip ${toneForInspectionStatus(row.previousInspection.status)}`}>
-                        {inspectionStatusLabel[row.previousInspection.status]}
-                      </span>
-                    ) : (
-                      "-"
-                    )}
-                  </td>
-                  <td>{row.lastInspection ? fullFmt.format(row.lastInspection.inspectionDate) : "-"}</td>
-                  <td>{row.lastInspection ? fullFmt.format(row.lastInspection.inspectionDate) : "-"}</td>
-                  <td>{row.lastInspection ? inferInspectionMode(row.lastInspection.title, row.lastInspection.inspectionType.name) : "-"}</td>
-                  <td>{row.lastInspection?.port ?? "-"}</td>
-                  <td>{row.lastInspection?.country ?? "-"}</td>
-                  <td>
-                    {row.lastInspection ? (
-                      <span className={`chip ${toneForInspectionStatus(row.lastInspection.status)}`}>
-                        {inspectionStatusLabel[row.lastInspection.status]}
-                      </span>
-                    ) : (
-                      "-"
-                    )}
-                  </td>
-                  <td>{fullFmt.format(row.nextDue)}</td>
-                  <td>{row.nextInspectionMode}</td>
-                  <td>
-                    <span className={`chip ${toneForPlannerStatus(row.plannerStatus)}`}>{row.plannerStatus}</span>
-                  </td>
-                  <td>
-                    <span className={`chip ${row.inspectionCompliance === "In Order" ? "chip-success" : "chip-danger"}`}>{row.inspectionCompliance}</span>
-                  </td>
-                  <td>
-                    <span className={`chip ${row.sailingCompliance === "In Order" ? "chip-success" : "chip-danger"}`}>{row.sailingCompliance}</span>
-                  </td>
+        <div className="filter-chips" style={{ marginBottom: "1rem" }}>
+          {["ALL", "In Window", "Due Range", "Overdue"].map((plannerStatus) => (
+            <Link
+              className={`filter-chip ${selectedPlannerStatus === plannerStatus ? "filter-chip-active" : ""}`}
+              href={buildScheduleHref({
+                vesselId: selectedVesselId,
+                view: selectedView,
+                plannerStatus,
+                compliance: selectedCompliance,
+              })}
+              key={plannerStatus}
+              scroll={false}
+            >
+              {plannerStatus === "ALL" ? "All statuses" : plannerStatus}
+            </Link>
+          ))}
+          {[
+            { id: "ALL", label: "All compliance" },
+            { id: "IN_ORDER", label: "In Order" },
+            { id: "NO_2_VIR", label: "No 2 VIR" },
+            { id: "NO_SAILING", label: "No Sailing" },
+          ].map((item) => (
+            <Link
+              className={`filter-chip ${selectedCompliance === item.id ? "filter-chip-active" : ""}`}
+              href={buildScheduleHref({
+                vesselId: selectedVesselId,
+                view: selectedView,
+                plannerStatus: selectedPlannerStatus,
+                compliance: item.id,
+              })}
+              key={item.id}
+              scroll={false}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </div>
+
+        {selectedView === "table" ? (
+          <div className="planner-table-scroll table-shell table-shell-tall">
+            <table className="table data-table planner-table">
+              <thead>
+                <tr>
+                  <th className="planner-sticky planner-sticky-1" colSpan={3}>VESSEL / TYPE / FLEET</th>
+                  <th colSpan={6}>PREVIOUS VESSEL INSPECTION</th>
+                  <th colSpan={6}>LAST VESSEL INSPECTION</th>
+                  <th colSpan={5}>INSPECTION PLANNER &amp; COMPLIANCE STATUS</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="panel panel-elevated">
-        <div className="section-header">
-          <div>
-            <h3 className="panel-title">Fleet gantt board</h3>
-            <p className="panel-subtitle">Dynamic scheduler with smaller inspection tags and direct move support inside the gantt for office planners.</p>
+                <tr>
+                  <th className="planner-sticky planner-sticky-1">Vessel Name</th>
+                  <th className="planner-sticky planner-sticky-2">Vessel Type</th>
+                  <th className="planner-sticky planner-sticky-3">Group Name</th>
+                  <th>From Date</th>
+                  <th>To Date</th>
+                  <th>Inspection Mode</th>
+                  <th>From Location</th>
+                  <th>To Location</th>
+                  <th>Status</th>
+                  <th>From Date</th>
+                  <th>To Date</th>
+                  <th>Inspection Mode</th>
+                  <th>From Location</th>
+                  <th>To Location</th>
+                  <th>Status</th>
+                  <th>Next Due</th>
+                  <th>Next Inspection Mode</th>
+                  <th>Inspection Status</th>
+                  <th>Inspection Compliance</th>
+                  <th>Sailing Compliance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRows.map((row) => (
+                  <tr key={row.vessel.id}>
+                    <td className="planner-sticky planner-sticky-1 planner-sticky-data">
+                      <Link className="table-link" href={`/vessels/${row.vessel.id}`}>
+                        {row.vessel.name}
+                      </Link>
+                    </td>
+                    <td className="planner-sticky planner-sticky-2 planner-sticky-data">{row.vessel.vesselType ?? "Not set"}</td>
+                    <td className="planner-sticky planner-sticky-3 planner-sticky-data">{row.vessel.fleet ?? "Not set"}</td>
+                    <td>{row.previousInspection ? fullFmt.format(row.previousInspection.inspectionDate) : "-"}</td>
+                    <td>{row.previousInspection ? fullFmt.format(row.previousInspection.inspectionDate) : "-"}</td>
+                    <td>{row.previousInspection ? inferInspectionMode(row.previousInspection.title, row.previousInspection.inspectionType.name) : "-"}</td>
+                    <td>{row.previousInspection?.port ?? "-"}</td>
+                    <td>{row.previousInspection?.country ?? "-"}</td>
+                    <td>
+                      {row.previousInspection ? (
+                        <span className={`chip ${toneForInspectionStatus(row.previousInspection.status)}`}>
+                          {inspectionStatusLabel[row.previousInspection.status]}
+                        </span>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                    <td>{row.lastInspection ? fullFmt.format(row.lastInspection.inspectionDate) : "-"}</td>
+                    <td>{row.lastInspection ? fullFmt.format(row.lastInspection.inspectionDate) : "-"}</td>
+                    <td>{row.lastInspection ? inferInspectionMode(row.lastInspection.title, row.lastInspection.inspectionType.name) : "-"}</td>
+                    <td>{row.lastInspection?.port ?? "-"}</td>
+                    <td>{row.lastInspection?.country ?? "-"}</td>
+                    <td>
+                      {row.lastInspection ? (
+                        <span className={`chip ${toneForInspectionStatus(row.lastInspection.status)}`}>
+                          {inspectionStatusLabel[row.lastInspection.status]}
+                        </span>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                    <td>{fullFmt.format(row.nextDue)}</td>
+                    <td>{row.nextInspectionMode}</td>
+                    <td>
+                      <span className={`chip ${toneForPlannerStatus(row.plannerStatus)}`}>{row.plannerStatus}</span>
+                    </td>
+                    <td>
+                      <span className={`chip ${row.inspectionCompliance === "In Order" ? "chip-success" : "chip-danger"}`}>{row.inspectionCompliance}</span>
+                    </td>
+                    <td>
+                      <span className={`chip ${row.sailingCompliance === "In Order" ? "chip-success" : "chip-danger"}`}>{row.sailingCompliance}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
-        <ScheduleBoard
-          isOffice={isOffice}
-          rows={vesselRows.map((row) => ({
-            id: row.vessel.id,
-            name: row.vessel.name,
-            inspections: row.inspections,
-          }))}
-          windowStart={windowStart.toISOString()}
-          horizonDays={180}
-        />
+        ) : (
+          <div className="page-stack">
+            <div>
+              <h3 className="panel-title">Fleet gantt board</h3>
+              <p className="panel-subtitle">Dynamic scheduler with smaller inspection tags and direct move support inside the gantt for office planners.</p>
+            </div>
+            <ScheduleBoard
+              isOffice={isOffice}
+              rows={filteredRows.map((row) => ({
+                id: row.vessel.id,
+                name: row.vessel.name,
+                inspections: row.inspections,
+              }))}
+              windowStart={windowStart.toISOString()}
+              horizonDays={180}
+            />
+          </div>
+        )}
       </section>
     </div>
   );
+}
+
+function normalizeScheduleView(value?: string) {
+  return value === "gantt" ? "gantt" : "table";
+}
+
+function buildScheduleHref({
+  vesselId,
+  view,
+  plannerStatus,
+  compliance,
+}: {
+  vesselId?: string;
+  view?: "table" | "gantt";
+  plannerStatus?: string;
+  compliance?: string;
+}) {
+  const params = new URLSearchParams();
+
+  if (vesselId) {
+    params.set("vesselId", vesselId);
+  }
+
+  if (view) {
+    params.set("view", view);
+  }
+
+  if (plannerStatus && plannerStatus !== "ALL") {
+    params.set("plannerStatus", plannerStatus);
+  }
+
+  if (compliance && compliance !== "ALL") {
+    params.set("compliance", compliance);
+  }
+
+  const query = params.toString();
+  return query ? `/schedule?${query}` : "/schedule";
 }
 
 function inferInspectionMode(title: string, inspectionTypeName: string) {

@@ -61,6 +61,82 @@ const signOffRules = [
   "Every workflow action must appear in the activity timeline so the inspection retains a full operational audit trail.",
 ];
 
+const workflowDiagram = [
+  {
+    lane: "Office",
+    step: "1. Create VIR",
+    detail:
+      "Select vessel, report type, inspection mode, date range, location, alongside-by, operations at inspection, inspection authority, cause analysis page, and corrective action plan target before saving.",
+  },
+  {
+    lane: "Office",
+    step: "2. Bind questionnaire",
+    detail:
+      "Attach the matching template so concentrated questions, reference images, and the correct section structure are loaded before release to vessel.",
+  },
+  {
+    lane: "Vessel",
+    step: "3. Execute questionnaire",
+    detail:
+      "Work section by section, answer mandatory questions first, add comments, attach actual evidence, and raise findings or corrective actions without leaving the active section.",
+  },
+  {
+    lane: "Vessel",
+    step: "4. Submit to shore",
+    detail:
+      "Confirm section summaries, findings, evidence, meetings, sign-offs, and sync status before sending the VIR to the office review queue.",
+  },
+  {
+    lane: "Office",
+    step: "5. Review and return / approve",
+    detail:
+      "Use inspection history, report views, deviation flow, and evidence drill-down to review completeness. Return when corrections are needed or approve when ready.",
+  },
+  {
+    lane: "Office",
+    step: "6. Close VIR",
+    detail:
+      "Close only after questionnaire review, findings review, action review, approval confirmation, and management-ready reporting are complete.",
+  },
+];
+
+const fieldGuidance = [
+  {
+    title: "Create VIR - mandatory selections",
+    items: [
+      "Report Type",
+      "Inspection Mode",
+      "Alongside by",
+      "Operations at the time of inspection",
+      "Inspection Authority",
+      "Cause Analysis target",
+      "Corrective Action Plan target",
+    ],
+  },
+  {
+    title: "Create VIR - free text / date fields",
+    items: [
+      "Inspection from / to dates",
+      "Location and draft fields",
+      "Last port of call",
+      "Place last inspected / place of inspection from",
+      "Master / Chief Engineer particulars",
+      "Officer / crew numbers and nationality",
+    ],
+  },
+  {
+    title: "Inspection review essentials",
+    items: [
+      "Section summary",
+      "Detailed questionnaire",
+      "Raise / view findings",
+      "Actual uploads and reference images",
+      "Opening and closing meeting notes",
+      "Best practice, items of concern, and conclusion",
+    ],
+  },
+];
+
 export default async function InstructionPage() {
   const session = await requireVirSession();
   const isOffice = isOfficeSession(session);
@@ -126,6 +202,53 @@ export default async function InstructionPage() {
             </div>
           </article>
         </div>
+      </section>
+
+      <section className="panel panel-elevated">
+        <div className="section-header">
+          <div>
+            <div className="eyebrow">Workflow diagram</div>
+            <h3 className="panel-title">Create VIR to close VIR</h3>
+            <p className="panel-subtitle">
+              The office and vessel workflow should be followed in sequence so that launch, execution, evidence,
+              approval, and closure remain aligned in the same inspection record.
+            </p>
+          </div>
+        </div>
+
+        <div className="workflow-diagram">
+          {workflowDiagram.map((item, index) => (
+            <article className="workflow-step-card" key={`${item.lane}-${item.step}`}>
+              <div className={`workflow-lane-pill ${item.lane === "Office" ? "workflow-lane-pill-office" : "workflow-lane-pill-vessel"}`}>
+                {item.lane}
+              </div>
+              <div className="workflow-step-title">{item.step}</div>
+              <div className="small-text">{item.detail}</div>
+              {index < workflowDiagram.length - 1 ? <div className="workflow-step-arrow">↓</div> : null}
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="dashboard-grid dashboard-grid-equal">
+        {fieldGuidance.map((group) => (
+          <article className="panel panel-elevated" key={group.title}>
+            <div className="section-header">
+              <div>
+                <div className="eyebrow">Field guide</div>
+                <h3 className="panel-title">{group.title}</h3>
+              </div>
+            </div>
+            <div className="stack-list">
+              {group.items.map((item, index) => (
+                <div className="instruction-line" key={item}>
+                  <span className="instruction-step-no">{index + 1}</span>
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </article>
+        ))}
       </section>
 
       <section className="dashboard-grid dashboard-grid-equal">

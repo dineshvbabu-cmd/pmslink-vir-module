@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Eye, FileText, LayoutGrid, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Eye, FileText, TriangleAlert } from "lucide-react";
 import { ActionIconLink } from "@/components/action-icon-link";
 import { prisma } from "@/lib/prisma";
 import { canAccessVessel, requireVirSession } from "@/lib/vir/session";
@@ -54,6 +54,11 @@ export default async function VesselDetailsPage({
 
   return (
     <div className="page-stack">
+      <Link className="back-link" href={`/inspections?scope=history&vesselId=${vessel.id}`} scroll={false}>
+        <ArrowLeft size={16} />
+        <span>Back to inspection history</span>
+      </Link>
+
       <section className="panel panel-elevated">
         <div className="section-header">
           <div>
@@ -262,7 +267,6 @@ export default async function VesselDetailsPage({
                     <td>{inspection.findings.length}</td>
                     <td>
                       <div className="table-actions table-actions-icons">
-                        <ActionIconLink href={`/vessels/${vessel.id}`} icon={LayoutGrid} label="Vessel details" />
                         <ActionIconLink href={`/inspections/${inspection.id}`} icon={Eye} label="Inspection workflow" tone="primary" />
                         <ActionIconLink
                           href={`/reports/inspection/${inspection.id}?variant=detailed`}

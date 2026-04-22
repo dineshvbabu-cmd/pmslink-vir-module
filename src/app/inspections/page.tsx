@@ -432,7 +432,7 @@ function ApprovedInspectionGrid({
           {inspections.map((inspection) => (
             <tr key={inspection.id}>
               <td>
-                <Link className="table-link" href={`/reports/inspection/${inspection.id}?variant=summary`}>
+                <Link className="table-link" href={`/vessels/${inspection.vessel.id}`}>
                   {inspection.vessel.name}
                 </Link>
                 <div className="table-actions">
@@ -459,7 +459,6 @@ function ApprovedInspectionGrid({
               </td>
               <td>
                 <div className="table-actions table-actions-icons">
-                  <ActionIconLink href={`/vessels/${inspection.vessel.id}`} icon={LayoutGrid} label="Vessel details" />
                   <ActionIconLink href={`/inspections/${inspection.id}`} icon={Eye} label="Inspection workflow" tone="primary" />
                   <ActionIconLink
                     href={`/reports/inspection/${inspection.id}?variant=detailed`}
@@ -513,7 +512,13 @@ function InspectionHistoryGrid({
                   <div className="small-text">{inspection.progress.completionPct}%</div>
                 </div>
               </td>
-              {isOffice ? <td>{inspection.vessel.name}</td> : null}
+              {isOffice ? (
+                <td>
+                  <Link className="table-link" href={`/vessels/${inspection.vessel.id}`}>
+                    {inspection.vessel.name}
+                  </Link>
+                </td>
+              ) : null}
               <td>
                 <Link className="table-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
                   {inspection.refNo}
@@ -529,7 +534,6 @@ function InspectionHistoryGrid({
               <td>{inspection.inspectionMode}</td>
               <td>
                 <div className="table-actions table-actions-icons">
-                  <ActionIconLink href={`/vessels/${inspection.vessel.id}`} icon={LayoutGrid} label="Vessel details" />
                   <ActionIconLink href={`/inspections/${inspection.id}`} icon={Eye} label="Inspection workflow" tone="primary" />
                   <ActionIconLink
                     href={`/reports/inspection/${inspection.id}?variant=detailed`}
@@ -591,7 +595,13 @@ function InspectionRegisterGrid({
                   {inspection.port ? ` / ${inspection.port}` : ""}
                 </div>
               </td>
-              {isOffice ? <td>{inspection.vessel.name}</td> : null}
+              {isOffice ? (
+                <td>
+                  <Link className="table-link" href={`/vessels/${inspection.vessel.id}`}>
+                    {inspection.vessel.name}
+                  </Link>
+                </td>
+              ) : null}
               <td>{inspection.inspectionType.name}</td>
               <td>
                 <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>{inspectionStatusLabel[inspection.status]}</span>
@@ -609,7 +619,6 @@ function InspectionRegisterGrid({
               </td>
               <td>
                 <div className="table-actions table-actions-icons">
-                  <ActionIconLink href={`/vessels/${inspection.vessel.id}`} icon={LayoutGrid} label="Vessel details" />
                   <ActionIconLink href={`/inspections/${inspection.id}`} icon={Eye} label="Inspection workflow" tone="primary" />
                   <ActionIconLink
                     href={`/reports/inspection/${inspection.id}?variant=detailed`}
@@ -670,7 +679,11 @@ function SummaryInspectionView({
           </div>
 
           <div className="mini-metrics">
-            {isOffice ? <span className="chip chip-info">{inspection.vessel.name}</span> : null}
+            {isOffice ? (
+              <Link className="chip chip-info" href={`/vessels/${inspection.vessel.id}`}>
+                {inspection.vessel.name}
+              </Link>
+            ) : null}
             <span className="chip chip-warning">Mandatory {inspection.progress.answeredMandatory}/{inspection.progress.mandatoryQuestions}</span>
             <span className="chip chip-danger">Findings {inspection.findings.length}</span>
             <span className={`chip ${inspection.syncLabel === "Synced" ? "chip-success" : "chip-danger"}`}>{inspection.syncLabel}</span>
@@ -681,7 +694,6 @@ function SummaryInspectionView({
             {inspection.approvedSignOff?.actorName ? ` / Approved by ${inspection.approvedSignOff.actorName}` : ""}
           </div>
           <div className="table-actions table-actions-icons" style={{ marginTop: "0.8rem" }}>
-            <ActionIconLink href={`/vessels/${inspection.vessel.id}`} icon={LayoutGrid} label="Vessel details" />
             <ActionIconLink href={`/inspections/${inspection.id}`} icon={Eye} label="Inspection workflow" tone="primary" />
             <ActionIconLink
               href={`/reports/inspection/${inspection.id}?variant=detailed`}

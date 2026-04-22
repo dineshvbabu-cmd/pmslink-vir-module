@@ -1,34 +1,40 @@
-import Link from "next/link";
+"use client";
+
 import type { LucideIcon } from "lucide-react";
 
 type ActionIconTone = "neutral" | "primary" | "success" | "warning" | "danger";
 
-export function ActionIconLink({
-  href,
+export function ActionIconButton({
   icon: Icon,
   label,
   tone = "neutral",
-  scroll = false,
-  target,
+  type = "button",
+  confirmMessage,
 }: {
-  href: string;
   icon: LucideIcon;
   label: string;
   tone?: ActionIconTone;
-  scroll?: boolean;
-  target?: "_blank" | "_self";
+  type?: "button" | "submit";
+  confirmMessage?: string;
 }) {
   return (
-    <Link
+    <button
       aria-label={label}
       className={`action-icon-link action-icon-link-${tone}`}
-      href={href}
-      scroll={scroll}
-      target={target}
+      onClick={
+        confirmMessage
+          ? (event) => {
+              if (!window.confirm(confirmMessage)) {
+                event.preventDefault();
+              }
+            }
+          : undefined
+      }
       title={label}
+      type={type}
     >
       <Icon size={15} />
       <span className="sr-only">{label}</span>
-    </Link>
+    </button>
   );
 }

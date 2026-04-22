@@ -553,7 +553,7 @@ async function OfficeDashboard({
               segments: [
                 { label: "High", value: value.high, className: "chart-bar-segment-danger" },
                 { label: "Medium", value: value.medium, className: "chart-bar-segment-warning" },
-                { label: "Low", value: value.low, className: "chart-bar-segment-success" },
+                { label: "Low", value: value.low, className: "chart-bar-segment-low" },
               ],
             }))}
           subtitle="Open findings by questionnaire chapter"

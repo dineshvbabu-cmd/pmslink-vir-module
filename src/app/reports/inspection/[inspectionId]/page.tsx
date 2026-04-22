@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { FileDown, Mail } from "lucide-react";
+import { ArrowLeft, FileDown, Mail } from "lucide-react";
 import { PrintButton } from "@/components/print-button";
 import { CompactBarChart } from "@/components/erp-charts";
 import { prisma } from "@/lib/prisma";
@@ -49,6 +49,7 @@ export default async function InspectionReportPage({
   const selectedChapterView = normalizeChapterView(
     typeof reportParams.chapterView === "string" ? reportParams.chapterView : undefined
   );
+  const selectedSectionParam = typeof reportParams.section === "string" ? reportParams.section : undefined;
   const imageMode = reportParams.imageMode === "selected" ? "selected" : "all";
   const selectedReportPhotoIds = new Set(normalizeArray(reportParams.image));
 
@@ -158,6 +159,13 @@ export default async function InspectionReportPage({
         answeredCount: sectionAnswers.filter((answer) => hasRecordedAnswer(answer)).length,
       };
     }) ?? [];
+  const selectedSectionId =
+    selectedSectionParam && sectionRows.some((section) => section.id === selectedSectionParam)
+      ? selectedSectionParam
+      : sectionRows[0]?.id;
+  const visibleDetailedSections = selectedSectionId
+    ? sectionRows.filter((section) => section.id === selectedSectionId)
+    : sectionRows;
 
   const chapterFindingRows = sectionRows
     .filter((section) => section.findings.length > 0)
@@ -203,9 +211,14 @@ export default async function InspectionReportPage({
 
   return (
     <div className="page-stack report-pack report-pack-live">
+      <Link className="back-link" href={`/inspections/${inspection.id}?pane=questionnaire${selectedSectionId ? `&section=${selectedSectionId}` : ""}`} scroll={false}>
+        <ArrowLeft size={16} />
+        <span>Back to workflow</span>
+      </Link>
+
       <section className="panel panel-elevated report-command-bar">
         <div className="report-breadcrumbs">
-          <Link className="table-link" href="/inspections?scope=approved">
+          <Link className="table-link" href={`/vessels/${inspection.vesselId}`} scroll={false}>
             {inspection.vessel.name}
           </Link>
           <span>|</span>
@@ -223,10 +236,12 @@ export default async function InspectionReportPage({
                 variant: item.id,
                 checklistView: selectedChecklistView,
                 chapterView: selectedChapterView,
+                sectionId: selectedSectionId,
                 imageMode,
                 imageIds: normalizeArray(reportParams.image),
               })}
               key={item.id}
+              scroll={false}
             >
               {item.label}
             </Link>
@@ -256,7 +271,7 @@ export default async function InspectionReportPage({
               ))}
             </div>
           </details>
-          <Link className="btn-secondary btn-compact" href={`/inspections/${inspection.id}`}>
+          <Link className="btn-secondary btn-compact" href={`/inspections/${inspection.id}?pane=questionnaire${selectedSectionId ? `&section=${selectedSectionId}` : ""}`} scroll={false}>
             Open Workflow
           </Link>
         </div>
@@ -286,7 +301,9 @@ export default async function InspectionReportPage({
 
           <div className="report-hero-image-card">
             {inspection.photos[0] ? (
-              <img alt={inspection.photos[0].caption ?? inspection.photos[0].fileName ?? inspection.title} src={inspection.photos[0].url} />
+              <a href={inspection.photos[0].url} rel="noreferrer" target="_blank">
+                <img alt={inspection.photos[0].caption ?? inspection.photos[0].fileName ?? inspection.title} src={inspection.photos[0].url} />
+              </a>
             ) : (
               <div className="report-image-placeholder">No cover image linked</div>
             )}
@@ -317,7 +334,19 @@ export default async function InspectionReportPage({
         <>
           <section className="questionnaire-summary-grid">
             {sectionRows.map((section) => (
-              <div className="questionnaire-summary-card" key={section.id}>
+              <Link
+                className={`questionnaire-summary-card${selectedSectionId === section.id ? " questionnaire-summary-card-active" : ""}`}
+                href={buildReportHref(inspection.id, {
+                  variant: "detailed",
+                  checklistView: selectedChecklistView,
+                  chapterView: selectedChapterView,
+                  sectionId: section.id,
+                  imageMode,
+                  imageIds: normalizeArray(reportParams.image),
+                })}
+                key={section.id}
+                scroll={false}
+              >
                 <span>{section.title}</span>
                 <strong>
                   {section.answeredCount}/{section.questions.length}
@@ -326,7 +355,7 @@ export default async function InspectionReportPage({
                   {section.findings.length} findings / {section.evidenceCount} evidence /{" "}
                   {section.questions.filter((question) => question.isCicCandidate).length} concentrated
                 </div>
-              </div>
+              </Link>
             ))}
           </section>
 
@@ -341,6 +370,9 @@ export default async function InspectionReportPage({
               <div className="report-image-selector">
                 <form className="report-image-selector-form" method="get">
                   <input name="variant" type="hidden" value="detailed" />
+                  <input name="checklistView" type="hidden" value={selectedChecklistView} />
+                  <input name="chapterView" type="hidden" value={selectedChapterView} />
+                  {selectedSectionId ? <input name="section" type="hidden" value={selectedSectionId} /> : null}
                   <div className="field">
                     <label htmlFor="imageMode">Image annex mode</label>
                     <select defaultValue={imageMode} id="imageMode" name="imageMode">
@@ -357,7 +389,9 @@ export default async function InspectionReportPage({
                           type="checkbox"
                           value={photo.id}
                         />
-                        <img alt={photo.caption} src={photo.url} />
+                        <a href={photo.url} rel="noreferrer" target="_blank">
+                          <img alt={photo.caption} src={photo.url} />
+                        </a>
                         <span className="report-image-choice-copy">
                           <strong>{photo.label}</strong>
                           <span className="small-text">{photo.caption}</span>
@@ -388,9 +422,11 @@ export default async function InspectionReportPage({
                     variant: "detailed",
                     checklistView: selectedChecklistView,
                     chapterView: "table",
+                    sectionId: selectedSectionId,
                     imageMode,
                     imageIds: normalizeArray(reportParams.image),
                   })}
+                  scroll={false}
                 >
                   Table view
                 </Link>
@@ -400,9 +436,11 @@ export default async function InspectionReportPage({
                     variant: "detailed",
                     checklistView: selectedChecklistView,
                     chapterView: "bar",
+                    sectionId: selectedSectionId,
                     imageMode,
                     imageIds: normalizeArray(reportParams.image),
                   })}
+                  scroll={false}
                 >
                   Bar chart
                 </Link>
@@ -426,9 +464,11 @@ export default async function InspectionReportPage({
                     variant: "detailed",
                     checklistView: "grid",
                     chapterView: selectedChapterView,
+                    sectionId: selectedSectionId,
                     imageMode,
                     imageIds: normalizeArray(reportParams.image),
                   })}
+                  scroll={false}
                 >
                   Grid view
                 </Link>
@@ -438,9 +478,11 @@ export default async function InspectionReportPage({
                     variant: "detailed",
                     checklistView: "reasoning",
                     chapterView: selectedChapterView,
+                    sectionId: selectedSectionId,
                     imageMode,
                     imageIds: normalizeArray(reportParams.image),
                   })}
+                  scroll={false}
                 >
                   Reasoning view
                 </Link>
@@ -449,7 +491,7 @@ export default async function InspectionReportPage({
           </section>
 
           <section className="page-stack">
-            {sectionRows.map((section) => (
+            {visibleDetailedSections.map((section) => (
               <section className="panel panel-elevated report-section-panel" key={section.id}>
                 <div className="section-header">
                   <div>
@@ -499,11 +541,13 @@ export default async function InspectionReportPage({
                               <td>
                                 {question.referenceImageUrl ? (
                                   <div className="report-thumb-row">
-                                    <img
-                                      alt={`${question.code} reference`}
-                                      className="report-thumb report-thumb-reference"
-                                      src={question.referenceImageUrl}
-                                    />
+                                    <a href={question.referenceImageUrl} rel="noreferrer" target="_blank">
+                                      <img
+                                        alt={`${question.code} reference`}
+                                        className="report-thumb report-thumb-reference"
+                                        src={question.referenceImageUrl}
+                                      />
+                                    </a>
                                     <a
                                       className="inline-link"
                                       href={question.referenceImageUrl}
@@ -520,12 +564,13 @@ export default async function InspectionReportPage({
                               <td>
                                 <div className="report-thumb-row">
                                   {answer?.photos.slice(0, 3).map((photo) => (
-                                    <img
-                                      alt={photo.caption ?? photo.fileName ?? question.code}
-                                      className="report-thumb"
-                                      key={photo.id}
-                                      src={photo.url}
-                                    />
+                                    <a href={photo.url} key={photo.id} rel="noreferrer" target="_blank">
+                                      <img
+                                        alt={photo.caption ?? photo.fileName ?? question.code}
+                                        className="report-thumb"
+                                        src={photo.url}
+                                      />
+                                    </a>
                                   ))}
                                   {!answer?.photos.length ? "-" : null}
                                 </div>
@@ -536,6 +581,7 @@ export default async function InspectionReportPage({
                                   answer={answer}
                                   inspectionId={inspection.id}
                                   question={question}
+                                  sectionId={section.id}
                                 />
                               </td>
                             </tr>
@@ -557,6 +603,7 @@ export default async function InspectionReportPage({
                           key={question.id}
                           question={question}
                           questionFindings={questionFindings}
+                          sectionId={section.id}
                         />
                       );
                     })}
@@ -577,7 +624,9 @@ export default async function InspectionReportPage({
               {effectiveReportPhotos.length ? (
                 effectiveReportPhotos.map((photo) => (
                   <div className="report-photo-card" key={photo.id}>
-                    <img alt={photo.caption} src={photo.url} />
+                    <a href={photo.url} rel="noreferrer" target="_blank">
+                      <img alt={photo.caption} src={photo.url} />
+                    </a>
                     <div className="report-photo-meta">
                       <strong>{photo.label}</strong>
                       <span className="small-text">{photo.caption}</span>
@@ -596,14 +645,26 @@ export default async function InspectionReportPage({
         <section className="page-stack">
           <section className="questionnaire-summary-grid">
             {sectionRows.map((section) => (
-              <div className="questionnaire-summary-card" key={section.id}>
+              <Link
+                className={`questionnaire-summary-card${selectedSectionId === section.id ? " questionnaire-summary-card-active" : ""}`}
+                href={buildReportHref(inspection.id, {
+                  variant: "summary",
+                  checklistView: selectedChecklistView,
+                  chapterView: selectedChapterView,
+                  sectionId: section.id,
+                  imageMode,
+                  imageIds: normalizeArray(reportParams.image),
+                })}
+                key={section.id}
+                scroll={false}
+              >
                 <span>{section.title}</span>
                 <strong>{section.answeredCount}/{section.questions.length}</strong>
                 <div className="small-text">
                   {section.findings.length} findings / {section.evidenceCount} evidence /{" "}
                   {section.questions.filter((question) => question.isCicCandidate).length} concentrated
                 </div>
-              </div>
+              </Link>
             ))}
           </section>
 
@@ -655,9 +716,11 @@ export default async function InspectionReportPage({
                     variant: "summary",
                     checklistView: selectedChecklistView,
                     chapterView: "table",
+                    sectionId: selectedSectionId,
                     imageMode,
                     imageIds: normalizeArray(reportParams.image),
                   })}
+                  scroll={false}
                 >
                   Table view
                 </Link>
@@ -667,9 +730,11 @@ export default async function InspectionReportPage({
                     variant: "summary",
                     checklistView: selectedChecklistView,
                     chapterView: "bar",
+                    sectionId: selectedSectionId,
                     imageMode,
                     imageIds: normalizeArray(reportParams.image),
                   })}
+                  scroll={false}
                 >
                   Bar chart
                 </Link>
@@ -746,7 +811,9 @@ export default async function InspectionReportPage({
 
                 <div className="report-thumb-row report-thumb-row-spacious">
                   {finding.photos.map((photo) => (
-                    <img alt={photo.caption ?? photo.fileName ?? finding.title} className="report-thumb report-thumb-large" key={photo.id} src={photo.url} />
+                    <a href={photo.url} key={photo.id} rel="noreferrer" target="_blank">
+                      <img alt={photo.caption ?? photo.fileName ?? finding.title} className="report-thumb report-thumb-large" src={photo.url} />
+                    </a>
                   ))}
                   {!finding.photos.length ? <div className="small-text">No finding images linked.</div> : null}
                 </div>
@@ -849,9 +916,11 @@ export default async function InspectionReportPage({
                     variant: "consolidate",
                     checklistView: selectedChecklistView,
                     chapterView: "table",
+                    sectionId: selectedSectionId,
                     imageMode,
                     imageIds: normalizeArray(reportParams.image),
                   })}
+                  scroll={false}
                 >
                   Table view
                 </Link>
@@ -861,9 +930,11 @@ export default async function InspectionReportPage({
                     variant: "consolidate",
                     checklistView: selectedChecklistView,
                     chapterView: "bar",
+                    sectionId: selectedSectionId,
                     imageMode,
                     imageIds: normalizeArray(reportParams.image),
                   })}
+                  scroll={false}
                 >
                   Bar chart
                 </Link>
@@ -884,7 +955,9 @@ export default async function InspectionReportPage({
             <div className="report-photo-annex">
               {effectiveReportPhotos.map((photo) => (
                 <div className="report-photo-card" key={photo.id}>
-                  <img alt={photo.caption} src={photo.url} />
+                  <a href={photo.url} rel="noreferrer" target="_blank">
+                    <img alt={photo.caption} src={photo.url} />
+                  </a>
                   <div className="report-photo-meta">
                     <strong>{photo.label}</strong>
                     <span className="small-text">{photo.caption}</span>
@@ -928,6 +1001,7 @@ function buildReportHref(
     chapterView: ChapterView;
     imageMode: "all" | "selected";
     imageIds: string[];
+    sectionId?: string;
   }
 ) {
   const params = new URLSearchParams();
@@ -936,6 +1010,9 @@ function buildReportHref(
   params.set("chapterView", options.chapterView);
   params.set("imageMode", options.imageMode);
   options.imageIds.forEach((id) => params.append("image", id));
+  if (options.sectionId) {
+    params.set("section", options.sectionId);
+  }
   return `/reports/inspection/${inspectionId}?${params.toString()}`;
 }
 
@@ -1070,12 +1147,15 @@ function QuestionActionLinks({
   inspectionId,
   question,
   answer,
+  sectionId,
 }: {
   inspectionId: string;
   question: any;
   answer: any;
+  sectionId?: string;
 }) {
   const firstActualImage = answer?.photos?.[0]?.url;
+  const workflowHref = `/inspections/${inspectionId}?pane=questionnaire${sectionId ? `&section=${sectionId}` : ""}`;
 
   return (
     <div className="table-actions">
@@ -1084,11 +1164,11 @@ function QuestionActionLinks({
           View images
         </a>
       ) : null}
-      <Link className="inline-link" href={`/inspections/${inspectionId}`}>
+      <Link className="inline-link" href={workflowHref} scroll={false}>
         Workflow
       </Link>
       {question.allowsPhoto ? (
-        <Link className="inline-link" href={`/inspections/${inspectionId}`}>
+        <Link className="inline-link" href={workflowHref} scroll={false}>
           Upload docs
         </Link>
       ) : null}
@@ -1124,12 +1204,14 @@ function QuestionReasoningCard({
   answer,
   questionFindings,
   inspectionId,
+  sectionId,
 }: {
   index: number;
   question: any;
   answer: any;
   questionFindings: any[];
   inspectionId: string;
+  sectionId?: string;
 }) {
   const riskKey: keyof typeof riskLabel =
     typeof question.riskLevel === "string" && question.riskLevel in riskLabel
@@ -1189,7 +1271,9 @@ function QuestionReasoningCard({
               <div className="visual-label">Reference image</div>
               {question.referenceImageUrl ? (
                 <>
-                  <img alt={`${question.code} reference`} className="reference-thumb" src={question.referenceImageUrl} />
+                  <a href={question.referenceImageUrl} rel="noreferrer" target="_blank">
+                    <img alt={`${question.code} reference`} className="reference-thumb" src={question.referenceImageUrl} />
+                  </a>
                   <a className="inline-link" href={question.referenceImageUrl} rel="noreferrer" target="_blank">
                     Open reference
                   </a>
@@ -1219,7 +1303,7 @@ function QuestionReasoningCard({
             </div>
 
             <div className="questionnaire-section-actions">
-              <QuestionActionLinks answer={answer} inspectionId={inspectionId} question={question} />
+              <QuestionActionLinks answer={answer} inspectionId={inspectionId} question={question} sectionId={sectionId} />
             </div>
           </div>
         </div>

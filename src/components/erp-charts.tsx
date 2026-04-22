@@ -103,10 +103,7 @@ export function CompactBarChart({
                 <div
                   className="chart-bar-stack"
                   style={{
-                    width: `${Math.max(
-                      6,
-                      (bar.segments.reduce((sum, segment) => sum + segment.value, 0) / maxValue) * 100
-                    )}%`,
+                    width: `${(bar.segments.reduce((sum, segment) => sum + segment.value, 0) / maxValue) * 100}%`,
                   }}
                 >
                   {bar.segments.map((segment) => {
@@ -121,10 +118,10 @@ export function CompactBarChart({
                   })}
                 </div>
               ) : (
-                <div className="chart-bar-fill" style={{ width: `${Math.max(6, (bar.value / maxValue) * 100)}%` }} />
+                <div className="chart-bar-fill" style={{ width: `${(bar.value / maxValue) * 100}%` }} />
               )}
             </div>
-            <div className="chart-bar-value">{bar.value}</div>
+            <div className="chart-bar-value">{bar.value > 0 ? bar.value : ""}</div>
           </div>
         ))}
       </div>
@@ -172,13 +169,13 @@ export function DualMetricBarChart({
               <div className="chart-bar-track">
                 <div
                   className={`chart-bar-fill ${bar.primary.className}`}
-                  style={{ width: `${Math.max(4, (bar.primary.value / maxValue) * 100)}%` }}
+                  style={{ width: `${(bar.primary.value / maxValue) * 100}%` }}
                 />
               </div>
               <div className="chart-bar-track">
                 <div
                   className={`chart-bar-fill ${bar.secondary.className}`}
-                  style={{ width: `${Math.max(4, (bar.secondary.value / maxValue) * 100)}%` }}
+                  style={{ width: `${(bar.secondary.value / maxValue) * 100}%` }}
                 />
               </div>
             </div>

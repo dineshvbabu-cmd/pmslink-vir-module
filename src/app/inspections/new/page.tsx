@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { createInspectionAction } from "@/app/actions";
 import { InspectionLaunchForm } from "@/components/inspection-launch-form";
 import { prisma } from "@/lib/prisma";
@@ -40,6 +42,11 @@ export default async function NewInspectionPage({
 
   return (
     <div className="page-stack">
+      <Link className="back-link" href={isOfficeSession(session) ? "/inspections" : "/schedule"} scroll={false}>
+        <ArrowLeft size={16} />
+        <span>Back</span>
+      </Link>
+
       <section className="panel panel-elevated">
         <div className="section-header">
           <div>

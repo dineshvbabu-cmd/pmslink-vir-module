@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Eye, FileText, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Eye, FileText, TriangleAlert } from "lucide-react";
 import {
   addCorrectiveActionAction,
   addFindingAction,
@@ -145,6 +145,8 @@ export default async function InspectionDetailPage({
     inspection.template?.sections.find((item) => item.id === selectedSectionId) ?? inspection.template?.sections[0] ?? null;
   const activityItems = buildInspectionActivity(inspection);
   const vesselProfile = buildVesselProfile(inspection.vessel);
+  const selectedSectionQuery = selectedSectionId ? `&section=${selectedSectionId}` : "";
+  const historyHref = `/inspections?scope=history&vesselId=${inspection.vesselId}`;
 
   const saveAnswers = saveInspectionAnswersAction.bind(null, inspection.id);
   const addFinding = addFindingAction.bind(null, inspection.id);
@@ -160,6 +162,11 @@ export default async function InspectionDetailPage({
 
   return (
     <div className="page-stack">
+      <Link className="back-link" href={historyHref} scroll={false}>
+        <ArrowLeft size={16} />
+        <span>Back to inspection history</span>
+      </Link>
+
       <section className="hero-panel">
         <div>
           <div className="meta-row">
@@ -184,16 +191,16 @@ export default async function InspectionDetailPage({
         </div>
 
         <div className="actions-row">
-          <Link className="btn-secondary" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
+          <Link className="btn-secondary" href={`/reports/inspection/${inspection.id}?variant=detailed`} scroll={false}>
             Detailed report
           </Link>
-          <Link className="btn-secondary" href={`/reports/inspection/${inspection.id}?variant=summary`}>
+          <Link className="btn-secondary" href={`/reports/inspection/${inspection.id}?variant=summary`} scroll={false}>
             Summary report
           </Link>
-          <Link className="btn-secondary" href={`/reports/inspection/${inspection.id}?variant=findings`}>
+          <Link className="btn-secondary" href={`/reports/inspection/${inspection.id}?variant=findings`} scroll={false}>
             Finding report
           </Link>
-          <Link className="btn-secondary" href={`/reports/inspection/${inspection.id}?variant=consolidate`}>
+          <Link className="btn-secondary" href={`/reports/inspection/${inspection.id}?variant=consolidate`} scroll={false}>
             Consolidate report
           </Link>
           <a className="btn-secondary" href={`/api/reports/inspection/${inspection.id}/pdf?variant=detailed`}>
@@ -214,7 +221,12 @@ export default async function InspectionDetailPage({
                 <SubmitButton className="btn-secondary">Mark shore reviewed</SubmitButton>
               </form>
               <form action={updateInspectionStatusAction.bind(null, inspection.id, "CLOSED")}>
-                <SubmitButton className="btn">Close VIR</SubmitButton>
+                <SubmitButton
+                  className="btn"
+                  confirmMessage="Close VIR only after questionnaire review, findings review, evidence review, and required sign-offs are complete. Continue?"
+                >
+                  Close VIR
+                </SubmitButton>
               </form>
             </>
           ) : null}
@@ -257,7 +269,7 @@ export default async function InspectionDetailPage({
             <h3 className="panel-title">Vessel workflow snapshot</h3>
             <p className="panel-subtitle">Operational particulars and machinery context carried into the live inspection review.</p>
           </div>
-          <Link className="btn-secondary btn-compact" href={`/vessels/${inspection.vesselId}`}>
+          <Link className="btn-secondary btn-compact" href={`/vessels/${inspection.vesselId}`} scroll={false}>
             Open vessel details
           </Link>
         </div>
@@ -335,8 +347,9 @@ export default async function InspectionDetailPage({
               ].map((item) => (
                 <Link
                   className={`section-nav-link ${activePane === item.id ? "section-nav-link-active" : ""}`}
-                  href={`/inspections/${inspection.id}?pane=${item.id}${selectedSectionId ? `&section=${selectedSectionId}` : ""}`}
+                  href={`/inspections/${inspection.id}?pane=${item.id}${selectedSectionQuery}`}
                   key={item.id}
+                  scroll={false}
                 >
                   <span>{item.label}</span>
                   <span className="small-text">{item.note}</span>
@@ -375,6 +388,7 @@ export default async function InspectionDetailPage({
                         className={`section-nav-link ${selectedSectionId === sectionItem.sectionId ? "section-nav-link-active" : ""}`}
                         href={`/inspections/${inspection.id}?pane=questionnaire&section=${sectionItem.sectionId}`}
                         key={sectionItem.id}
+                        scroll={false}
                       >
                         <span>{sectionItem.title}</span>
                         <span className="small-text">
@@ -502,22 +516,25 @@ export default async function InspectionDetailPage({
                        </div>
                         <div className="table-actions table-actions-icons">
                           <ActionIconLink
-                            href={`/reports/inspection/${inspection.id}?variant=summary`}
+                            href={`/reports/inspection/${inspection.id}?variant=summary&section=${selectedSection.id}`}
                             icon={Eye}
                             label="Section summary"
                             tone="primary"
+                            scroll={false}
                           />
                           <ActionIconLink
-                            href={`/reports/inspection/${inspection.id}?variant=detailed`}
+                            href={`/reports/inspection/${inspection.id}?variant=detailed&section=${selectedSection.id}`}
                             icon={FileText}
                             label="Detailed report"
                             tone="success"
+                            scroll={false}
                           />
                           <ActionIconLink
-                            href={`/inspections/${inspection.id}?pane=findings`}
+                            href={`/inspections/${inspection.id}?pane=findings${selectedSectionQuery}`}
                             icon={TriangleAlert}
                             label="Raise or review findings"
                             tone="warning"
+                            scroll={false}
                           />
                         </div>
                       </div>
@@ -608,7 +625,9 @@ export default async function InspectionDetailPage({
                                     <div className="question-evidence-gallery">
                                       {answer.photos.map((photo) => (
                                         <div className="question-evidence-card" key={photo.id}>
-                                          <img alt={photo.caption ?? photo.fileName ?? "Vessel evidence"} src={photo.url} />
+                                          <a href={photo.url} rel="noreferrer" target="_blank">
+                                            <img alt={photo.caption ?? photo.fileName ?? "Vessel evidence"} src={photo.url} />
+                                          </a>
                                           <div className="small-text">
                                             {photo.caption ?? photo.fileName ?? "Uploaded evidence"}
                                           </div>
@@ -621,22 +640,25 @@ export default async function InspectionDetailPage({
 
                               <div className="table-actions table-actions-icons question-inline-actions">
                                 <ActionIconLink
-                                  href={`/inspections/${inspection.id}?pane=findings`}
+                                  href={`/inspections/${inspection.id}?pane=findings${selectedSectionQuery}`}
                                   icon={TriangleAlert}
                                   label="Open finding lane"
                                   tone="warning"
+                                  scroll={false}
                                 />
                                 <ActionIconLink
-                                  href={`/reports/inspection/${inspection.id}?variant=detailed`}
+                                  href={`/reports/inspection/${inspection.id}?variant=detailed&section=${selectedSection.id}`}
                                   icon={FileText}
                                   label="View in detailed report"
                                   tone="success"
+                                  scroll={false}
                                 />
                                 <ActionIconLink
-                                  href={`/reports/inspection/${inspection.id}?variant=summary`}
+                                  href={`/reports/inspection/${inspection.id}?variant=summary&section=${selectedSection.id}`}
                                   icon={Eye}
                                   label="View section summary"
                                   tone="primary"
+                                  scroll={false}
                                 />
                               </div>
                             </div>
