@@ -263,7 +263,7 @@ export default async function InspectionDetailPage({
         <MetricBox label="Evidence" value={`${inspection.photos.length}`} note="Synced photo records" />
       </section>
 
-      <section className="panel panel-elevated">
+      <section className="panel panel-elevated inspection-snapshot-shell">
         <div className="section-header">
           <div>
             <h3 className="panel-title">Vessel workflow snapshot</h3>
@@ -274,9 +274,9 @@ export default async function InspectionDetailPage({
           </Link>
         </div>
 
-        <div className="report-detail-grid">
+        <div className="report-detail-grid report-detail-grid-compact">
           {vesselProfile.principalParticulars.slice(0, 8).map((item) => (
-            <MetricBox key={item.label} label={item.label} value={item.value} note="Vessel particulars" />
+            <MetricBox compact key={item.label} label={item.label} value={item.value} note="Vessel particulars" />
           ))}
         </div>
 
@@ -977,9 +977,19 @@ export default async function InspectionDetailPage({
   );
 }
 
-function MetricBox({ label, value, note }: { label: string; value: string; note: string }) {
+function MetricBox({
+  label,
+  value,
+  note,
+  compact = false,
+}: {
+  label: string;
+  value: string;
+  note: string;
+  compact?: boolean;
+}) {
   return (
-    <div className="metric-tile metric-tile-static">
+    <div className={`metric-tile metric-tile-static ${compact ? "metric-tile-compact" : ""}`}>
       <div className="metric-tile-label">{label}</div>
       <div className="metric-tile-value">{value}</div>
       <div className="metric-tile-note">{note}</div>

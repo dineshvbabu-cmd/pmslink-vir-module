@@ -34,6 +34,7 @@ export type VirWorkspaceFilter = {
 
 const officeNavigation: WorkspaceNavItem[] = [
   { href: "/", label: "Dashboard", note: "VIR dashboard" },
+  { href: "/vessels", label: "Vessel list", note: "Directory and actions" },
   { href: "/inspections?scope=approved", label: "Approved inspections", note: "Approved register" },
   { href: "/inspections?scope=history", label: "Inspection history", note: "All inspection records" },
   { href: "/schedule", label: "VIR Calendar", note: "Planner and compliance status" },
@@ -43,18 +44,17 @@ const officeNavigation: WorkspaceNavItem[] = [
   { href: "/inspections/new", label: "Create VIR", note: "Schedule or launch" },
   { href: "/templates", label: "Template Library", note: "Questionnaires" },
   { href: "/imports", label: "Import Engine", note: "Checklist normalization" },
-  { href: "/instruction", label: "Instruction", note: "Workflow and manuals" },
 ];
 
 const vesselNavigation: WorkspaceNavItem[] = [
   { href: "/", label: "Dashboard", note: "Vessel dashboard" },
+  { href: "/vessels", label: "Vessel list", note: "Directory and actions" },
   { href: "/inspections?scope=history", label: "Inspection history", note: "My vessel record" },
   { href: "/schedule", label: "VIR Calendar", note: "My upcoming plan" },
   { href: "/dashboards", label: "Analytics Boards", note: "My vessel boards" },
   { href: "/inspections?scope=my-drafts", label: "My VIR Queue", note: "Draft and return" },
   { href: "/inspections", label: "Inspection Register", note: "Assigned to vessel" },
   { href: "/inspections/new", label: "Start VIR", note: "Self assessment" },
-  { href: "/instruction", label: "Instruction", note: "Workflow and manuals" },
 ];
 
 function secret() {
@@ -225,7 +225,7 @@ export function workspaceShortLabel(workspace: VirWorkspace) {
   return workspace === "OFFICE" ? "Office" : "Vessel";
 }
 
-const vesselScopedRoutes = new Set(["/", "/inspections", "/schedule", "/dashboards"]);
+const vesselScopedRoutes = new Set(["/", "/vessels", "/inspections", "/schedule", "/dashboards"]);
 
 export function buildWorkspaceHref(href: string, workspace: VirWorkspace, filter?: VirWorkspaceFilter | null) {
   if (workspace !== "OFFICE" || !filter) {

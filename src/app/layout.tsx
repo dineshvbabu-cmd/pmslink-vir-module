@@ -1,5 +1,6 @@
 import Link from "next/link";
 import {
+  Anchor,
   Bell,
   CalendarDays,
   Grid2x2,
@@ -63,19 +64,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
               <div className="sidebar-footer">
                 <div className="sync-stamp">Last synced 20/04/2026</div>
-                <div className="sidebar-footer-links">
-                  <Link className="nav-secondary-link" href="/instruction" rel="noreferrer" target="_blank">
-                    Web manual
-                  </Link>
-                  <a
-                    className="nav-secondary-link"
-                    href="/api/reports/manual/pdf?kind=offline"
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    Offline manual
-                  </a>
-                </div>
                 <Link className="nav-secondary-link" href="/login">
                   Switch workspace
                 </Link>
@@ -96,6 +84,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     href={buildWorkspaceHref("/", session.workspace, workspaceFilter)}
                   >
                     <House size={18} />
+                  </Link>
+                  <Link
+                    aria-label="Vessel list"
+                    className="topbar-icon-link"
+                    href={buildWorkspaceHref("/vessels", session.workspace, workspaceFilter)}
+                  >
+                    <Anchor size={18} />
                   </Link>
                   <Link
                     aria-label="Approved inspections"
