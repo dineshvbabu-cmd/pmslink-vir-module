@@ -17,6 +17,12 @@ import { QuestionEvidenceInline } from "@/components/question-evidence-inline";
 import { SubmitButton } from "@/components/submit-button";
 import { prisma } from "@/lib/prisma";
 import { calculateInspectionScore, summarizeProgress } from "@/lib/vir/analytics";
+import {
+  buildLiveChecklist,
+  getQuestionUploads,
+  normalizeRemoteAssetUrl,
+  type LiveChecklistQuestion,
+} from "@/lib/vir/live-checklist";
 import { canAccessVessel, isOfficeSession, isVesselSession, requireVirSession } from "@/lib/vir/session";
 import { buildVesselProfile } from "@/lib/vir/vessel-profile";
 import {
@@ -120,29 +126,83 @@ export default async function InspectionDetailPage({
   const canEditInspection = canAccessVessel(session, inspection.vesselId);
 
   const questions = inspection.template?.sections.flatMap((section) => section.questions) ?? [];
+  const answerMap = new Map(inspection.answers.map((answer) => [answer.questionId, answer]));
   const progress = summarizeProgress(questions, inspection.answers);
   const score = calculateInspectionScore(questions, inspection.answers, inspection.findings);
-  const answerMap = new Map(inspection.answers.map((answer) => [answer.questionId, answer]));
-  const templateQuestionCount = inspection.template?.sections.reduce((sum, section) => sum + section.questions.length, 0) ?? 0;
+  const liveChecklist = buildLiveChecklist(inspection);
+  const liveSections = liveChecklist?.sections ?? [];
+  const templateQuestionCount = liveChecklist
+    ? liveChecklist.summary.questionCount
+    : inspection.template?.sections.reduce((sum, section) => sum + section.questions.length, 0) ?? 0;
   const pendingCorrectiveActions = inspection.findings
     .flatMap((finding) => finding.correctiveActions)
     .filter((action) => ["OPEN", "IN_PROGRESS", "REJECTED"].includes(action.status)).length;
-  const concentratedQuestions = questions.filter((question) => question.isCicCandidate);
-  const sectionNavigation =
-    inspection.template?.sections.map((section, index) => ({
-      sectionId: section.id,
-      id: `section-${index + 1}-${slugify(section.title)}`,
-      title: section.title,
-      questionCount: section.questions.length,
-      mandatoryCount: section.questions.filter((question) => question.isMandatory).length,
-    })) ?? [];
+  const concentratedQuestions = liveChecklist
+    ? liveSections.flatMap((section) =>
+        section.subsections.flatMap((subsection) => subsection.questions.filter((question) => question.isCicCandidate))
+      )
+    : questions.filter((question) => question.isCicCandidate);
+  const sectionNavigation = liveChecklist
+    ? liveSections.map((section, index) => ({
+        sectionId: section.id,
+        id: `section-${index + 1}-${slugify(section.title)}`,
+        title: section.title,
+        questionCount: section.summary?.questionCount ?? 0,
+        mandatoryCount: section.subsections.reduce(
+          (sum, subsection) => sum + (subsection.rating?.mandatoryQuestions ?? 0),
+          0
+        ),
+      }))
+    : inspection.template?.sections.map((section, index) => ({
+        sectionId: section.id,
+        id: `section-${index + 1}-${slugify(section.title)}`,
+        title: section.title,
+        questionCount: section.questions.length,
+        mandatoryCount: section.questions.filter((question) => question.isMandatory).length,
+      })) ?? [];
+  const dbQuestionByPrompt = new Map(questions.map((question) => [normalizeLookupKey(question.prompt), question]));
+  const dbQuestionByCode = new Map(
+    questions
+      .filter((question) => Boolean(question.code))
+      .map((question) => [normalizeLookupKey(question.code), question])
+  );
   const activePane = normalizeInspectionPane(pane);
   const selectedSectionId =
-    section && inspection.template?.sections.some((item) => item.id === section)
+    section && sectionNavigation.some((item) => item.sectionId === section)
       ? section
-      : inspection.template?.sections[0]?.id ?? null;
-  const selectedSection =
-    inspection.template?.sections.find((item) => item.id === selectedSectionId) ?? inspection.template?.sections[0] ?? null;
+      : sectionNavigation[0]?.sectionId ?? null;
+  const liveSelectedSection = liveChecklist
+    ? liveSections.find((item) => item.id === selectedSectionId) ?? liveSections[0] ?? null
+    : null;
+  const legacySelectedSection = !liveChecklist
+    ? inspection.template?.sections.find((item) => item.id === selectedSectionId) ?? inspection.template?.sections[0] ?? null
+    : null;
+  const selectedSection = liveSelectedSection ?? legacySelectedSection;
+  const selectedSectionQuestionCount = liveChecklist
+    ? liveSelectedSection?.summary?.questionCount ?? 0
+    : legacySelectedSection?.questions.length ?? 0;
+  const selectedSectionMandatoryCount = liveChecklist
+    ? liveSelectedSection?.subsections?.reduce(
+        (sum: number, subsection: any) => sum + (subsection.rating?.mandatoryQuestions ?? 0),
+        0
+      ) ?? 0
+    : legacySelectedSection?.questions.filter((question: any) => question.isMandatory).length ?? 0;
+  const selectedSectionFocusCount = liveChecklist
+    ? liveSelectedSection?.subsections?.reduce(
+        (sum: number, subsection: any) =>
+          sum + subsection.questions.filter((question: any) => question.isCicCandidate).length,
+        0
+      ) ?? 0
+    : legacySelectedSection?.questions.filter((question: any) => question.isCicCandidate).length ?? 0;
+  const selectedSectionAnsweredCount = liveChecklist
+    ? liveSelectedSection?.summary?.answered ?? 0
+    : legacySelectedSection?.questions.filter((question: any) => isSavedAnswer(answerMap.get(question.id))).length ?? 0;
+  const selectedSectionVisualCount = liveChecklist
+    ? liveSelectedSection?.summary?.evidenceCount ?? 0
+    : legacySelectedSection?.questions.reduce(
+        (sum: number, question: any) => sum + (answerMap.get(question.id)?.photos.length ?? 0),
+        0
+      ) ?? 0;
   const activityItems = buildInspectionActivity(inspection);
   const vesselProfile = buildVesselProfile(inspection.vessel);
   const selectedSectionQuery = selectedSectionId ? `&section=${selectedSectionId}` : "";
@@ -327,7 +387,7 @@ export default async function InspectionDetailPage({
                   label="Condition scoring"
                   value={`${vesselProfile.vesselConditionGuide.length} reference rows available`}
                 />
-                <DetailRow label="Section configuration" value={`${inspection.template?.sections.length ?? 0} questionnaire sections`} />
+                <DetailRow label="Section configuration" value={`${sectionNavigation.length} questionnaire sections`} />
                 <DetailRow label="Question bank" value={`${templateQuestionCount} inspection questions`} />
               </div>
             </div>
@@ -374,7 +434,7 @@ export default async function InspectionDetailPage({
                   {inspection.template ? `${inspection.template.name} / v${inspection.template.version}` : "No template attached"}
                 </div>
                 <div className="small-text">
-                  {inspection.template?.sections.length ?? 0} sections / {templateQuestionCount} questions
+                  {sectionNavigation.length} sections / {templateQuestionCount} questions
                 </div>
               </div>
               <div className="list-card">
@@ -452,63 +512,47 @@ export default async function InspectionDetailPage({
                       <div>
                         <h4 className="section-title">{selectedSection.title}</h4>
                         <div className="small-text">
-                          {selectedSection.questions.length} questions /{" "}
-                          {selectedSection.questions.filter((question) => question.isMandatory).length} mandatory /{" "}
-                          {selectedSection.questions.filter((question) => question.isCicCandidate).length} CIR focus
+                          {selectedSectionQuestionCount} questions / {selectedSectionMandatoryCount} mandatory /{" "}
+                          {selectedSectionFocusCount} CIR focus
                         </div>
                       </div>
                       <div className="meta-row">
-                        <span className="chip chip-info">{selectedSection.code ?? "SECTION"}</span>
+                        <span className="chip chip-info">
+                          {liveChecklist ? selectedSection.id : ((selectedSection as any).code ?? "SECTION")}
+                        </span>
                         <span className="chip chip-success">
-                          Section {inspection.template.sections.findIndex((item) => item.id === selectedSection.id) + 1} of{" "}
-                          {inspection.template.sections.length}
+                          Section {sectionNavigation.findIndex((item) => item.sectionId === selectedSection.id) + 1} of{" "}
+                          {sectionNavigation.length}
                         </span>
                       </div>
                     </div>
 
-                     {selectedSection.guidance ? <p className="small-text">{selectedSection.guidance}</p> : null}
+                     {!liveChecklist && (selectedSection as any).guidance ? (
+                       <p className="small-text">{(selectedSection as any).guidance}</p>
+                     ) : null}
+                     {liveChecklist && (selectedSection as any).comments ? (
+                       <p className="small-text">{(selectedSection as any).comments}</p>
+                     ) : null}
 
                      <div className="questionnaire-summary-grid">
                        <div className="questionnaire-summary-card">
                          <span>Questions</span>
-                         <strong>{selectedSection.questions.length}</strong>
+                         <strong>{selectedSectionQuestionCount}</strong>
                          <div className="small-text">Total questions in this section</div>
                        </div>
                        <div className="questionnaire-summary-card">
                          <span>Mandatory</span>
-                         <strong>{selectedSection.questions.filter((question) => question.isMandatory).length}</strong>
+                         <strong>{selectedSectionMandatoryCount}</strong>
                          <div className="small-text">Questions requiring completion before submission</div>
                        </div>
                        <div className="questionnaire-summary-card">
                          <span>Answered</span>
-                         <strong>
-                           {
-                             selectedSection.questions.filter((question) => {
-                               const answer = answerMap.get(question.id);
-                               if (!answer) {
-                                 return false;
-                               }
-
-                               return Boolean(
-                                 answer.answerText ||
-                                   answer.answerNumber !== null ||
-                                   answer.answerBoolean !== null ||
-                                   answer.answerDate ||
-                                   (Array.isArray(answer.selectedOptions) && answer.selectedOptions.length > 0)
-                               );
-                             }).length
-                           }
-                         </strong>
+                         <strong>{selectedSectionAnsweredCount}</strong>
                          <div className="small-text">Responses currently saved in this section</div>
                        </div>
                        <div className="questionnaire-summary-card">
                          <span>Visuals</span>
-                         <strong>
-                           {selectedSection.questions.reduce(
-                             (sum, question) => sum + (answerMap.get(question.id)?.photos.length ?? 0),
-                             0
-                           )}
-                         </strong>
+                         <strong>{selectedSectionVisualCount}</strong>
                          <div className="small-text">Actual uploads linked to this section</div>
                        </div>
                      </div>
@@ -547,129 +591,312 @@ export default async function InspectionDetailPage({
 
                      <div className="question-list-viewport" style={{ marginTop: "1rem" }}>
                        <div className="stack-list">
-                      {[...selectedSection.questions]
-                        .sort((a, b) => Number(b.isCicCandidate) - Number(a.isCicCandidate) || a.sortOrder - b.sortOrder)
-                        .map((question) => {
-                          const answer = answerMap.get(question.id);
-                          const selectedOptions = Array.isArray(answer?.selectedOptions)
-                            ? answer.selectedOptions.filter((item): item is string => typeof item === "string")
-                            : [];
-
-                          return (
-                            <div className={`question-card ${question.isCicCandidate ? "question-card-focus" : ""}`} key={question.id}>
-                              <div className="question-header">
+                      {liveChecklist
+                        ? (selectedSection as any).subsections.map((subsection: any) => (
+                            <section className="panel question-section" key={subsection.id}>
+                              <div className="section-header">
                                 <div>
-                                  <div className="question-code">{question.code}</div>
-                                  <p className="question-prompt">{question.prompt}</p>
-                                  <div className="meta-row">
-                                    <span className={`chip ${toneForRisk(question.riskLevel)}`}>{riskLabel[question.riskLevel]}</span>
-                                    <span className="chip chip-info">{question.responseType}</span>
-                                    {question.isMandatory ? <span className="chip chip-warning">Mandatory</span> : null}
-                                    {question.allowsPhoto ? <span className="chip chip-success">Actual upload enabled</span> : null}
-                                    {question.isCicCandidate ? (
-                                      <span className="chip chip-danger">
-                                        {question.cicTopic ? `Concentrated / ${question.cicTopic}` : "Concentrated topic"}
-                                      </span>
-                                    ) : null}
-                                  </div>
+                                  <h5 className="panel-title">{subsection.title}</h5>
+                                  <p className="panel-subtitle">
+                                    {subsection.summary?.questionCount ?? subsection.questions.length} questions /{" "}
+                                    {subsection.rating?.mandatoryQuestions ?? 0} mandatory /{" "}
+                                    {subsection.summary?.totalFindings ?? 0} findings
+                                  </p>
                                 </div>
-                                {question.referenceImageUrl ? (
-                                  <a className="btn-secondary btn-compact" href={question.referenceImageUrl} rel="noreferrer" target="_blank">
-                                    Open reference
-                                  </a>
-                                ) : null}
+                                <div className="meta-row">
+                                  <span className="chip chip-info">{subsection.location || "Subsection"}</span>
+                                  <span className="chip chip-success">
+                                    {(subsection.condition?.score ?? 0).toFixed(1)} condition
+                                  </span>
+                                </div>
                               </div>
 
-                              <div className="question-card-layout">
-                                <div className="question-card-main">
-                                  <QuestionInput
-                                    answer={answer}
-                                    disabled={!canEditInspection}
-                                    question={question}
-                                    selectedOptions={selectedOptions}
-                                  />
+                              {subsection.comments ? <p className="small-text">{subsection.comments}</p> : null}
 
-                                  <div className="field-wide" style={{ marginTop: "0.85rem" }}>
-                                    <label htmlFor={`comment:${question.id}`}>Observation / evidence note</label>
-                                    <textarea
-                                      defaultValue={answer?.comment ?? ""}
-                                      disabled={!canEditInspection}
-                                      id={`comment:${question.id}`}
-                                      name={`comment:${question.id}`}
-                                      placeholder="Record narrative, evidence note, or inspector observation."
-                                    />
-                                  </div>
-                                </div>
+                              <div className="stack-list">
+                                {subsection.questions.map((question: LiveChecklistQuestion) => {
+                                  const bindingQuestion = findBoundQuestion(question, dbQuestionByPrompt, dbQuestionByCode);
+                                  const answer = bindingQuestion ? answerMap.get(bindingQuestion.id) : undefined;
+                                  const selectedOptions = Array.isArray(answer?.selectedOptions)
+                                    ? answer.selectedOptions.filter((item): item is string => typeof item === "string")
+                                    : [];
+                                  const actualUploads = getQuestionUploads(question, answer);
+                                  const responseType = bindingQuestion?.responseType ?? inferLiveResponseType(question);
+                                  const allowsPhoto = question.allowsPhoto ?? bindingQuestion?.allowsPhoto ?? actualUploads.length > 0;
+                                  const isMandatory = question.isMandatory ?? bindingQuestion?.isMandatory ?? false;
+                                  const isCicCandidate = question.isCicCandidate ?? bindingQuestion?.isCicCandidate ?? false;
+                                  const referenceImageUrl = normalizeRemoteAssetUrl(question.referenceImageUrl);
+                                  const riskLevel: keyof typeof riskLabel =
+                                    (bindingQuestion?.riskLevel as keyof typeof riskLabel | undefined) ??
+                                    inferLiveRiskLevel(question);
+                                  const questionKey = bindingQuestion?.id ?? `live-${question.id}`;
 
-                                <div className="question-card-side">
-                                  {question.referenceImageUrl ? (
-                                    <div className="reference-panel">
-                                      <div className="small-text visual-label">Reference standard</div>
-                                      <div className="reference-thumb">
-                                        <img alt={`${question.code} reference`} src={question.referenceImageUrl} />
+                                  return (
+                                    <div className={`question-card ${isCicCandidate ? "question-card-focus" : ""}`} key={questionKey}>
+                                      <div className="question-header">
+                                        <div>
+                                          <div className="question-code">{question.code}</div>
+                                          <p className="question-prompt">{question.prompt}</p>
+                                          <div className="meta-row">
+                                            <span className={`chip ${toneForRisk(riskLevel)}`}>{riskLabel[riskLevel]}</span>
+                                            <span className="chip chip-info">{responseType}</span>
+                                            {isMandatory ? <span className="chip chip-warning">Mandatory</span> : null}
+                                            {allowsPhoto ? <span className="chip chip-success">Actual upload enabled</span> : null}
+                                            {isCicCandidate ? <span className="chip chip-danger">Concentrated topic</span> : null}
+                                          </div>
+                                        </div>
+                                        {referenceImageUrl ? (
+                                          <a className="btn-secondary btn-compact" href={referenceImageUrl} rel="noreferrer" target="_blank">
+                                            Open reference
+                                          </a>
+                                        ) : null}
                                       </div>
-                                      <div className="small-text">
-                                        Smaller guidance image for side-by-side comparison against vessel evidence.
+
+                                      <div className="question-card-layout">
+                                        <div className="question-card-main">
+                                          {bindingQuestion ? (
+                                            <>
+                                              <QuestionInput
+                                                answer={answer}
+                                                disabled={!canEditInspection}
+                                                question={{
+                                                  id: bindingQuestion.id,
+                                                  responseType,
+                                                  options: bindingQuestion.options ?? [],
+                                                }}
+                                                selectedOptions={selectedOptions}
+                                              />
+
+                                              <div className="field-wide" style={{ marginTop: "0.85rem" }}>
+                                                <label htmlFor={`comment:${bindingQuestion.id}`}>Observation / evidence note</label>
+                                                <textarea
+                                                  defaultValue={answer?.comment ?? question.comments ?? ""}
+                                                  disabled={!canEditInspection}
+                                                  id={`comment:${bindingQuestion.id}`}
+                                                  name={`comment:${bindingQuestion.id}`}
+                                                  placeholder="Record narrative, evidence note, or inspector observation."
+                                                />
+                                              </div>
+                                            </>
+                                          ) : (
+                                            <div className="list-card">
+                                              <div className="question-code">Live workflow snapshot</div>
+                                              <div className="small-text">
+                                                Outcome: {formatLiveOutcomeLabel(question)} / Score: {question.score ?? "N/A"}
+                                              </div>
+                                              {question.comments ? <div className="small-text">{question.comments}</div> : null}
+                                              {question.guidanceNotes ? (
+                                                <div className="small-text">{stripInlineHtml(question.guidanceNotes)}</div>
+                                              ) : null}
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        <div className="question-card-side">
+                                          {referenceImageUrl ? (
+                                            <div className="reference-panel">
+                                              <div className="small-text visual-label">Reference standard</div>
+                                              <div className="reference-thumb">
+                                                <img alt={`${question.code} reference`} src={referenceImageUrl} />
+                                              </div>
+                                              <div className="small-text">
+                                                Smaller guidance image for side-by-side comparison against vessel evidence.
+                                              </div>
+                                            </div>
+                                          ) : null}
+
+                                          {bindingQuestion ? (
+                                            <QuestionEvidenceInline
+                                              canUpload={canEditInspection}
+                                              existingCount={actualUploads.length}
+                                              inspectionId={inspection.id}
+                                              questionCode={question.code}
+                                              questionId={bindingQuestion.id}
+                                            />
+                                          ) : (
+                                            <div className="evidence-sync-panel">
+                                              <div className="small-text visual-label">Evidence availability</div>
+                                              <strong>{actualUploads.length}</strong>
+                                              <div className="small-text">Live uploads already linked to this question.</div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {actualUploads.length ? (
+                                        <div className="question-visual-lane">
+                                          <div className="evidence-panel" style={{ gridColumn: "1 / -1" }}>
+                                            <div className="small-text visual-label">Actual vessel evidence</div>
+                                            <div className="question-evidence-gallery">
+                                              {actualUploads.map((photo: any) => (
+                                                <div className="question-evidence-card" key={photo.id}>
+                                                  <a href={photo.url} rel="noreferrer" target="_blank">
+                                                    <img alt={photo.caption ?? photo.fileName ?? "Vessel evidence"} src={photo.url} />
+                                                  </a>
+                                                  <div className="small-text">{photo.caption ?? photo.fileName ?? "Uploaded evidence"}</div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ) : null}
+
+                                      <div className="table-actions table-actions-icons question-inline-actions">
+                                        <ActionIconLink
+                                          href={`/inspections/${inspection.id}?pane=findings${selectedSectionQuery}`}
+                                          icon={TriangleAlert}
+                                          label="Open finding lane"
+                                          tone="warning"
+                                          scroll={false}
+                                        />
+                                        <ActionIconLink
+                                          href={`/reports/inspection/${inspection.id}?variant=detailed&section=${selectedSection.id}`}
+                                          icon={FileText}
+                                          label="View in detailed report"
+                                          tone="success"
+                                          scroll={false}
+                                        />
+                                        <ActionIconLink
+                                          href={`/reports/inspection/${inspection.id}?variant=summary&section=${selectedSection.id}`}
+                                          icon={Eye}
+                                          label="View section summary"
+                                          tone="primary"
+                                          scroll={false}
+                                        />
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </section>
+                          ))
+                        : [...(selectedSection as any).questions]
+                            .sort((a, b) => Number(b.isCicCandidate) - Number(a.isCicCandidate) || a.sortOrder - b.sortOrder)
+                            .map((question) => {
+                              const answer = answerMap.get(question.id);
+                              const selectedOptions = Array.isArray(answer?.selectedOptions)
+                                ? answer.selectedOptions.filter((item): item is string => typeof item === "string")
+                                : [];
+                              const legacyRiskLevel = question.riskLevel as keyof typeof riskLabel;
+
+                              return (
+                                <div className={`question-card ${question.isCicCandidate ? "question-card-focus" : ""}`} key={question.id}>
+                                  <div className="question-header">
+                                    <div>
+                                      <div className="question-code">{question.code}</div>
+                                      <p className="question-prompt">{question.prompt}</p>
+                                      <div className="meta-row">
+                                        <span className={`chip ${toneForRisk(legacyRiskLevel)}`}>{riskLabel[legacyRiskLevel]}</span>
+                                        <span className="chip chip-info">{question.responseType}</span>
+                                        {question.isMandatory ? <span className="chip chip-warning">Mandatory</span> : null}
+                                        {question.allowsPhoto ? <span className="chip chip-success">Actual upload enabled</span> : null}
+                                        {question.isCicCandidate ? (
+                                          <span className="chip chip-danger">
+                                            {question.cicTopic ? `Concentrated / ${question.cicTopic}` : "Concentrated topic"}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                    {question.referenceImageUrl ? (
+                                      <a
+                                        className="btn-secondary btn-compact"
+                                        href={normalizeRemoteAssetUrl(question.referenceImageUrl)}
+                                        rel="noreferrer"
+                                        target="_blank"
+                                      >
+                                        Open reference
+                                      </a>
+                                    ) : null}
+                                  </div>
+
+                                  <div className="question-card-layout">
+                                    <div className="question-card-main">
+                                      <QuestionInput
+                                        answer={answer}
+                                        disabled={!canEditInspection}
+                                        question={question}
+                                        selectedOptions={selectedOptions}
+                                      />
+
+                                      <div className="field-wide" style={{ marginTop: "0.85rem" }}>
+                                        <label htmlFor={`comment:${question.id}`}>Observation / evidence note</label>
+                                        <textarea
+                                          defaultValue={answer?.comment ?? ""}
+                                          disabled={!canEditInspection}
+                                          id={`comment:${question.id}`}
+                                          name={`comment:${question.id}`}
+                                          placeholder="Record narrative, evidence note, or inspector observation."
+                                        />
+                                      </div>
+                                    </div>
+
+                                    <div className="question-card-side">
+                                      {question.referenceImageUrl ? (
+                                        <div className="reference-panel">
+                                          <div className="small-text visual-label">Reference standard</div>
+                                          <div className="reference-thumb">
+                                            <img alt={`${question.code} reference`} src={normalizeRemoteAssetUrl(question.referenceImageUrl)} />
+                                          </div>
+                                          <div className="small-text">
+                                            Smaller guidance image for side-by-side comparison against vessel evidence.
+                                          </div>
+                                        </div>
+                                      ) : null}
+
+                                      <QuestionEvidenceInline
+                                        canUpload={canEditInspection}
+                                        existingCount={answer?.photos.length ?? 0}
+                                        inspectionId={inspection.id}
+                                        questionCode={question.code}
+                                        questionId={question.id}
+                                      />
+                                    </div>
+                                  </div>
+
+                                  {answer?.photos.length ? (
+                                    <div className="question-visual-lane">
+                                      <div className="evidence-panel" style={{ gridColumn: "1 / -1" }}>
+                                        <div className="small-text visual-label">Actual vessel evidence</div>
+                                        <div className="question-evidence-gallery">
+                                          {answer.photos.map((photo) => (
+                                            <div className="question-evidence-card" key={photo.id}>
+                                              <a href={normalizeRemoteAssetUrl(photo.url)} rel="noreferrer" target="_blank">
+                                                <img alt={photo.caption ?? photo.fileName ?? "Vessel evidence"} src={normalizeRemoteAssetUrl(photo.url)} />
+                                              </a>
+                                              <div className="small-text">{photo.caption ?? photo.fileName ?? "Uploaded evidence"}</div>
+                                            </div>
+                                          ))}
+                                        </div>
                                       </div>
                                     </div>
                                   ) : null}
 
-                                  <QuestionEvidenceInline
-                                    canUpload={canEditInspection}
-                                    existingCount={answer?.photos.length ?? 0}
-                                    inspectionId={inspection.id}
-                                    questionCode={question.code}
-                                    questionId={question.id}
-                                  />
-                                </div>
-                              </div>
-
-                              {answer?.photos.length ? (
-                                <div className="question-visual-lane">
-                                  <div className="evidence-panel" style={{ gridColumn: "1 / -1" }}>
-                                    <div className="small-text visual-label">Actual vessel evidence</div>
-                                    <div className="question-evidence-gallery">
-                                      {answer.photos.map((photo) => (
-                                        <div className="question-evidence-card" key={photo.id}>
-                                          <a href={photo.url} rel="noreferrer" target="_blank">
-                                            <img alt={photo.caption ?? photo.fileName ?? "Vessel evidence"} src={photo.url} />
-                                          </a>
-                                          <div className="small-text">
-                                            {photo.caption ?? photo.fileName ?? "Uploaded evidence"}
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
+                                  <div className="table-actions table-actions-icons question-inline-actions">
+                                    <ActionIconLink
+                                      href={`/inspections/${inspection.id}?pane=findings${selectedSectionQuery}`}
+                                      icon={TriangleAlert}
+                                      label="Open finding lane"
+                                      tone="warning"
+                                      scroll={false}
+                                    />
+                                    <ActionIconLink
+                                      href={`/reports/inspection/${inspection.id}?variant=detailed&section=${selectedSection.id}`}
+                                      icon={FileText}
+                                      label="View in detailed report"
+                                      tone="success"
+                                      scroll={false}
+                                    />
+                                    <ActionIconLink
+                                      href={`/reports/inspection/${inspection.id}?variant=summary&section=${selectedSection.id}`}
+                                      icon={Eye}
+                                      label="View section summary"
+                                      tone="primary"
+                                      scroll={false}
+                                    />
                                   </div>
                                 </div>
-                              ) : null}
-
-                              <div className="table-actions table-actions-icons question-inline-actions">
-                                <ActionIconLink
-                                  href={`/inspections/${inspection.id}?pane=findings${selectedSectionQuery}`}
-                                  icon={TriangleAlert}
-                                  label="Open finding lane"
-                                  tone="warning"
-                                  scroll={false}
-                                />
-                                <ActionIconLink
-                                  href={`/reports/inspection/${inspection.id}?variant=detailed&section=${selectedSection.id}`}
-                                  icon={FileText}
-                                  label="View in detailed report"
-                                  tone="success"
-                                  scroll={false}
-                                />
-                                <ActionIconLink
-                                  href={`/reports/inspection/${inspection.id}?variant=summary&section=${selectedSection.id}`}
-                                  icon={Eye}
-                                  label="View section summary"
-                                  tone="primary"
-                                  scroll={false}
-                                />
-                              </div>
-                            </div>
-                          );
-                        })}
+                              );
+                            })}
                       </div>
                     </div>
                   </section>
@@ -1022,6 +1249,104 @@ function normalizeInspectionPane(value: string | undefined) {
   }
 
   return "questionnaire";
+}
+
+function normalizeLookupKey(value: string | null | undefined) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function findBoundQuestion(
+  question: LiveChecklistQuestion,
+  byPrompt: Map<string, any>,
+  byCode: Map<string, any>
+) {
+  const promptMatch = byPrompt.get(normalizeLookupKey(question.prompt));
+  if (promptMatch) {
+    return promptMatch;
+  }
+
+  return byCode.get(normalizeLookupKey(question.code)) ?? null;
+}
+
+function inferLiveResponseType(question: LiveChecklistQuestion) {
+  if (question.notApplicable || question.notSighted || question.tested || question.inspected) {
+    return "YES_NO_NA";
+  }
+
+  if (question.score !== null && question.score !== undefined) {
+    return "SCORE";
+  }
+
+  return "TEXT";
+}
+
+function inferLiveRiskLevel(question: LiveChecklistQuestion) {
+  const severity = String(question.severity ?? "").trim().toUpperCase();
+  if (severity === "CRITICAL") {
+    return "CRITICAL" as keyof typeof riskLabel;
+  }
+  if (severity === "HIGH") {
+    return "HIGH" as keyof typeof riskLabel;
+  }
+  if (severity === "MEDIUM") {
+    return "MEDIUM" as keyof typeof riskLabel;
+  }
+  return "LOW" as keyof typeof riskLabel;
+}
+
+function isSavedAnswer(
+  answer:
+    | {
+        answerText?: string | null;
+        answerNumber?: number | null;
+        answerDate?: Date | null;
+        selectedOptions?: unknown;
+      }
+    | undefined
+) {
+  if (!answer) {
+    return false;
+  }
+
+  if (typeof answer.answerText === "string" && answer.answerText.trim().length > 0) {
+    return true;
+  }
+
+  if (typeof answer.answerNumber === "number") {
+    return true;
+  }
+
+  if (answer.answerDate) {
+    return true;
+  }
+
+  return Array.isArray(answer.selectedOptions) && answer.selectedOptions.length > 0;
+}
+
+function formatLiveOutcomeLabel(question: LiveChecklistQuestion) {
+  if (question.tested) {
+    return "Tested";
+  }
+  if (question.inspected) {
+    return "Inspected";
+  }
+  if (question.notSighted) {
+    return "Not sighted";
+  }
+  if (question.notApplicable) {
+    return "Not applicable";
+  }
+  return "Pending";
+}
+
+function stripInlineHtml(value?: string | null) {
+  return String(value ?? "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function buildSignoffStages(
