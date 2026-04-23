@@ -107,15 +107,6 @@ const DEMO_REVIEWERS = [
   "Pravin Joseph",
 ];
 
-const DEMO_EVIDENCE_IMAGES = [
-  "/demo-evidence/deck-condition.svg",
-  "/demo-evidence/bridge-watch.svg",
-  "/demo-evidence/engine-round.svg",
-  "/demo-evidence/fire-station.svg",
-  "/demo-evidence/lifeboat-station.svg",
-  "/demo-evidence/cargo-manifold.svg",
-];
-
 const TEMPLATE_SEEDS: DemoTemplateSeed[] = [
   {
     key: "SAILING_VIR",
@@ -816,30 +807,35 @@ async function seedInspectionContent(
     (answer) => answer.question.allowsPhoto && answer.question.referenceImageUrl
   );
 
-  await prisma.virPhoto.create({
-    data: {
-      inspectionId,
-      url: liveChecklistPhotos[0]?.url ?? DEMO_EVIDENCE_IMAGES[seedIndex % DEMO_EVIDENCE_IMAGES.length],
-      fileName: liveChecklistPhotos[0]?.fileName ?? `inspection-cover-${seedIndex + 1}.svg`,
-      contentType: liveChecklistPhotos[0]?.contentType ?? inferContentType(liveChecklistPhotos[0]?.fileName),
-      fileSizeKb: 24 + (seedIndex % 6),
-      caption: liveChecklistPhotos[0]?.caption ?? `${scenario.title} cover evidence`,
-      uploadedBy: scenario.inspectorName,
-      takenAt: scenario.inspectionDate,
-    },
-  });
+  if (liveChecklistPhotos[0]) {
+    await prisma.virPhoto.create({
+      data: {
+        inspectionId,
+        url: liveChecklistPhotos[0].url,
+        fileName: liveChecklistPhotos[0].fileName,
+        contentType: liveChecklistPhotos[0].contentType ?? inferContentType(liveChecklistPhotos[0].fileName),
+        fileSizeKb: 24 + (seedIndex % 6),
+        caption: liveChecklistPhotos[0].caption ?? `${scenario.title} cover evidence`,
+        uploadedBy: scenario.inspectorName,
+        takenAt: scenario.inspectionDate,
+      },
+    });
+  }
 
   for (const [photoIndex, answer] of evidenceTargets.slice(0, isPreviousInspection ? 3 : 6).entries()) {
     const seededPhoto = liveChecklistPhotos[(photoIndex + 1) % Math.max(1, liveChecklistPhotos.length)];
+    if (!seededPhoto) {
+      continue;
+    }
     await prisma.virPhoto.create({
       data: {
         inspectionId,
         answerId: answer.id,
-        url: seededPhoto?.url ?? DEMO_EVIDENCE_IMAGES[(seedIndex + photoIndex) % DEMO_EVIDENCE_IMAGES.length],
-        fileName: seededPhoto?.fileName ?? `${answer.question.code.toLowerCase()}-${photoIndex + 1}.svg`,
-        contentType: seededPhoto?.contentType ?? inferContentType(seededPhoto?.fileName),
+        url: seededPhoto.url,
+        fileName: seededPhoto.fileName,
+        contentType: seededPhoto.contentType ?? inferContentType(seededPhoto.fileName),
         fileSizeKb: 18 + photoIndex,
-        caption: seededPhoto?.caption ?? `${answer.question.section.title} evidence image`,
+        caption: seededPhoto.caption ?? `${answer.question.section.title} evidence image`,
         uploadedBy: scenario.inspectorName,
         takenAt: addDays(scenario.inspectionDate, photoIndex),
       },
@@ -868,19 +864,21 @@ async function seedInspectionContent(
     });
 
     const seededPhoto = liveChecklistPhotos[(findingIndex + 7) % Math.max(1, liveChecklistPhotos.length)];
-    await prisma.virPhoto.create({
-      data: {
-        inspectionId,
-        findingId: finding.id,
-        url: seededPhoto?.url ?? DEMO_EVIDENCE_IMAGES[(seedIndex + findingIndex + 2) % DEMO_EVIDENCE_IMAGES.length],
-        fileName: seededPhoto?.fileName ?? `${findingSeed.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.svg`,
-        contentType: seededPhoto?.contentType ?? inferContentType(seededPhoto?.fileName),
-        fileSizeKb: 22 + findingIndex,
-        caption: seededPhoto?.caption ?? `${findingSeed.title} evidence`,
-        uploadedBy: scenario.inspectorName,
-        takenAt: addDays(scenario.inspectionDate, findingIndex + 1),
-      },
-    });
+    if (seededPhoto) {
+      await prisma.virPhoto.create({
+        data: {
+          inspectionId,
+          findingId: finding.id,
+          url: seededPhoto.url,
+          fileName: seededPhoto.fileName,
+          contentType: seededPhoto.contentType ?? inferContentType(seededPhoto.fileName),
+          fileSizeKb: 22 + findingIndex,
+          caption: seededPhoto.caption ?? `${findingSeed.title} evidence`,
+          uploadedBy: scenario.inspectorName,
+          takenAt: addDays(scenario.inspectionDate, findingIndex + 1),
+        },
+      });
+    }
 
     if (findingSeed.correctiveAction) {
       await prisma.virCorrectiveAction.create({

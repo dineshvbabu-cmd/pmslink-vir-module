@@ -224,8 +224,26 @@ export function normalizeRemoteAssetUrl(value?: string | null) {
   if (!raw) {
     return "";
   }
+  if (/^data:/i.test(raw)) {
+    return raw;
+  }
+  if (/^\/api\/vir\/assets\?url=/i.test(raw)) {
+    return raw;
+  }
+  if (/^\/?Uploads\//i.test(raw)) {
+    const absoluteUrl = `https://vir.synergymarinegroup.com/${raw.replace(/^\/+/, "")}`;
+    return `/api/vir/assets?url=${encodeURIComponent(absoluteUrl)}`;
+  }
+  if (/^\/?vir\/Uploads\//i.test(raw)) {
+    const absoluteUrl = `https://vir.synergymarinegroup.com/${raw.replace(/^\/?vir\/?/i, "")}`;
+    return `/api/vir/assets?url=${encodeURIComponent(absoluteUrl)}`;
+  }
+  if (/^\/?ia\/Uploads\//i.test(raw)) {
+    const absoluteUrl = `https://ia.synergymarinegroup.com/${raw.replace(/^\/?ia\/?/i, "")}`;
+    return `/api/vir/assets?url=${encodeURIComponent(absoluteUrl)}`;
+  }
   if (/^https?:\/\//i.test(raw)) {
-    return encodeURI(raw);
+    return `/api/vir/assets?url=${encodeURIComponent(raw)}`;
   }
   return raw;
 }
