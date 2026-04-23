@@ -1,11 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, FileDown, Mail } from "lucide-react";
+import { ArrowLeft, Eye, FileDown, Gauge, ImageIcon, ListChecks, Mail, X } from "lucide-react";
 import { PrintButton } from "@/components/print-button";
 import { CompactBarChart } from "@/components/erp-charts";
+import liveVirBlueprint from "@/data/live-vir-blueprint.json";
 import { prisma } from "@/lib/prisma";
-import { calculateInspectionScore, summarizeProgress } from "@/lib/vir/analytics";
+import {
+  calculateChecklistOutcome,
+  calculateInspectionScore,
+  calculateVesselCondition,
+  calculateVesselRating,
+  summarizeProgress,
+} from "@/lib/vir/analytics";
 import { canAccessVessel, requireVirSession } from "@/lib/vir/session";
+import { buildVesselProfile } from "@/lib/vir/vessel-profile";
 import {
   correctiveActionStatusLabel,
   findingStatusLabel,
@@ -31,6 +39,107 @@ const reportVariants = [
 type ReportVariant = (typeof reportVariants)[number]["id"];
 type ChecklistView = "grid" | "reasoning";
 type ChapterView = "table" | "bar";
+type ReportDialog = "outcome" | "rating" | "condition" | "section-summary" | "image-preview";
+type ReportLinkState = {
+  variant: ReportVariant;
+  checklistView: ChecklistView;
+  chapterView: ChapterView;
+  imageMode: "all" | "selected";
+  imageIds: string[];
+  sectionId?: string;
+};
+
+type LiveQuestionFile = {
+  id: string;
+  url: string;
+  caption: string;
+  label: string;
+};
+
+type LiveChecklistQuestion = {
+  id: string;
+  code: string;
+  prompt: string;
+  surveyStatus: string;
+  tested: boolean;
+  inspected: boolean;
+  notSighted: boolean;
+  notApplicable: boolean;
+  score: number | null;
+  finding: boolean;
+  comments: string;
+  guidanceNotes: string;
+  areaOfConcern: string;
+  subAreaOfConcern: string;
+  typeOfFinding: string;
+  severity: string;
+  files: LiveQuestionFile[];
+  isMandatory?: boolean;
+  allowsPhoto?: boolean;
+  isCicCandidate?: boolean;
+  referenceImageUrl?: string | null;
+};
+
+type LiveChecklistSubsection = {
+  id: string;
+  title: string;
+  location: string;
+  checklistId: number;
+  areaId: number;
+  totalCount: number;
+  doneCount: number;
+  summary: {
+    answered: number;
+    tested: number;
+    inspected: number;
+    notSighted: number;
+    notApplicable: number;
+    totalFindings: number;
+    evidenceCount: number;
+    questionCount: number;
+  };
+  condition: { score: number | null; scoredResponses: number };
+  rating: { band: string; mandatoryQuestions: number; mandatoryQuestionsWithFindings: number };
+  comments: string;
+  questions: LiveChecklistQuestion[];
+};
+
+type LiveChecklistSection = {
+  id: string;
+  title: string;
+  comments: string;
+  summary: {
+    answered: number;
+    tested: number;
+    inspected: number;
+    notSighted: number;
+    notApplicable: number;
+    totalFindings: number;
+    evidenceCount: number;
+    questionCount: number;
+  };
+  condition: { score: number | null; scoredResponses: number };
+  rating: { band: string; mandatoryQuestions: number; mandatoryQuestionsWithFindings: number };
+  subsections: LiveChecklistSubsection[];
+};
+
+type LiveChecklistBlueprint = {
+  id: string;
+  sourceInspectionId: number;
+  sourceLabel: string;
+  summary: {
+    tested: number;
+    inspected: number;
+    notSighted: number;
+    notApplicable: number;
+    totalFindings: number;
+    questionCount: number;
+    evidenceCount: number;
+    ratingBand: string;
+    conditionScore: number;
+  };
+  sections: LiveChecklistSection[];
+};
 
 export default async function InspectionReportPage({
   params,
@@ -52,6 +161,11 @@ export default async function InspectionReportPage({
   const selectedSectionParam = typeof reportParams.section === "string" ? reportParams.section : undefined;
   const imageMode = reportParams.imageMode === "selected" ? "selected" : "all";
   const selectedReportPhotoIds = new Set(normalizeArray(reportParams.image));
+  const selectedDialog = normalizeDialog(typeof reportParams.dialog === "string" ? reportParams.dialog : undefined);
+  const selectedDialogSectionId =
+    typeof reportParams.dialogSection === "string" ? reportParams.dialogSection : undefined;
+  const selectedDialogImageId =
+    typeof reportParams.dialogImage === "string" ? reportParams.dialogImage : undefined;
 
   const inspection = await prisma.virInspection.findUnique({
     where: { id: inspectionId },
@@ -141,24 +255,87 @@ export default async function InspectionReportPage({
     notFound();
   }
 
-  const questions = inspection.template?.sections.flatMap((section) => section.questions) ?? [];
-  const progress = summarizeProgress(questions, inspection.answers);
-  const score = calculateInspectionScore(questions, inspection.answers, inspection.findings);
+  const inspectionMode = inferInspectionMode(inspection.title, inspection.inspectionType.name);
+  const vesselProfile = buildVesselProfile(inspection.vessel);
+  const liveChecklist = buildLiveChecklist(inspection);
+  const questions = liveChecklist
+    ? liveChecklist.sections.flatMap((section) => section.subsections.flatMap((subsection) => subsection.questions))
+    : inspection.template?.sections.flatMap((section) => section.questions) ?? [];
+  const progress = liveChecklist
+    ? {
+        answeredQuestions:
+          liveChecklist.summary.tested +
+          liveChecklist.summary.inspected +
+          liveChecklist.summary.notSighted +
+          liveChecklist.summary.notApplicable,
+        totalQuestions: liveChecklist.summary.questionCount,
+        completionPercent:
+          liveChecklist.summary.questionCount > 0
+            ? Math.round(
+                ((liveChecklist.summary.tested +
+                  liveChecklist.summary.inspected +
+                  liveChecklist.summary.notSighted +
+                  liveChecklist.summary.notApplicable) /
+                  liveChecklist.summary.questionCount) *
+                  100
+              )
+            : 0,
+      }
+    : summarizeProgress(questions as any[], inspection.answers);
+  const score = liveChecklist
+    ? {
+        percentage: liveChecklist.summary.conditionScore
+          ? Math.round((liveChecklist.summary.conditionScore / 5) * 100)
+          : 0,
+        rawScore: liveChecklist.summary.conditionScore ? Math.round((liveChecklist.summary.conditionScore / 5) * 100) : 0,
+        penaltyCount: liveChecklist.summary.totalFindings,
+      }
+    : calculateInspectionScore(questions as any[], inspection.answers, inspection.findings);
+  const checklistOutcome = liveChecklist
+    ? {
+        answered:
+          liveChecklist.summary.tested +
+          liveChecklist.summary.inspected +
+          liveChecklist.summary.notSighted +
+          liveChecklist.summary.notApplicable,
+        totalQuestions: liveChecklist.summary.questionCount,
+        tested: liveChecklist.summary.tested,
+        inspected: liveChecklist.summary.inspected,
+        notSighted: liveChecklist.summary.notSighted,
+        notApplicable: liveChecklist.summary.notApplicable,
+        totalFindings: liveChecklist.summary.totalFindings,
+      }
+    : calculateChecklistOutcome(questions as any[], inspection.answers, inspection.findings);
+  const vesselRating = liveChecklist
+    ? buildLiveVesselRating(liveChecklist, inspectionMode)
+    : calculateVesselRating(questions as any[], inspection.answers, inspection.findings, inspectionMode);
+  const vesselCondition = liveChecklist
+    ? buildLiveVesselCondition(liveChecklist)
+    : calculateVesselCondition(questions as any[], inspection.answers);
   const answerMap = new Map(inspection.answers.map((answer) => [answer.questionId, answer]));
-  const sectionRows =
-    inspection.template?.sections.map((section) => {
-      const sectionAnswers = inspection.answers.filter((answer) => answer.question.section.id === section.id);
-      const sectionFindings = inspection.findings.filter((finding) => finding.question?.section.id === section.id);
-      const sectionEvidence = sectionAnswers.reduce((sum, answer) => sum + answer.photos.length, 0);
+  const sectionRows = liveChecklist
+    ? buildLiveSectionRows(liveChecklist, inspectionMode)
+    : inspection.template?.sections.map((section) => {
+        const sectionAnswers = inspection.answers.filter((answer) => answer.question.section.id === section.id);
+        const sectionFindings = inspection.findings.filter((finding) => finding.question?.section.id === section.id);
+        const sectionEvidence = sectionAnswers.reduce((sum, answer) => sum + answer.photos.length, 0);
+        const sectionFindingImageCount = sectionFindings.reduce((sum, finding) => sum + finding.photos.length, 0);
+        const sectionCondition = calculateVesselCondition(section.questions, sectionAnswers);
+        const sectionRating = calculateVesselRating(section.questions, sectionAnswers, sectionFindings, inspectionMode);
 
-      return {
-        ...section,
-        answers: sectionAnswers,
-        findings: sectionFindings,
-        evidenceCount: sectionEvidence,
-        answeredCount: sectionAnswers.filter((answer) => hasRecordedAnswer(answer)).length,
-      };
-    }) ?? [];
+        return {
+          ...section,
+          answers: sectionAnswers,
+          findings: sectionFindings,
+          evidenceCount: sectionEvidence,
+          findingImageCount: sectionFindingImageCount,
+          answeredCount: sectionAnswers.filter((answer) => hasRecordedAnswer(answer)).length,
+          condition: sectionCondition,
+          rating: sectionRating,
+          subsections: [],
+          comments: "",
+        };
+      }) ?? [];
   const selectedSectionId =
     selectedSectionParam && sectionRows.some((section) => section.id === selectedSectionParam)
       ? selectedSectionParam
@@ -177,14 +354,14 @@ export default async function InspectionReportPage({
       total: section.findings.length,
     }));
 
-  const outcomeRows = [
-    { label: "Questions", value: `${progress.answeredQuestions}/${progress.totalQuestions}` },
-    { label: "Mandatory", value: `${progress.answeredMandatory}/${progress.mandatoryQuestions}` },
-    { label: "Open Findings", value: `${inspection.findings.filter((finding) => finding.status !== "CLOSED").length}` },
-    { label: "Evidence", value: `${inspection.photos.length + inspection.answers.reduce((sum, answer) => sum + answer.photos.length, 0)}` },
-    { label: "Score", value: score.finalScore !== null ? `${score.finalScore}` : "n/a" },
-  ];
-  const reportPhotos = collectReportPhotos(inspection);
+  const reportPhotos = collectReportPhotos(inspection, sectionRows);
+  const previewPhoto = selectedDialogImageId ? reportPhotos.find((photo) => photo.id === selectedDialogImageId) : undefined;
+  const dialogSection =
+    selectedDialogSectionId && sectionRows.some((section) => section.id === selectedDialogSectionId)
+      ? sectionRows.find((section) => section.id === selectedDialogSectionId)
+      : selectedSectionId
+        ? sectionRows.find((section) => section.id === selectedSectionId)
+        : undefined;
   const selectedReportPhotos =
     imageMode === "selected"
       ? reportPhotos.filter((photo) => selectedReportPhotoIds.has(photo.id))
@@ -208,6 +385,15 @@ export default async function InspectionReportPage({
       buildReportPdfHref(inspection.id, variant.id, imageMode, effectiveReportPhotos.map((photo) => photo.id))
     ),
   }));
+  const reportNarratives = buildInspectionNarratives(inspection, reportPhotos);
+  const reportLinkState: ReportLinkState = {
+    variant: selectedVariant,
+    checklistView: selectedChecklistView,
+    chapterView: selectedChapterView,
+    sectionId: selectedSectionId,
+    imageMode,
+    imageIds: normalizeArray(reportParams.image),
+  };
 
   return (
     <div className="page-stack report-pack report-pack-live">
@@ -288,7 +474,7 @@ export default async function InspectionReportPage({
               <DetailRow label="Classification" value={inspection.vessel.manager ?? "Not recorded"} />
               <DetailRow label="Solas/Marpol/ISM Category" value={inspection.vessel.vesselType ?? "Not recorded"} />
               <DetailRow label="Report Type" value={inspection.inspectionType.name} />
-              <DetailRow label="Inspection Mode" value={inferInspectionMode(inspection.title, inspection.inspectionType.name)} />
+              <DetailRow label="Inspection Mode" value={inspectionMode} />
               <DetailRow label="Inspection From Date" value={fmt.format(inspection.inspectionDate)} />
               <DetailRow label="Inspection To Date" value={fmt.format(inspection.closedAt ?? inspection.inspectionDate)} />
               <DetailRow label="Place of Inspection From" value={inspection.port ?? "Not recorded"} />
@@ -320,13 +506,108 @@ export default async function InspectionReportPage({
       </section>
 
       {selectedVariant !== "findings" ? (
-        <section className="vir-kpi-grid">
-          {outcomeRows.map((item) => (
-            <div className="panel panel-elevated vir-kpi-card" key={item.label}>
-              <div className="vir-kpi-label">{item.label}</div>
-              <div className="vir-kpi-value">{item.value}</div>
+        <section className="panel panel-elevated">
+          <div className="section-header">
+            <div>
+              <h3 className="panel-title">VesselInspection Checklist</h3>
+              <p className="panel-subtitle">Outcome counts, vessel rating guidance, and vessel condition score for this VIR.</p>
             </div>
-          ))}
+          </div>
+
+          <div className="report-checklist-grid">
+            <article className="report-insight-card">
+              <div className="report-insight-header">
+                <h4>Inspection Outcome</h4>
+                <Link
+                  aria-label="Open inspection outcome summary"
+                  className="action-icon-link action-icon-link-primary"
+                  href={buildReportHref(inspection.id, {
+                    variant: selectedVariant,
+                    checklistView: selectedChecklistView,
+                    chapterView: selectedChapterView,
+                    sectionId: selectedSectionId,
+                    imageMode,
+                    imageIds: normalizeArray(reportParams.image),
+                    dialog: "outcome",
+                  })}
+                  scroll={false}
+                  title="View inspection outcome"
+                >
+                  <ListChecks size={16} />
+                </Link>
+              </div>
+
+              <CompactBarChart
+                bars={[
+                  { label: "I", value: checklistOutcome.inspected, note: "Inspected" },
+                  { label: "T", value: checklistOutcome.tested, note: "Tested" },
+                  { label: "NS", value: checklistOutcome.notSighted, note: "Not Sighted" },
+                  { label: "NA", value: checklistOutcome.notApplicable, note: "Not Applicable" },
+                  { label: "TF", value: checklistOutcome.totalFindings, note: "Total Findings" },
+                ]}
+                subtitle={`${checklistOutcome.answered}/${checklistOutcome.totalQuestions} answered`}
+                title="Inspection Outcome"
+              />
+            </article>
+
+            <article className="report-insight-card">
+              <div className="report-insight-header">
+                <h4>Vessel Rating</h4>
+                <Link
+                  aria-label="Open vessel rating guidance"
+                  className="action-icon-link action-icon-link-primary"
+                  href={buildReportHref(inspection.id, {
+                    variant: selectedVariant,
+                    checklistView: selectedChecklistView,
+                    chapterView: selectedChapterView,
+                    sectionId: selectedSectionId,
+                    imageMode,
+                    imageIds: normalizeArray(reportParams.image),
+                    dialog: "rating",
+                  })}
+                  scroll={false}
+                  title="View vessel rating guide"
+                >
+                  <Gauge size={16} />
+                </Link>
+              </div>
+              <div className="report-score-card">
+                <div className={`chip ${toneForRisk((vesselRating.band === "LOW" ? "HIGH" : vesselRating.band) as keyof typeof riskLabel)}`}>{vesselRating.label}</div>
+                <div className="report-score-number">{Math.round(vesselRating.ratio)}%</div>
+                <div className="small-text">
+                  {vesselRating.mandatoryQuestionsWithFindings}/{vesselRating.mandatoryQuestions} mandatory questions with findings
+                </div>
+              </div>
+            </article>
+
+            <article className="report-insight-card">
+              <div className="report-insight-header">
+                <h4>Vessel Condition</h4>
+                <Link
+                  aria-label="Open vessel condition guide"
+                  className="action-icon-link action-icon-link-primary"
+                  href={buildReportHref(inspection.id, {
+                    variant: selectedVariant,
+                    checklistView: selectedChecklistView,
+                    chapterView: selectedChapterView,
+                    sectionId: selectedSectionId,
+                    imageMode,
+                    imageIds: normalizeArray(reportParams.image),
+                    dialog: "condition",
+                  })}
+                  scroll={false}
+                  title="View vessel condition guide"
+                >
+                  <ImageIcon size={16} />
+                </Link>
+              </div>
+              <div className="report-score-card">
+                <div className="chip chip-info">{vesselCondition.label}</div>
+                <div className="report-score-number">{vesselCondition.score?.toFixed(1) ?? "n/a"}</div>
+                <div className="small-text">{vesselCondition.scoredResponses} scored checklist responses</div>
+              </div>
+            </article>
+          </div>
         </section>
       ) : null}
 
@@ -389,9 +670,16 @@ export default async function InspectionReportPage({
                           type="checkbox"
                           value={photo.id}
                         />
-                        <a href={photo.url} rel="noreferrer" target="_blank">
+                        <Link
+                          href={buildReportHref(inspection.id, {
+                            ...reportLinkState,
+                            dialog: "image-preview",
+                            dialogImageId: photo.id,
+                          })}
+                          scroll={false}
+                        >
                           <img alt={photo.caption} src={photo.url} />
-                        </a>
+                        </Link>
                         <span className="report-image-choice-copy">
                           <strong>{photo.label}</strong>
                           <span className="small-text">{photo.caption}</span>
@@ -490,6 +778,86 @@ export default async function InspectionReportPage({
             </div>
           </section>
 
+          <section className="panel panel-elevated">
+            <div className="section-header">
+              <div>
+                <h3 className="panel-title">Section review register</h3>
+                <p className="panel-subtitle">Chapter, rating, summary, condition, and evidence matrix for the selected VIR.</p>
+              </div>
+            </div>
+            <div className="table-shell table-shell-compact">
+              <table className="table data-table vir-data-table">
+                <thead>
+                  <tr>
+                    <th>Chapter Name</th>
+                    <th>Rating</th>
+                    <th>View Summary</th>
+                    <th>Findings</th>
+                    <th>Condition</th>
+                    <th>Section Images</th>
+                    <th>Finding Images</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sectionRows.map((section) => (
+                    <tr key={section.id}>
+                      <td>
+                        <div className="section-register-title">{section.title}</div>
+                        <div className="small-text">{section.questions.length} questions</div>
+                      </td>
+                      <td>
+                        <span
+                          className={`chip ${toneForRisk(
+                            (section.rating.band === "LOW" ? "HIGH" : section.rating.band) as keyof typeof riskLabel,
+                          )}`}
+                        >
+                          {section.rating.band === "HIGH" ? "High" : section.rating.band === "MEDIUM" ? "Medium" : "Low"}
+                        </span>
+                      </td>
+                      <td>
+                        <Link
+                          aria-label={`Open summary for ${section.title}`}
+                          className="action-icon-link action-icon-link-primary"
+                          href={buildReportHref(inspection.id, {
+                            ...reportLinkState,
+                            dialog: "section-summary",
+                            dialogSectionId: section.id,
+                          })}
+                          scroll={false}
+                          title={`View summary for ${section.title}`}
+                        >
+                          <Eye size={16} />
+                        </Link>
+                      </td>
+                      <td>{section.findings.length || ""}</td>
+                      <td>
+                        {typeof section.condition === "number"
+                          ? section.condition.toFixed(1)
+                          : section.condition?.score?.toFixed(1) ?? ""}
+                      </td>
+                      <td>{section.evidenceCount || ""}</td>
+                      <td>{section.findingImageCount || ""}</td>
+                      <td>
+                        <Link
+                          className="action-icon-link action-icon-link-primary"
+                          href={buildReportHref(inspection.id, {
+                            ...reportLinkState,
+                            sectionId: section.id,
+                          })}
+                          scroll={false}
+                          title={`Open ${section.title}`}
+                        >
+                          <ArrowLeft size={16} />
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
           <section className="page-stack">
             {visibleDetailedSections.map((section) => (
               <section className="panel panel-elevated report-section-panel" key={section.id}>
@@ -508,107 +876,32 @@ export default async function InspectionReportPage({
                 </div>
 
                 <SectionSummaryBoard section={section} />
+                {section.comments ? <div className="report-section-comment">{section.comments}</div> : null}
 
-                {selectedChecklistView === "grid" ? (
-                  <div className="table-shell table-shell-compact">
-                    <table className="table data-table vir-data-table">
-                      <thead>
-                        <tr>
-                          <th>S.No</th>
-                          <th>Question</th>
-                          <th>Response</th>
-                          <th>Comments</th>
-                          <th>Reference</th>
-                          <th>Actual Upload</th>
-                          <th>Findings</th>
-                          <th>Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {section.questions.map((question, index) => {
-                          const answer = answerMap.get(question.id);
-                          const questionFindings = inspection.findings.filter((finding) => finding.questionId === question.id);
-                          return (
-                            <tr key={question.id}>
-                              <td>{index + 1}</td>
-                              <td>
-                                <div className="report-question-code">{question.code}</div>
-                                <div>{question.prompt}</div>
-                                {question.helpText ? <div className="small-text">{question.helpText}</div> : null}
-                              </td>
-                              <td>{renderAnswerValue(answer)}</td>
-                              <td>{answer?.comment ?? "-"}</td>
-                              <td>
-                                {question.referenceImageUrl ? (
-                                  <div className="report-thumb-row">
-                                    <a href={question.referenceImageUrl} rel="noreferrer" target="_blank">
-                                      <img
-                                        alt={`${question.code} reference`}
-                                        className="report-thumb report-thumb-reference"
-                                        src={question.referenceImageUrl}
-                                      />
-                                    </a>
-                                    <a
-                                      className="inline-link"
-                                      href={question.referenceImageUrl}
-                                      rel="noreferrer"
-                                      target="_blank"
-                                    >
-                                      View reference
-                                    </a>
-                                  </div>
-                                ) : (
-                                  "-"
-                                )}
-                              </td>
-                              <td>
-                                <div className="report-thumb-row">
-                                  {answer?.photos.slice(0, 3).map((photo) => (
-                                    <a href={photo.url} key={photo.id} rel="noreferrer" target="_blank">
-                                      <img
-                                        alt={photo.caption ?? photo.fileName ?? question.code}
-                                        className="report-thumb"
-                                        src={photo.url}
-                                      />
-                                    </a>
-                                  ))}
-                                  {!answer?.photos.length ? "-" : null}
-                                </div>
-                              </td>
-                              <td>{questionFindings.length}</td>
-                              <td>
-                                <QuestionActionLinks
-                                  answer={answer}
-                                  inspectionId={inspection.id}
-                                  question={question}
-                                  sectionId={section.id}
-                                />
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="page-stack">
-                    {section.questions.map((question, index) => {
-                      const answer = answerMap.get(question.id);
-                      const questionFindings = inspection.findings.filter((finding) => finding.questionId === question.id);
-                      return (
-                        <QuestionReasoningCard
-                          answer={answer}
-                          index={index}
-                          inspectionId={inspection.id}
-                          key={question.id}
-                          question={question}
-                          questionFindings={questionFindings}
-                          sectionId={section.id}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
+                <div className="report-subsection-stack">
+                  {(section.subsections?.length
+                    ? section.subsections
+                    : [
+                        {
+                          ...section,
+                          title: section.title,
+                          location: "On board",
+                        },
+                      ]
+                  ).map((subsection: any) => (
+                    <DetailedSubsectionBlock
+                      answerMap={answerMap}
+                      inspectionFindings={inspection.findings}
+                      inspectionId={inspection.id}
+                      isLiveChecklist={Boolean(liveChecklist)}
+                      key={subsection.id}
+                      reportLinkState={reportLinkState}
+                      sectionId={section.id}
+                      selectedChecklistView={selectedChecklistView}
+                      subsection={subsection}
+                    />
+                  ))}
+                </div>
               </section>
             ))}
           </section>
@@ -624,9 +917,16 @@ export default async function InspectionReportPage({
               {effectiveReportPhotos.length ? (
                 effectiveReportPhotos.map((photo) => (
                   <div className="report-photo-card" key={photo.id}>
-                    <a href={photo.url} rel="noreferrer" target="_blank">
+                    <Link
+                      href={buildReportHref(inspection.id, {
+                        ...reportLinkState,
+                        dialog: "image-preview",
+                        dialogImageId: photo.id,
+                      })}
+                      scroll={false}
+                    >
                       <img alt={photo.caption} src={photo.url} />
-                    </a>
+                    </Link>
                     <div className="report-photo-meta">
                       <strong>{photo.label}</strong>
                       <span className="small-text">{photo.caption}</span>
@@ -637,6 +937,54 @@ export default async function InspectionReportPage({
                 <div className="empty-state">No images are selected for the detailed annex.</div>
               )}
             </div>
+          </section>
+
+          <section className="page-stack">
+            {reportNarratives.map((block) => (
+              <section className="panel panel-elevated narrative-block" key={block.id}>
+                <div className="report-section-label">{block.title}</div>
+                {block.body.length ? (
+                  block.mode === "list" ? (
+                    <ol className="narrative-list">
+                      {block.body.map((item, index) => (
+                        <li key={`${block.id}-${index}`}>{item}</li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <div className="narrative-copy">
+                      {block.body.map((item, index) => (
+                        <p key={`${block.id}-${index}`}>{item}</p>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  <div className="small-text">No text recorded.</div>
+                )}
+
+                {block.attachments?.length ? (
+                  <div className="report-thumb-row report-thumb-row-spacious">
+                    {block.attachments.map((attachment) => (
+                      <Link
+                        className="report-photo-card report-photo-card-compact"
+                        href={buildReportHref(inspection.id, {
+                          ...reportLinkState,
+                          dialog: "image-preview",
+                          dialogImageId: attachment.id,
+                        })}
+                        key={attachment.id}
+                        scroll={false}
+                      >
+                        <img alt={attachment.caption} className="report-thumb report-thumb-large" src={attachment.url} />
+                        <div className="report-photo-meta">
+                          <strong>{attachment.label}</strong>
+                          <span className="small-text">{attachment.caption}</span>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            ))}
           </section>
         </>
       ) : null}
@@ -955,9 +1303,16 @@ export default async function InspectionReportPage({
             <div className="report-photo-annex">
               {effectiveReportPhotos.map((photo) => (
                 <div className="report-photo-card" key={photo.id}>
-                  <a href={photo.url} rel="noreferrer" target="_blank">
+                  <Link
+                    href={buildReportHref(inspection.id, {
+                      ...reportLinkState,
+                      dialog: "image-preview",
+                      dialogImageId: photo.id,
+                    })}
+                    scroll={false}
+                  >
                     <img alt={photo.caption} src={photo.url} />
-                  </a>
+                  </Link>
                   <div className="report-photo-meta">
                     <strong>{photo.label}</strong>
                     <span className="small-text">{photo.caption}</span>
@@ -968,6 +1323,143 @@ export default async function InspectionReportPage({
             </div>
           </section>
         </section>
+      ) : null}
+
+      {selectedDialog ? (
+        <div className="dialog-backdrop">
+          <div className={`dialog-shell ${selectedDialog === "image-preview" ? "dialog-shell-wide" : ""}`}>
+            <div className="dialog-header">
+              <div className="dialog-title">
+                {selectedDialog === "outcome"
+                  ? "Inspection Outcome"
+                  : selectedDialog === "rating"
+                    ? "Vessel Rating"
+                    : selectedDialog === "condition"
+                      ? "Vessel Condition"
+                      : selectedDialog === "section-summary"
+                        ? `${dialogSection?.title ?? "Section"} Summary`
+                        : previewPhoto?.label ?? "Image Preview"}
+              </div>
+              <Link
+                aria-label="Close dialog"
+                className="action-icon-link action-icon-link-danger"
+                href={buildReportHref(inspection.id, reportLinkState)}
+                scroll={false}
+                title="Close"
+              >
+                <X size={16} />
+              </Link>
+            </div>
+
+            {selectedDialog === "outcome" ? (
+              <table className="table data-table vir-data-table">
+                <thead>
+                  <tr>
+                    <th>S.No</th>
+                    <th>T</th>
+                    <th>I</th>
+                    <th>NS</th>
+                    <th>NA</th>
+                    <th>TF</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>1</td>
+                    <td>{checklistOutcome.tested}</td>
+                    <td>{checklistOutcome.inspected}</td>
+                    <td>{checklistOutcome.notSighted}</td>
+                    <td>{checklistOutcome.notApplicable}</td>
+                    <td>{checklistOutcome.totalFindings}</td>
+                  </tr>
+                  <tr>
+                    <td />
+                    <td>Tested</td>
+                    <td>Inspected</td>
+                    <td>Not Sighted</td>
+                    <td>Not Applicable</td>
+                    <td>Total Findings</td>
+                  </tr>
+                </tbody>
+              </table>
+            ) : null}
+
+            {selectedDialog === "rating" ? (
+              <table className="table data-table vir-data-table">
+                <thead>
+                  <tr>
+                    <th>Vessel Rating</th>
+                    <th>Sailing Inspection</th>
+                    <th>P/S Inspection</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {vesselProfile.vesselRatingGuide.map((entry) => (
+                    <tr key={entry.rating}>
+                      <td>
+                        <div
+                          className={`chip ${
+                            entry.rating.startsWith("HIGH")
+                              ? "chip-success"
+                              : entry.rating.startsWith("MEDIUM")
+                                ? "chip-warning"
+                                : "chip-danger"
+                          }`}
+                        >
+                          {entry.rating.split(" ")[0]}
+                        </div>
+                        <div className="small-text">{entry.rating}</div>
+                      </td>
+                      <td>{entry.sailingInspection}</td>
+                      <td>{entry.portInspection}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : null}
+
+            {selectedDialog === "condition" ? (
+              <table className="table data-table vir-data-table">
+                <thead>
+                  <tr>
+                    <th>Description</th>
+                    <th>Criteria</th>
+                    <th>Score range</th>
+                    <th>Reference</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {vesselProfile.vesselConditionGuide.map((entry, index) => (
+                    <tr key={`${entry.description}-${index}`}>
+                      <td>{entry.description}</td>
+                      <td>{entry.criteria}</td>
+                      <td>{entry.scoreRange}</td>
+                      <td>
+                        {entry.referenceImageUrl ? (
+                          <img alt={entry.description} className="report-thumb report-thumb-large" src={entry.referenceImageUrl} />
+                        ) : (
+                          ""
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : null}
+
+            {selectedDialog === "section-summary" && dialogSection ? <SectionSummaryBoard section={dialogSection} /> : null}
+
+            {selectedDialog === "image-preview" && previewPhoto ? (
+              <div className="report-image-preview">
+                <img alt={previewPhoto.caption} src={previewPhoto.url} />
+                <div className="report-photo-meta">
+                  <strong>{previewPhoto.label}</strong>
+                  <span>{previewPhoto.caption}</span>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
       ) : null}
     </div>
   );
@@ -983,6 +1475,16 @@ function normalizeChecklistView(value: string | undefined): ChecklistView {
 
 function normalizeChapterView(value: string | undefined): ChapterView {
   return value === "bar" ? "bar" : "table";
+}
+
+function normalizeDialog(value: string | undefined): ReportDialog | undefined {
+  return value === "outcome" ||
+    value === "rating" ||
+    value === "condition" ||
+    value === "section-summary" ||
+    value === "image-preview"
+    ? value
+    : undefined;
 }
 
 function normalizeArray(value: string | string[] | undefined) {
@@ -1002,6 +1504,9 @@ function buildReportHref(
     imageMode: "all" | "selected";
     imageIds: string[];
     sectionId?: string;
+    dialog?: ReportDialog;
+    dialogSectionId?: string;
+    dialogImageId?: string;
   }
 ) {
   const params = new URLSearchParams();
@@ -1012,6 +1517,15 @@ function buildReportHref(
   options.imageIds.forEach((id) => params.append("image", id));
   if (options.sectionId) {
     params.set("section", options.sectionId);
+  }
+  if (options.dialog) {
+    params.set("dialog", options.dialog);
+  }
+  if (options.dialogSectionId) {
+    params.set("dialogSection", options.dialogSectionId);
+  }
+  if (options.dialogImageId) {
+    params.set("dialogImage", options.dialogImageId);
   }
   return `/reports/inspection/${inspectionId}?${params.toString()}`;
 }
@@ -1095,7 +1609,8 @@ function buildReportPdfHref(inspectionId: string, variant: ReportVariant, imageM
   return `/api/reports/inspection/${inspectionId}/pdf?${params.toString()}`;
 }
 
-function collectReportPhotos(inspection: {
+function collectReportPhotos(
+  inspection: {
   title: string;
   photos: Array<{ id: string; url: string; caption: string | null; fileName: string | null }>;
   answers: Array<{
@@ -1107,7 +1622,25 @@ function collectReportPhotos(inspection: {
     photos: Array<{ id: string; url: string; caption: string | null; fileName: string | null }>;
     question: { section: { title: string } } | null;
   }>;
-}) {
+  },
+  sectionRows: any[] = []
+) {
+  const livePhotos = sectionRows.flatMap((section) =>
+    (section.subsections?.length
+      ? section.subsections
+      : [{ id: `${section.id}-default`, title: section.title, questions: section.questions ?? [] }]
+    ).flatMap((subsection: any) =>
+      (subsection.questions ?? []).flatMap((question: any) =>
+        (question.files ?? []).map((file: any) => ({
+          id: file.id,
+          url: file.url,
+          caption: file.caption ?? file.fileName ?? question.prompt,
+          label: `${section.title} / ${subsection.title ?? section.title}`,
+        }))
+      )
+    )
+  );
+
   return [
     ...inspection.photos.map((photo) => ({
       id: photo.id,
@@ -1131,7 +1664,106 @@ function collectReportPhotos(inspection: {
         label: `${finding.question?.section.title ?? "General"} / Finding`,
       }))
     ),
+    ...livePhotos,
   ];
+}
+
+function buildInspectionNarratives(
+  inspection: {
+    summary: string | null;
+    metadata: unknown;
+    findings: Array<{ description: string; title: string }>;
+    inspectionDate: Date;
+    closedAt: Date | null;
+  },
+  reportPhotos: Array<{ id: string; url: string; caption: string; label: string }>
+) {
+  const metadata = (inspection.metadata ?? {}) as Record<string, unknown>;
+  const itemsOfConcern = normalizeNarrativeList(
+    metadata.itemsOfConcern,
+    inspection.findings.slice(0, 5).map((finding) => finding.description || finding.title)
+  );
+  const bestPractice = normalizeNarrativeList(metadata.bestPractice, [
+    inspection.summary ?? "Ship staff demonstrated positive support and responsiveness during the inspection walk-through.",
+  ]);
+  const equipmentNotWorking = normalizeNarrativeList(metadata.equipmentNotWorking, [
+    "No critical equipment was confirmed as permanently defective during this review. Any trial limitations should be tracked in follow-up remarks.",
+  ]);
+  const safetyMeeting = normalizeNarrativeList(metadata.safetyMeeting, [
+    "Safety meeting held with ship staff and key observations were discussed before close-out.",
+  ]);
+  const openingMeeting = normalizeNarrativeList(metadata.openingMeeting, [
+    `Opening meeting held on ${fmt.format(inspection.inspectionDate)} to align scope, test expectations, and crew coordination.`,
+  ]);
+  const closingMeeting = normalizeNarrativeList(metadata.closingMeeting, [
+    `Closing meeting held on ${fmt.format(inspection.closedAt ?? inspection.inspectionDate)} to review findings, actions, and office follow-up.`,
+  ]);
+  const conclusion = normalizeNarrativeList(metadata.conclusion, [
+    inspection.summary ?? "Inspection concluded with the vessel generally meeting expected readiness, subject to closure of listed findings.",
+  ]);
+
+  return [
+    { id: "items-of-concern", title: "Items of concern", mode: "list" as const, body: itemsOfConcern },
+    {
+      id: "best-practice",
+      title: "Best Practice",
+      mode: "paragraph" as const,
+      body: bestPractice,
+    },
+    {
+      id: "best-practice-documents",
+      title: "Best Practice Documents",
+      mode: "attachments" as const,
+      body: ["(Only images, pdf, doc, docs, xls, xlsx are allowed)"],
+      attachments: reportPhotos.slice(0, 2),
+    },
+    {
+      id: "equipment-not-working",
+      title: "Equipment Not Working / Never Tried Out",
+      mode: "paragraph" as const,
+      body: equipmentNotWorking,
+    },
+    {
+      id: "equipment-not-working-documents",
+      title: "Equipment Not Working / Never Tried Out Documents",
+      mode: "attachments" as const,
+      body: ["(Only images, pdf, doc, docs, xls, xlsx are allowed)"],
+      attachments: reportPhotos.slice(2, 4),
+    },
+    {
+      id: "safety-meeting",
+      title: "Safety Meeting",
+      mode: "list" as const,
+      body: safetyMeeting,
+    },
+    {
+      id: "safety-meeting-documents",
+      title: "Safety Meeting Documents",
+      mode: "attachments" as const,
+      body: ["(Only images, pdf, doc, docs, xls, xlsx are allowed)"],
+      attachments: reportPhotos.slice(4, 6),
+    },
+    {
+      id: "other-documents",
+      title: "Other Documents",
+      mode: "attachments" as const,
+      body: ["(Only images, pdf, doc, docs, xls, xlsx are allowed)"],
+      attachments: reportPhotos.slice(6, 12),
+    },
+    { id: "opening-meeting", title: "Opening Meeting", mode: "list" as const, body: openingMeeting },
+    { id: "closing-meeting", title: "Closing Meeting", mode: "list" as const, body: closingMeeting },
+    { id: "conclusion", title: "Conclusion", mode: "list" as const, body: conclusion },
+  ];
+}
+
+function normalizeNarrativeList(value: unknown, fallback: string[]) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item)).filter(Boolean);
+  }
+  if (typeof value === "string" && value.trim()) {
+    return [value.trim()];
+  }
+  return fallback.filter(Boolean);
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {
@@ -1143,26 +1775,76 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function getQuestionUploads(question: any, answer: any) {
+  if (Array.isArray(question?.files) && question.files.length) {
+    return question.files;
+  }
+  if (Array.isArray(answer?.photos) && answer.photos.length) {
+    return answer.photos;
+  }
+  return [];
+}
+
+function buildQuestionFindings(question: any, inspectionFindings: any[], isLiveChecklist: boolean) {
+  if (isLiveChecklist) {
+    return question.finding
+      ? [
+          {
+            id: `${question.id}-finding`,
+            title: question.prompt,
+            description: question.comments || stripHtml(question.guidanceNotes) || question.prompt,
+            severity: question.severity || "LOW",
+            typeOfFinding: question.typeOfFinding,
+            areaOfConcern: question.areaOfConcern,
+            subAreaOfConcern: question.subAreaOfConcern,
+            photos: question.files ?? [],
+          },
+        ]
+      : [];
+  }
+
+  return inspectionFindings.filter((finding) => finding.questionId === question.id);
+}
+
+function getQuestionHelpText(question: any, isLiveChecklist: boolean) {
+  return isLiveChecklist ? question.guidanceNotes : question.helpText;
+}
+
+function renderOutcomeMarker(isMarked: boolean) {
+  return isMarked ? "Y" : "";
+}
+
 function QuestionActionLinks({
   inspectionId,
   question,
   answer,
   sectionId,
+  reportLinkState,
 }: {
   inspectionId: string;
   question: any;
   answer: any;
   sectionId?: string;
+  reportLinkState: ReportLinkState;
 }) {
-  const firstActualImage = answer?.photos?.[0]?.url;
+  const actualUploads = getQuestionUploads(question, answer);
+  const firstActualImage = actualUploads[0];
   const workflowHref = `/inspections/${inspectionId}?pane=questionnaire${sectionId ? `&section=${sectionId}` : ""}`;
 
   return (
     <div className="table-actions">
       {firstActualImage ? (
-        <a className="inline-link" href={firstActualImage} rel="noreferrer" target="_blank">
+        <Link
+          className="inline-link"
+          href={buildReportHref(inspectionId, {
+            ...reportLinkState,
+            dialog: "image-preview",
+            dialogImageId: firstActualImage.id,
+          })}
+          scroll={false}
+        >
           View images
-        </a>
+        </Link>
       ) : null}
       <Link className="inline-link" href={workflowHref} scroll={false}>
         Workflow
@@ -1205,6 +1887,7 @@ function QuestionReasoningCard({
   questionFindings,
   inspectionId,
   sectionId,
+  reportLinkState,
 }: {
   index: number;
   question: any;
@@ -1212,11 +1895,14 @@ function QuestionReasoningCard({
   questionFindings: any[];
   inspectionId: string;
   sectionId?: string;
+  reportLinkState: ReportLinkState;
 }) {
   const riskKey: keyof typeof riskLabel =
     typeof question.riskLevel === "string" && question.riskLevel in riskLabel
       ? (question.riskLevel as keyof typeof riskLabel)
       : "LOW";
+  const actualUploads =
+    getQuestionUploads(question, answer);
 
   return (
     <article className={`question-card ${question.isCicCandidate ? "question-card-focus" : ""}`}>
@@ -1286,15 +1972,23 @@ function QuestionReasoningCard({
             <div className="evidence-panel">
               <div className="visual-label">Actual upload</div>
               <div className="report-thumb-row report-thumb-row-spacious">
-                {answer?.photos?.length ? (
-                  answer.photos.map((photo: any) => (
-                    <a href={photo.url} key={photo.id} rel="noreferrer" target="_blank">
+                {actualUploads.length ? (
+                  actualUploads.map((photo: any) => (
+                    <Link
+                      href={buildReportHref(inspectionId, {
+                        ...reportLinkState,
+                        dialog: "image-preview",
+                        dialogImageId: photo.id,
+                      })}
+                      key={photo.id}
+                      scroll={false}
+                    >
                       <img
                         alt={photo.caption ?? photo.fileName ?? question.code}
                         className="report-thumb report-thumb-large"
                         src={photo.url}
                       />
-                    </a>
+                    </Link>
                   ))
                 ) : (
                   <div className="small-text">No actual upload yet.</div>
@@ -1303,7 +1997,13 @@ function QuestionReasoningCard({
             </div>
 
             <div className="questionnaire-section-actions">
-              <QuestionActionLinks answer={answer} inspectionId={inspectionId} question={question} sectionId={sectionId} />
+              <QuestionActionLinks
+                answer={answer}
+                inspectionId={inspectionId}
+                question={question}
+                reportLinkState={reportLinkState}
+                sectionId={sectionId}
+              />
             </div>
           </div>
         </div>
@@ -1312,8 +2012,211 @@ function QuestionReasoningCard({
   );
 }
 
+function SubsectionQuestionTable({
+  subsection,
+  answerMap,
+  inspectionFindings,
+  inspectionId,
+  sectionId,
+  reportLinkState,
+  isLiveChecklist,
+}: {
+  subsection: any;
+  answerMap: Map<string, any>;
+  inspectionFindings: any[];
+  inspectionId: string;
+  sectionId: string;
+  reportLinkState: ReportLinkState;
+  isLiveChecklist: boolean;
+}) {
+  return (
+    <div className="table-shell table-shell-compact report-table-shell">
+      <table className="table data-table vir-data-table">
+        <thead>
+          <tr>
+            <th>S.No</th>
+            <th>Question</th>
+            <th>T</th>
+            <th>I</th>
+            <th>NS</th>
+            <th>NA</th>
+            <th>Score</th>
+            <th>Finding</th>
+            <th>Comments</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {subsection.questions.map((question: any, index: number) => {
+            const answer = answerMap.get(question.id);
+            const answerState = isLiveChecklist
+              ? describeLiveQuestionOutcome(question)
+              : describeQuestionOutcome(question, answer);
+            const questionScore = isLiveChecklist ? question.score : deriveQuestionScore(question, answer);
+            const questionFindings = buildQuestionFindings(question, inspectionFindings, isLiveChecklist);
+            const questionHelpText = getQuestionHelpText(question, isLiveChecklist);
+
+            return (
+              <tr key={question.id}>
+                <td>{index + 1}</td>
+                <td>
+                  <div className="report-question-code">{question.code}</div>
+                  <div>{question.prompt}</div>
+                  {stripHtml(questionHelpText) ? <div className="small-text">{stripHtml(questionHelpText)}</div> : null}
+                </td>
+                <td>{renderOutcomeMarker(answerState === "tested")}</td>
+                <td>{renderOutcomeMarker(answerState === "inspected")}</td>
+                <td>{renderOutcomeMarker(answerState === "notSighted")}</td>
+                <td>{renderOutcomeMarker(answerState === "notApplicable")}</td>
+                <td>{questionScore ?? ""}</td>
+                <td>{questionFindings.length ? "N" : ""}</td>
+                <td>{isLiveChecklist ? question.comments : answer?.comment ?? renderAnswerValue(answer)}</td>
+                <td>
+                  <QuestionActionLinks
+                    answer={answer}
+                    inspectionId={inspectionId}
+                    question={question}
+                    reportLinkState={reportLinkState}
+                    sectionId={sectionId}
+                  />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DetailedSubsectionBlock({
+  subsection,
+  answerMap,
+  inspectionFindings,
+  inspectionId,
+  sectionId,
+  reportLinkState,
+  selectedChecklistView,
+  isLiveChecklist,
+}: {
+  subsection: any;
+  answerMap: Map<string, any>;
+  inspectionFindings: any[];
+  inspectionId: string;
+  sectionId: string;
+  reportLinkState: ReportLinkState;
+  selectedChecklistView: ChecklistView;
+  isLiveChecklist: boolean;
+}) {
+  const subsectionFindings = subsection.questions.flatMap((question: any) =>
+    buildQuestionFindings(question, inspectionFindings, isLiveChecklist)
+  );
+  const subsectionEvidenceCount = subsection.questions.reduce(
+    (total: number, question: any) => total + getQuestionUploads(question, answerMap.get(question.id)).length,
+    0
+  );
+  const subsectionCondition =
+    typeof subsection.condition?.score === "number" ? subsection.condition.score.toFixed(1) : "NA";
+
+  return (
+    <details className="report-subsection-shell" open>
+      <summary className="report-subsection-summary">
+        <div className="report-subsection-copy">
+          <strong>{subsection.title}</strong>
+          <span className="small-text">{subsection.location ?? "On board"}</span>
+        </div>
+        <div className="mini-metrics">
+          <span className="chip chip-info">Q {subsection.questions.length}</span>
+          <span className="chip chip-success">Ans {subsection.summary?.answered ?? 0}</span>
+          <span className="chip chip-warning">Findings {subsectionFindings.length}</span>
+          <span className="chip chip-info">Cond {subsectionCondition}</span>
+          <span className="chip chip-success">Images {subsectionEvidenceCount}</span>
+        </div>
+      </summary>
+
+      <div className="report-subsection-body">
+        {subsection.comments ? <div className="report-subsection-comment">{subsection.comments}</div> : null}
+        {subsection.summary ? (
+          <div className="report-subsection-summary-strip small-text">
+            {subsection.summary.tested ?? 0} tested / {subsection.summary.inspected ?? 0} inspected /{" "}
+            {subsection.summary.notSighted ?? 0} not sighted / {subsection.summary.notApplicable ?? 0} not applicable /{" "}
+            {subsection.summary.totalFindings ?? 0} findings
+          </div>
+        ) : null}
+
+        {selectedChecklistView === "grid" ? (
+          <SubsectionQuestionTable
+            answerMap={answerMap}
+            inspectionFindings={inspectionFindings}
+            inspectionId={inspectionId}
+            isLiveChecklist={isLiveChecklist}
+            reportLinkState={reportLinkState}
+            sectionId={sectionId}
+            subsection={subsection}
+          />
+        ) : (
+          <div className="page-stack report-subsection-reasoning">
+            {subsection.questions.map((question: any, index: number) => {
+              const answer = answerMap.get(question.id);
+              const questionFindings = buildQuestionFindings(question, inspectionFindings, isLiveChecklist);
+
+              return (
+                <QuestionReasoningCard
+                  answer={answer}
+                  index={index}
+                  inspectionId={inspectionId}
+                  key={question.id}
+                  question={question}
+                  questionFindings={questionFindings}
+                  reportLinkState={reportLinkState}
+                  sectionId={sectionId}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
 function SectionSummaryBoard({ section }: { section: any }) {
   const concentratedCount = section.questions.filter((question: any) => question.isCicCandidate).length;
+
+  if (section.subsections?.length) {
+    return (
+      <div className="questionnaire-section-summary">
+        <div className="table-shell table-shell-compact">
+          <table className="table data-table vir-data-table">
+            <thead>
+              <tr>
+                <th>Subsection</th>
+                <th>Location</th>
+                <th>Questions</th>
+                <th>Answered</th>
+                <th>Findings</th>
+                <th>Condition</th>
+                <th>Images</th>
+              </tr>
+            </thead>
+            <tbody>
+              {section.subsections.map((subsection: any) => (
+                <tr key={subsection.id}>
+                  <td>{subsection.title}</td>
+                  <td>{subsection.location ?? "On board"}</td>
+                  <td>{subsection.questions?.length ?? 0}</td>
+                  <td>{subsection.summary?.answered ?? 0}</td>
+                  <td>{subsection.summary?.totalFindings ?? 0}</td>
+                  <td>{subsection.condition?.score ?? "NA"}</td>
+                  <td>{subsection.summary?.evidenceCount ?? 0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="questionnaire-section-summary">
@@ -1355,6 +2258,186 @@ function SectionSummaryBoard({ section }: { section: any }) {
       </div>
     </div>
   );
+}
+
+function describeQuestionOutcome(question: any, answer: any) {
+  if (!answer || !hasRecordedAnswer(answer)) {
+    return "notSighted" as const;
+  }
+  if (typeof answer.answerText === "string" && ["NA", "N/A", "NOT APPLICABLE"].includes(answer.answerText.toUpperCase())) {
+    return "notApplicable" as const;
+  }
+  const prompt = `${question.prompt ?? ""} ${question.code ?? ""}`.toUpperCase();
+  if (
+    prompt.includes("TEST") ||
+    prompt.includes("TRIAL") ||
+    prompt.includes("ALARM") ||
+    prompt.includes("DRILL") ||
+    prompt.includes("PUMP") ||
+    prompt.includes("RELEASE GEAR")
+  ) {
+    return "tested" as const;
+  }
+  return "inspected" as const;
+}
+
+function deriveQuestionScore(question: any, answer: any) {
+  if (!answer || !hasRecordedAnswer(answer)) {
+    return null;
+  }
+  if (typeof answer.answerNumber === "number") {
+    return answer.answerNumber;
+  }
+  if (typeof answer.answerBoolean === "boolean") {
+    return answer.answerBoolean ? 4 : 2;
+  }
+  if (typeof answer.answerText === "string") {
+    const value = answer.answerText.toUpperCase();
+    if (["YES", "CLEAR", "GOOD", "SATISFACTORY", "HIGH", "UP_TO_DATE"].includes(value)) {
+      return 4;
+    }
+    if (["PARTIAL", "OBSERVATION", "WATCH", "MEDIUM", "MINOR_TOUCH_UP", "MINOR_DEFECT", "MONITOR"].includes(value)) {
+      return 3;
+    }
+    if (["NO", "POOR", "DEFICIENT", "LOW", "MAJOR_DEFECT", "ATTENTION", "GAP"].includes(value)) {
+      return 2;
+    }
+  }
+  if (Array.isArray(answer.selectedOptions) && answer.selectedOptions.length > 0) {
+    return 3;
+  }
+  const firstScoredOption = question.options?.find((option: any) => option.value === answer.answerText && typeof option.score === "number");
+  if (firstScoredOption?.score !== undefined && firstScoredOption.score !== null) {
+    return Math.max(1, Math.min(5, Number((firstScoredOption.score / 20).toFixed(1))));
+  }
+  return 4;
+}
+
+function buildLiveChecklist(inspection: { metadata: unknown }) {
+  const metadata = (inspection.metadata ?? {}) as Record<string, unknown>;
+  const candidate = metadata.liveChecklist;
+  if (candidate && typeof candidate === "object") {
+    return candidate as unknown as LiveChecklistBlueprint;
+  }
+  return liveVirBlueprint as unknown as LiveChecklistBlueprint;
+}
+
+function buildLiveVesselRating(liveChecklist: LiveChecklistBlueprint, inspectionMode: string) {
+  const mandatoryQuestions = liveChecklist.sections.reduce(
+    (total, section) =>
+      total +
+      section.subsections.reduce(
+        (subTotal, subsection) => subTotal + (subsection.rating?.mandatoryQuestions ?? 0),
+        0
+      ),
+    0
+  );
+  const mandatoryQuestionsWithFindings = liveChecklist.sections.reduce(
+    (total, section) =>
+      total +
+      section.subsections.reduce(
+        (subTotal, subsection) => subTotal + (subsection.rating?.mandatoryQuestionsWithFindings ?? 0),
+        0
+      ),
+    0
+  );
+  const band = formatBandLabel(liveChecklist.summary.ratingBand);
+  return {
+    band,
+    label: band === "HIGH" ? "High" : band === "MEDIUM" ? "Medium" : "Low",
+    ratio: band === "HIGH" ? 85 : band === "MEDIUM" ? 65 : 35,
+    mandatoryQuestions,
+    mandatoryQuestionsWithFindings,
+    mode: inspectionMode,
+  };
+}
+
+function buildLiveVesselCondition(liveChecklist: LiveChecklistBlueprint) {
+  const score = liveChecklist.summary.conditionScore;
+  return {
+    label: score >= 3.75 ? "High" : score >= 3 ? "Medium" : "Low",
+    score,
+    scoredResponses: liveChecklist.sections.reduce(
+      (total, section) => total + (section.condition?.scoredResponses ?? 0),
+      0
+    ),
+  };
+}
+
+function buildLiveSectionRows(liveChecklist: LiveChecklistBlueprint, inspectionMode: string) {
+  return liveChecklist.sections.map((section) => {
+    const questions = section.subsections.flatMap((subsection) => subsection.questions);
+    const findings = questions
+      .filter((question) => question.finding)
+      .map((question) => ({
+        id: `${question.id}-finding`,
+        title: question.prompt,
+        description: question.comments || stripHtml(question.guidanceNotes) || question.prompt,
+        severity: question.severity || "LOW",
+        areaOfConcern: question.areaOfConcern,
+        subAreaOfConcern: question.subAreaOfConcern,
+        typeOfFinding: question.typeOfFinding,
+        photos: question.files ?? [],
+      }));
+    const mandatoryQuestions = section.subsections.reduce(
+      (total, subsection) => total + (subsection.rating?.mandatoryQuestions ?? 0),
+      0
+    );
+    const mandatoryQuestionsWithFindings = section.subsections.reduce(
+      (total, subsection) => total + (subsection.rating?.mandatoryQuestionsWithFindings ?? 0),
+      0
+    );
+    const band = formatBandLabel(section.rating?.band);
+
+    return {
+      id: section.id,
+      title: section.title,
+      comments: section.comments,
+      questions,
+      findings,
+      evidenceCount: section.summary?.evidenceCount ?? 0,
+      findingImageCount: findings.reduce((total, finding) => total + (finding.photos?.length ?? 0), 0),
+      answeredCount: section.summary?.answered ?? 0,
+      condition: section.condition?.score ?? null,
+      rating: {
+        band,
+        label: band === "HIGH" ? "High" : band === "MEDIUM" ? "Medium" : "Low",
+        ratio: band === "HIGH" ? 85 : band === "MEDIUM" ? 65 : 35,
+        mode: inspectionMode,
+        mandatoryQuestions,
+        mandatoryQuestionsWithFindings,
+      },
+      subsections: section.subsections,
+    };
+  });
+}
+
+function describeLiveQuestionOutcome(question: LiveChecklistQuestion) {
+  if (question.tested) {
+    return "tested" as const;
+  }
+  if (question.inspected) {
+    return "inspected" as const;
+  }
+  if (question.notApplicable) {
+    return "notApplicable" as const;
+  }
+  return "notSighted" as const;
+}
+
+function formatBandLabel(band: string | undefined | null) {
+  const normalized = String(band ?? "HIGH").trim().toUpperCase();
+  if (normalized === "MEDIUM" || normalized === "LOW") {
+    return normalized;
+  }
+  return "HIGH";
+}
+
+function stripHtml(value?: string | null) {
+  return String(value ?? "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function ChapterFindingBlock({

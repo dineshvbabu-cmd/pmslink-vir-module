@@ -1,5 +1,7 @@
 import type { Prisma, VirInspectionStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
+import liveUserVessels from "@/data/live-user-vessels.json";
+import liveVirBlueprint from "@/data/live-vir-blueprint.json";
 import { prisma } from "@/lib/prisma";
 import { VIR_INSPECTION_TYPES } from "@/lib/vir/catalog";
 import { normalizeVirTemplateImport, type VirTemplateImport } from "@/lib/vir/import";
@@ -21,6 +23,32 @@ type DemoVesselSeed = {
   manager: string;
 };
 
+type LiveUserVesselRecord = {
+  VesselCode?: string;
+  VesselName?: string;
+  ImoNo?: string | number;
+  VesselType?: string;
+  Management?: string;
+  Flag?: string;
+};
+
+type LiveChecklistBlueprint = typeof liveVirBlueprint;
+
+type SeededInspectionMetadata = {
+  seeded: true;
+  lane: string;
+  inspectionMode: string;
+  syncLabel: string;
+  liveChecklist: LiveChecklistBlueprint;
+  itemsOfConcern: string[];
+  bestPractice: string[];
+  equipmentNotWorking: string[];
+  safetyMeeting: string[];
+  openingMeeting: string[];
+  closingMeeting: string[];
+  conclusion: string[];
+};
+
 type TemplateRecord = Awaited<ReturnType<typeof loadTemplateRecord>>;
 type DemoQuestion = TemplateRecord["sections"][number]["questions"][number];
 
@@ -38,6 +66,12 @@ type DemoScenario = {
   shoreReviewedBy: string | null;
   shoreReviewDate: Date | null;
   closedAt: Date | null;
+};
+
+type ConcernQuestion = {
+  prompt: string;
+  comments?: string | null;
+  finding: boolean;
 };
 
 const DEMO_VESSELS = buildDemoVessels();
@@ -473,6 +507,7 @@ async function runSeed(request: Request) {
       continue;
     }
 
+    const previousMetadata = buildInspectionMetadata(vessel, previousScenario, index, true);
     const previousInspection = await upsertInspection({
       externalReference: previousRef,
       vesselId: vessel.id,
@@ -489,18 +524,14 @@ async function runSeed(request: Request) {
       shoreReviewedBy: previousScenario.shoreReviewedBy,
       shoreReviewDate: previousScenario.shoreReviewDate,
       closedAt: previousScenario.closedAt,
-      metadata: {
-        seeded: true,
-        lane: "history",
-        inspectionMode: inferInspectionMode(previousScenario.title),
-        syncLabel: "Synced",
-      },
+      metadata: previousMetadata,
     });
 
     await resetInspectionArtifacts(previousInspection.id);
-    await seedInspectionContent(previousInspection.id, previousTemplate, previousScenario, index, true);
+    await seedInspectionContent(previousInspection.id, previousTemplate, previousScenario, index, true, previousMetadata);
     inspectionCount += 1;
 
+    const currentMetadata = buildInspectionMetadata(vessel, currentScenario, index, false);
     const currentInspection = await upsertInspection({
       externalReference: currentRef,
       vesselId: vessel.id,
@@ -518,16 +549,11 @@ async function runSeed(request: Request) {
       shoreReviewDate: currentScenario.shoreReviewDate,
       closedAt: currentScenario.closedAt,
       previousInspectionId: previousInspection.id,
-      metadata: {
-        seeded: true,
-        lane: currentScenario.status,
-        inspectionMode: inferInspectionMode(currentScenario.title),
-        syncLabel: ["DRAFT", "RETURNED"].includes(currentScenario.status) ? "Not Synced" : "Synced",
-      },
+      metadata: currentMetadata,
     });
 
     await resetInspectionArtifacts(currentInspection.id);
-    await seedInspectionContent(currentInspection.id, currentTemplate, currentScenario, index, false);
+    await seedInspectionContent(currentInspection.id, currentTemplate, currentScenario, index, false, currentMetadata);
     inspectionCount += 1;
   }
 
@@ -741,7 +767,8 @@ async function seedInspectionContent(
   template: TemplateRecord,
   scenario: DemoScenario,
   seedIndex: number,
-  isPreviousInspection: boolean
+  isPreviousInspection: boolean,
+  metadata: SeededInspectionMetadata
 ) {
   const flatQuestions = template.sections.flatMap((section) =>
     section.questions.map((question) => ({
@@ -750,6 +777,7 @@ async function seedInspectionContent(
     }))
   );
   const completeness = completionForStatus(scenario.status);
+  const liveChecklistPhotos = collectLiveChecklistPhotos(metadata.liveChecklist);
 
   for (const [questionIndex, entry] of flatQuestions.entries()) {
     const shouldAnswer =
@@ -791,26 +819,27 @@ async function seedInspectionContent(
   await prisma.virPhoto.create({
     data: {
       inspectionId,
-      url: DEMO_EVIDENCE_IMAGES[seedIndex % DEMO_EVIDENCE_IMAGES.length],
-      fileName: `inspection-cover-${seedIndex + 1}.svg`,
-      contentType: "image/svg+xml",
-      fileSizeKb: 24,
-      caption: `${scenario.title} cover evidence`,
+      url: liveChecklistPhotos[0]?.url ?? DEMO_EVIDENCE_IMAGES[seedIndex % DEMO_EVIDENCE_IMAGES.length],
+      fileName: liveChecklistPhotos[0]?.fileName ?? `inspection-cover-${seedIndex + 1}.svg`,
+      contentType: liveChecklistPhotos[0]?.contentType ?? inferContentType(liveChecklistPhotos[0]?.fileName),
+      fileSizeKb: 24 + (seedIndex % 6),
+      caption: liveChecklistPhotos[0]?.caption ?? `${scenario.title} cover evidence`,
       uploadedBy: scenario.inspectorName,
       takenAt: scenario.inspectionDate,
     },
   });
 
   for (const [photoIndex, answer] of evidenceTargets.slice(0, isPreviousInspection ? 3 : 6).entries()) {
+    const seededPhoto = liveChecklistPhotos[(photoIndex + 1) % Math.max(1, liveChecklistPhotos.length)];
     await prisma.virPhoto.create({
       data: {
         inspectionId,
         answerId: answer.id,
-        url: DEMO_EVIDENCE_IMAGES[(seedIndex + photoIndex) % DEMO_EVIDENCE_IMAGES.length],
-        fileName: `${answer.question.code.toLowerCase()}-${photoIndex + 1}.svg`,
-        contentType: "image/svg+xml",
+        url: seededPhoto?.url ?? DEMO_EVIDENCE_IMAGES[(seedIndex + photoIndex) % DEMO_EVIDENCE_IMAGES.length],
+        fileName: seededPhoto?.fileName ?? `${answer.question.code.toLowerCase()}-${photoIndex + 1}.svg`,
+        contentType: seededPhoto?.contentType ?? inferContentType(seededPhoto?.fileName),
         fileSizeKb: 18 + photoIndex,
-        caption: `${answer.question.section.title} evidence image`,
+        caption: seededPhoto?.caption ?? `${answer.question.section.title} evidence image`,
         uploadedBy: scenario.inspectorName,
         takenAt: addDays(scenario.inspectionDate, photoIndex),
       },
@@ -838,15 +867,16 @@ async function seedInspectionContent(
       },
     });
 
+    const seededPhoto = liveChecklistPhotos[(findingIndex + 7) % Math.max(1, liveChecklistPhotos.length)];
     await prisma.virPhoto.create({
       data: {
         inspectionId,
         findingId: finding.id,
-        url: DEMO_EVIDENCE_IMAGES[(seedIndex + findingIndex + 2) % DEMO_EVIDENCE_IMAGES.length],
-        fileName: `${findingSeed.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.svg`,
-        contentType: "image/svg+xml",
+        url: seededPhoto?.url ?? DEMO_EVIDENCE_IMAGES[(seedIndex + findingIndex + 2) % DEMO_EVIDENCE_IMAGES.length],
+        fileName: seededPhoto?.fileName ?? `${findingSeed.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.svg`,
+        contentType: seededPhoto?.contentType ?? inferContentType(seededPhoto?.fileName),
         fileSizeKb: 22 + findingIndex,
-        caption: `${findingSeed.title} evidence`,
+        caption: seededPhoto?.caption ?? `${findingSeed.title} evidence`,
         uploadedBy: scenario.inspectorName,
         takenAt: addDays(scenario.inspectionDate, findingIndex + 1),
       },
@@ -1270,37 +1300,268 @@ function buildReferenceNumber(vesselName: string, inspectionDate: Date, sequence
 }
 
 function buildDemoVessels() {
-  const prefixes = ["Aster", "Boreal", "Cobalt", "Drift", "Ember", "Falcon", "Harbor", "Indigo", "Juniper", "Keystone"];
-  const suffixes = ["Meridian", "Horizon", "Voyager", "Sentinel", "Crest"];
-  const vesselTypes = [
-    "CHEM / PROD TANKER",
-    "OIL TANKER",
-    "LPG CARRIER (REFRI)",
-    "LNG CARRIER",
-    "ASPHALT / BITUMEN TANKER",
-  ];
-  const fleets = ["BU - Chennai", "BU - Dubai", "BU - Athens", "BU - Singapore", "BU - London"];
-  const flags = ["PANAMA", "MARSHALL ISLANDS", "LIBERIA", "SINGAPORE", "HONG KONG"];
+  return (liveUserVessels as LiveUserVesselRecord[])
+    .filter((record) => record.VesselCode && record.VesselName && record.ImoNo)
+    .slice(0, 50)
+    .map((record) => ({
+      code: record.VesselCode!.trim(),
+      name: record.VesselName!.trim(),
+      imoNumber: String(record.ImoNo).trim(),
+      vesselType: normalizeWhitespace(record.VesselType) || "CHEM / PROD TANKER",
+      fleet: deriveFleetFromManagement(record.Management),
+      flag: normalizeWhitespace(record.Flag) || "PANAMA",
+      manager: normalizeWhitespace(record.Management) || "PMSLink Fleet Operations",
+    }));
+}
 
-  const vessels: DemoVesselSeed[] = [];
-  let counter = 1;
+function buildInspectionMetadata(
+  vessel: { code: string; name: string; vesselType?: string | null },
+  scenario: DemoScenario,
+  seedIndex: number,
+  isPreviousInspection: boolean
+): SeededInspectionMetadata {
+  const liveChecklist = buildLiveChecklistPayload(vessel, scenario, seedIndex, isPreviousInspection);
+  const concernQuestions = (
+    liveChecklist.sections as Array<{
+      subsections: Array<{
+        questions: ConcernQuestion[];
+      }>;
+    }>
+  )
+    .flatMap((section) => section.subsections)
+    .flatMap(
+      (subsection) =>
+        subsection.questions.map((question) => ({
+          prompt: question.prompt,
+          comments: question.comments,
+          finding: question.finding,
+        }))
+    )
+    .filter((question) => question.finding)
+    .slice(0, 5);
 
-  for (const prefix of prefixes) {
-    for (const suffix of suffixes) {
-      vessels.push({
-        code: `VIR-DEMO-${String(counter).padStart(3, "0")}`,
-        name: `${prefix} ${suffix}`,
-        imoNumber: `${9700000 + counter}`,
-        vesselType: vesselTypes[(counter - 1) % vesselTypes.length],
-        fleet: fleets[(counter - 1) % fleets.length],
-        flag: flags[(counter - 1) % flags.length],
-        manager: "PMSLink Fleet Operations",
-      });
-      counter += 1;
+  return {
+    seeded: true,
+    lane: isPreviousInspection ? "history" : scenario.status,
+    inspectionMode: inferInspectionMode(scenario.title),
+    syncLabel: isPreviousInspection || !["DRAFT", "RETURNED"].includes(scenario.status) ? "Synced" : "Not Synced",
+    liveChecklist,
+    itemsOfConcern: concernQuestions.map(
+      (question, index) =>
+        `${index + 1}. ${question.prompt} ${question.comments ? `- ${question.comments}` : "- Observation noted during live walkthrough."}`
+    ),
+    bestPractice: [
+      `${vessel.name} crew demonstrated positive readiness support during ${scenario.port} execution and maintained inspection documents in accessible order.`,
+    ],
+    equipmentNotWorking: [
+      `No critical equipment was confirmed as permanently defective during ${scenario.title}. Any limitations were captured in checklist remarks for office follow-up.`,
+    ],
+    safetyMeeting: [
+      `Safety meeting held with ship staff before and after walkthrough to review work-rest hour protection, active permits, PPE, and local port controls for ${scenario.port}.`,
+      "Crew were reminded to raise concerns immediately if any demonstration or trial would affect safe operations.",
+    ],
+    openingMeeting: [
+      `Opening meeting conducted on ${scenario.inspectionDate.toISOString().slice(0, 10)} to align scope, testing expectations, and ship/shore support arrangements.`,
+      `Inspection authority, operations at the time of inspection, and document availability were confirmed before starting the round.`,
+    ],
+    closingMeeting: [
+      `Closing meeting captured findings, corrective priorities, and ownership routes before ${scenario.status === "CLOSED" ? "final closure" : "shore review"}.`,
+      "Master, chief engineer, and duty officers were briefed on immediate follow-up expectations for open observations.",
+    ],
+    conclusion: [
+      scenario.summary,
+      `${vessel.name} remains under continued monitoring through the PMSLink VIR lane with evidence, actions, and comments retained for office and vessel review.`,
+    ],
+  };
+}
+
+function buildLiveChecklistPayload(
+  vessel: { code: string; name: string; vesselType?: string | null },
+  scenario: DemoScenario,
+  seedIndex: number,
+  isPreviousInspection: boolean
+) {
+  const cloned = structuredClone(liveVirBlueprint) as any;
+  const prefix = `${vessel.code.toLowerCase()}-${isPreviousInspection ? "history" : "current"}-${seedIndex + 1}`;
+
+  cloned.id = prefix;
+  cloned.sourceInspectionId = seedIndex + 1;
+  cloned.sourceLabel = `${vessel.name} / ${scenario.title}`;
+
+  cloned.sections = cloned.sections.map((section: any, sectionIndex: number) => ({
+    ...section,
+    id: `${prefix}-section-${sectionIndex + 1}`,
+    comments:
+      section.comments ||
+      `${vessel.name} section review completed during ${scenario.port} / ${scenario.country}. Walkthrough observations are recorded below for office and vessel reference.`,
+    subsections: section.subsections.map((subsection: any, subsectionIndex: number) => ({
+      ...subsection,
+      id: `${prefix}-subsection-${sectionIndex + 1}-${subsectionIndex + 1}`,
+      comments:
+        subsection.comments ||
+        `${subsection.title} reviewed during ${scenario.title}. Equipment condition, housekeeping, documentation, and safety controls were checked in the selected scope.`,
+      questions: subsection.questions.map((question: any, questionIndex: number) => ({
+        ...question,
+        id: `${prefix}-question-${sectionIndex + 1}-${subsectionIndex + 1}-${questionIndex + 1}`,
+        comments: question.comments || `${vessel.name} / ${scenario.port}: condition reviewed and recorded by ${scenario.inspectorName}.`,
+        guidanceNotes:
+          question.guidanceNotes ||
+          `Review against ${scenario.inspectionTypeCode.replaceAll("_", " ")} expectations and record vessel-specific remarks, evidence, and follow-up actions.`,
+      })),
+    })),
+  }));
+
+  const computed = computeLiveChecklistSummary(cloned, inferInspectionMode(scenario.title));
+  cloned.summary = {
+    ...cloned.summary,
+    ...computed.summary,
+    ratingBand: computed.ratingBand,
+    conditionScore: computed.conditionScore,
+  };
+
+  return cloned as LiveChecklistBlueprint;
+}
+
+function computeLiveChecklistSummary(blueprint: LiveChecklistBlueprint, inspectionMode: string) {
+  const allQuestions = (blueprint.sections as any[]).flatMap((section: any) =>
+    (section.subsections as any[]).flatMap((subsection: any) => subsection.questions as Array<{ tested: boolean; inspected: boolean; notSighted: boolean; notApplicable: boolean; finding: boolean; files: Array<unknown>; score: number | null; isMandatory?: boolean }>)
+  );
+  const summary = {
+    tested: allQuestions.filter((question) => question.tested).length,
+    inspected: allQuestions.filter((question) => question.inspected).length,
+    notSighted: allQuestions.filter((question) => question.notSighted).length,
+    notApplicable: allQuestions.filter((question) => question.notApplicable).length,
+    totalFindings: allQuestions.filter((question) => question.finding).length,
+    questionCount: allQuestions.length,
+    evidenceCount: allQuestions.reduce((sum, question) => sum + question.files.length, 0),
+  };
+
+  for (const section of blueprint.sections as any[]) {
+    const sectionQuestions = (section.subsections as any[]).flatMap((subsection: any) => subsection.questions as typeof allQuestions);
+    const sectionScore = averageScore(sectionQuestions);
+    const sectionRating = deriveRatingBand(sectionQuestions, inspectionMode);
+    section.summary = {
+      answered: countAnswered(sectionQuestions),
+      tested: sectionQuestions.filter((question) => question.tested).length,
+      inspected: sectionQuestions.filter((question) => question.inspected).length,
+      notSighted: sectionQuestions.filter((question) => question.notSighted).length,
+      notApplicable: sectionQuestions.filter((question) => question.notApplicable).length,
+      totalFindings: sectionQuestions.filter((question) => question.finding).length,
+      evidenceCount: sectionQuestions.reduce((sum, question) => sum + question.files.length, 0),
+      questionCount: sectionQuestions.length,
+    };
+    section.condition = { score: sectionScore, scoredResponses: sectionQuestions.filter((question) => question.score != null).length };
+    section.rating = {
+      band: sectionRating,
+      mandatoryQuestions: sectionQuestions.filter((question) => question.isMandatory).length,
+      mandatoryQuestionsWithFindings: sectionQuestions.filter((question) => question.isMandatory && question.finding).length,
+    };
+
+    for (const subsection of section.subsections as any[]) {
+      const subsectionQuestions = subsection.questions as typeof allQuestions;
+      const subsectionScore = averageScore(subsectionQuestions);
+      const subsectionRating = deriveRatingBand(subsectionQuestions, inspectionMode);
+      subsection.summary = {
+        answered: countAnswered(subsectionQuestions),
+        tested: subsectionQuestions.filter((question) => question.tested).length,
+        inspected: subsectionQuestions.filter((question) => question.inspected).length,
+        notSighted: subsectionQuestions.filter((question) => question.notSighted).length,
+        notApplicable: subsectionQuestions.filter((question) => question.notApplicable).length,
+        totalFindings: subsectionQuestions.filter((question) => question.finding).length,
+        evidenceCount: subsectionQuestions.reduce((sum, question) => sum + question.files.length, 0),
+        questionCount: subsectionQuestions.length,
+      };
+      subsection.condition = {
+        score: subsectionScore,
+        scoredResponses: subsectionQuestions.filter((question) => question.score != null).length,
+      };
+      subsection.rating = {
+        band: subsectionRating,
+        mandatoryQuestions: subsectionQuestions.filter((question) => question.isMandatory).length,
+        mandatoryQuestionsWithFindings: subsectionQuestions.filter((question) => question.isMandatory && question.finding).length,
+      };
     }
   }
 
-  return vessels;
+  return {
+    summary,
+    ratingBand: deriveRatingBand(allQuestions, inspectionMode),
+    conditionScore: averageScore(allQuestions) ?? 0,
+  };
+}
+
+function deriveRatingBand(
+  questions: Array<{ isMandatory?: boolean; finding: boolean }>,
+  inspectionMode: string
+) {
+  const mandatoryQuestions = questions.filter((question) => question.isMandatory);
+  const totalMandatory = mandatoryQuestions.length || questions.length || 1;
+  const findingCount = mandatoryQuestions.filter((question) => question.finding).length;
+  const ratio = findingCount / totalMandatory;
+
+  if (ratio <= 0.1) {
+    return inspectionMode.includes("Port") ? "High" : "High";
+  }
+
+  if (ratio <= 0.2) {
+    return "Medium";
+  }
+
+  return "Low";
+}
+
+function averageScore(questions: Array<{ score: number | null }>) {
+  const scored = questions.flatMap((question) => (question.score == null ? [] : [question.score]));
+  if (scored.length === 0) {
+    return null;
+  }
+  return Number((scored.reduce((sum, score) => sum + score, 0) / scored.length).toFixed(1));
+}
+
+function countAnswered(
+  questions: Array<{ tested: boolean; inspected: boolean; notSighted: boolean; notApplicable: boolean }>
+) {
+  return questions.filter((question) => question.tested || question.inspected || question.notSighted || question.notApplicable).length;
+}
+
+function collectLiveChecklistPhotos(blueprint: LiveChecklistBlueprint) {
+  return blueprint.sections.flatMap((section) =>
+    section.subsections.flatMap((subsection) =>
+      subsection.questions.flatMap((question) =>
+        question.files.map((file) => ({
+          url: file.url,
+          fileName: file.url.split("/").pop() ?? `${file.id}.jpg`,
+          caption: file.caption || file.label || question.prompt,
+          contentType: inferContentType(file.url),
+        }))
+      )
+    )
+  );
+}
+
+function inferContentType(fileName: string | undefined) {
+  const source = (fileName ?? "").toLowerCase();
+  if (source.endsWith(".png")) return "image/png";
+  if (source.endsWith(".svg")) return "image/svg+xml";
+  if (source.endsWith(".webp")) return "image/webp";
+  return "image/jpeg";
+}
+
+function normalizeWhitespace(value: string | undefined | null) {
+  return value?.replace(/\s+/g, " ").trim() ?? "";
+}
+
+function deriveFleetFromManagement(management: string | undefined) {
+  const value = normalizeWhitespace(management);
+  if (!value) {
+    return "BU - Chennai";
+  }
+  if (value.includes("Chennai")) return "BU - Chennai";
+  if (value.includes("Dubai")) return "BU - Dubai";
+  if (value.includes("Singapore")) return "BU - Singapore";
+  if (value.includes("Athens")) return "BU - Athens";
+  if (value.includes("London")) return "BU - London";
+  return value;
 }
 
 function pickTemplateKey(index: number) {

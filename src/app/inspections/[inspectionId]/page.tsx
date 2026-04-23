@@ -180,7 +180,7 @@ export default async function InspectionDetailPage({
               {isOfficeSession(session) ? "Office lane" : "Vessel lane"}
             </span>
           </div>
-          <h2 className="hero-title" style={{ marginTop: "1rem" }}>
+          <h2 className="hero-title" style={{ marginTop: "0.55rem" }}>
             {inspection.title}
           </h2>
           <p className="hero-copy">
@@ -263,71 +263,77 @@ export default async function InspectionDetailPage({
         <MetricBox label="Evidence" value={`${inspection.photos.length}`} note="Synced photo records" />
       </section>
 
-      <section className="panel panel-elevated inspection-snapshot-shell">
-        <div className="section-header">
+      <details className="panel panel-elevated inspection-snapshot-shell">
+        <summary className="inspection-snapshot-summary">
           <div>
             <h3 className="panel-title">Vessel workflow snapshot</h3>
-            <p className="panel-subtitle">Operational particulars and machinery context carried into the live inspection review.</p>
+            <p className="panel-subtitle">Expand for particulars, component configuration, machinery context, and scoring guides.</p>
           </div>
-          <Link className="btn-secondary btn-compact" href={`/vessels/${inspection.vesselId}`} scroll={false}>
-            Open vessel details
-          </Link>
-        </div>
+          <span className="chip chip-muted">Expandable</span>
+        </summary>
 
-        <div className="report-detail-grid report-detail-grid-compact">
-          {vesselProfile.principalParticulars.slice(0, 8).map((item) => (
-            <MetricBox compact key={item.label} label={item.label} value={item.value} note="Vessel particulars" />
-          ))}
-        </div>
+        <div className="inspection-snapshot-body">
+          <div className="inspection-snapshot-toolbar">
+            <Link className="btn-secondary btn-compact" href={`/vessels/${inspection.vesselId}`} scroll={false}>
+              Open vessel details
+            </Link>
+          </div>
 
-        <div className="table-shell table-shell-compact" style={{ marginTop: "1.25rem" }}>
-          <table className="table data-table vir-data-table">
-            <thead>
-              <tr>
-                <th>Component</th>
-                <th>Configuration</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vesselProfile.componentConfiguration.slice(0, 8).map((item) => (
-                <tr key={item.label}>
-                  <td>{item.label}</td>
-                  <td>{item.value}</td>
+          <div className="report-detail-grid report-detail-grid-compact">
+            {vesselProfile.principalParticulars.slice(0, 6).map((item) => (
+              <MetricBox compact key={item.label} label={item.label} value={item.value} note="Vessel particulars" />
+            ))}
+          </div>
+
+          <div className="table-shell table-shell-compact inspection-snapshot-components">
+            <table className="table data-table vir-data-table">
+              <thead>
+                <tr>
+                  <th>Component</th>
+                  <th>Configuration</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="stack-list" style={{ marginTop: "1.25rem" }}>
-          <div className="list-card">
-            <div className="list-card-title">Machinery particulars</div>
-            <div className="report-detail-grid" style={{ marginTop: "1rem" }}>
-              {vesselProfile.machineryBlocks.slice(0, 4).flatMap((block) =>
-                block.rows.slice(0, 2).map((item) => (
-                  <DetailRow key={`${block.title}-${item.label}`} label={`${block.title} / ${item.label}`} value={item.value} />
-                ))
-              )}
-            </div>
+              </thead>
+              <tbody>
+                {vesselProfile.componentConfiguration.slice(0, 6).map((item) => (
+                  <tr key={item.label}>
+                    <td>{item.label}</td>
+                    <td>{item.value}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
-          <div className="list-card">
-            <div className="list-card-title">Inspection scoring guides</div>
-            <div className="report-detail-grid" style={{ marginTop: "1rem" }}>
-              <DetailRow
-                label="Vessel rating"
-                value={`${vesselProfile.vesselRatingGuide[0]?.rating ?? "High"} / ${vesselProfile.vesselRatingGuide[1]?.rating ?? "Medium"} / ${vesselProfile.vesselRatingGuide[2]?.rating ?? "Low"}`}
-              />
-              <DetailRow
-                label="Condition scoring"
-                value={`${vesselProfile.vesselConditionGuide.length} reference rows available`}
-              />
-              <DetailRow label="Section configuration" value={`${inspection.template?.sections.length ?? 0} questionnaire sections`} />
-              <DetailRow label="Question bank" value={`${templateQuestionCount} inspection questions`} />
+          <div className="inspection-snapshot-grid">
+            <div className="list-card">
+              <div className="list-card-title">Machinery particulars</div>
+              <div className="report-detail-grid inspection-snapshot-detail-grid">
+                {vesselProfile.machineryBlocks.slice(0, 3).flatMap((block) =>
+                  block.rows.slice(0, 2).map((item) => (
+                    <DetailRow key={`${block.title}-${item.label}`} label={`${block.title} / ${item.label}`} value={item.value} />
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="list-card">
+              <div className="list-card-title">Inspection scoring guides</div>
+              <div className="report-detail-grid inspection-snapshot-detail-grid">
+                <DetailRow
+                  label="Vessel rating"
+                  value={`${vesselProfile.vesselRatingGuide[0]?.rating ?? "High"} / ${vesselProfile.vesselRatingGuide[1]?.rating ?? "Medium"} / ${vesselProfile.vesselRatingGuide[2]?.rating ?? "Low"}`}
+                />
+                <DetailRow
+                  label="Condition scoring"
+                  value={`${vesselProfile.vesselConditionGuide.length} reference rows available`}
+                />
+                <DetailRow label="Section configuration" value={`${inspection.template?.sections.length ?? 0} questionnaire sections`} />
+                <DetailRow label="Question bank" value={`${templateQuestionCount} inspection questions`} />
+              </div>
             </div>
           </div>
         </div>
-      </section>
+      </details>
 
       <section className="workspace-console-shell">
         <aside className="workspace-console-rail">
