@@ -55,7 +55,9 @@ export function summarizeProgress(questions: TemplateQuestionLike[], answers: An
           answer.answerText !== null ||
           answer.answerNumber !== null ||
           answer.answerBoolean !== null ||
-          (Array.isArray(answer.selectedOptions) && answer.selectedOptions.length > 0)
+          (Array.isArray(answer.selectedOptions) && answer.selectedOptions.length > 0) ||
+          Boolean(answer.surveyStatus) ||
+          typeof answer.score === "number"
       )
       .map((answer) => answer.questionId)
   );
@@ -81,6 +83,11 @@ export function calculateInspectionScore(questions: TemplateQuestionLike[], answ
   for (const answer of answers) {
     const question = questionMap.get(answer.questionId);
     if (!question) {
+      continue;
+    }
+
+    if (typeof answer.score === "number") {
+      scoredAnswers.push(answer.score);
       continue;
     }
 
@@ -160,6 +167,26 @@ export function calculateChecklistOutcome(
 
     if (isNotApplicable(answer)) {
       notApplicable += 1;
+      continue;
+    }
+
+    if (answer?.surveyStatus === "T") {
+      tested += 1;
+      continue;
+    }
+
+    if (answer?.surveyStatus === "NS") {
+      notSighted += 1;
+      continue;
+    }
+
+    if (answer?.surveyStatus === "NA") {
+      notApplicable += 1;
+      continue;
+    }
+
+    if (answer?.surveyStatus === "I") {
+      inspected += 1;
       continue;
     }
 
@@ -264,7 +291,9 @@ function hasRecordedAnswer(answer: AnswerLike | undefined) {
     answer.answerText !== null ||
     answer.answerNumber !== null ||
     answer.answerBoolean !== null ||
-    (Array.isArray(answer.selectedOptions) && answer.selectedOptions.length > 0)
+    (Array.isArray(answer.selectedOptions) && answer.selectedOptions.length > 0) ||
+    Boolean(answer.surveyStatus) ||
+    typeof answer.score === "number"
   );
 }
 
@@ -318,6 +347,10 @@ function usesTestedBucket(question: TemplateQuestionLike) {
 function deriveAnswerScore(question: TemplateQuestionLike, answer: AnswerLike) {
   if (isNotApplicable(answer)) {
     return null;
+  }
+
+  if (typeof answer.score === "number") {
+    return normalizeFivePointScore(answer.score);
   }
 
   if (question.responseType === "YES_NO_NA" && typeof answer.answerText === "string") {

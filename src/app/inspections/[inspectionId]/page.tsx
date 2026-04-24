@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Eye, FileText, TriangleAlert } from "lucide-react";
@@ -126,9 +127,21 @@ export default async function InspectionDetailPage({
   const canEditInspection = canAccessVessel(session, inspection.vesselId);
 
   const questions = inspection.template?.sections.flatMap((section) => section.questions) ?? [];
-  const answerMap = new Map(inspection.answers.map((answer) => [answer.questionId, answer]));
-  const progress = summarizeProgress(questions, inspection.answers);
-  const score = calculateInspectionScore(questions, inspection.answers, inspection.findings);
+  const questionWorkflow =
+    inspection.metadata && typeof inspection.metadata === "object" && !Array.isArray(inspection.metadata)
+      ? ((inspection.metadata as Record<string, unknown>).questionWorkflow as Record<
+          string,
+          { surveyStatus?: string | null; score?: number | null } | undefined
+        > | undefined) ?? {}
+      : {};
+  const enrichedAnswers = inspection.answers.map((answer) => ({
+    ...answer,
+    surveyStatus: questionWorkflow[answer.questionId]?.surveyStatus ?? null,
+    score: questionWorkflow[answer.questionId]?.score ?? null,
+  }));
+  const answerMap = new Map(enrichedAnswers.map((answer) => [answer.questionId, answer]));
+  const progress = summarizeProgress(questions, enrichedAnswers);
+  const score = calculateInspectionScore(questions, enrichedAnswers, inspection.findings);
   const liveChecklist = buildLiveChecklist(inspection);
   const liveSections = liveChecklist?.sections ?? [];
   const templateQuestionCount = liveChecklist
@@ -194,15 +207,22 @@ export default async function InspectionDetailPage({
         0
       ) ?? 0
     : legacySelectedSection?.questions.filter((question: any) => question.isCicCandidate).length ?? 0;
+  const selectedSectionQuestionBindings = liveChecklist && liveSelectedSection
+    ? collectSectionQuestionBindings(liveSelectedSection, dbQuestionByPrompt, dbQuestionByCode, answerMap)
+    : [];
   const selectedSectionAnsweredCount = liveChecklist
-    ? liveSelectedSection?.summary?.answered ?? 0
+    ? selectedSectionQuestionBindings.filter((item) => isSavedAnswer(item.answer)).length
     : legacySelectedSection?.questions.filter((question: any) => isSavedAnswer(answerMap.get(question.id))).length ?? 0;
   const selectedSectionVisualCount = liveChecklist
-    ? liveSelectedSection?.summary?.evidenceCount ?? 0
+    ? selectedSectionQuestionBindings.reduce((sum, item) => sum + item.uploads.length, 0)
     : legacySelectedSection?.questions.reduce(
         (sum: number, question: any) => sum + (answerMap.get(question.id)?.photos.length ?? 0),
         0
       ) ?? 0;
+  const narrativeMetadata =
+    inspection.metadata && typeof inspection.metadata === "object" && !Array.isArray(inspection.metadata)
+      ? (inspection.metadata as Record<string, unknown>)
+      : {};
   const activityItems = buildInspectionActivity(inspection);
   const vesselProfile = buildVesselProfile(inspection.vessel);
   const selectedSectionQuery = selectedSectionId ? `&section=${selectedSectionId}` : "";
@@ -530,9 +550,6 @@ export default async function InspectionDetailPage({
                      {!liveChecklist && (selectedSection as any).guidance ? (
                        <p className="small-text">{(selectedSection as any).guidance}</p>
                      ) : null}
-                     {liveChecklist && (selectedSection as any).comments ? (
-                       <p className="small-text">{(selectedSection as any).comments}</p>
-                     ) : null}
 
                      <div className="questionnaire-summary-grid">
                        <div className="questionnaire-summary-card">
@@ -599,19 +616,13 @@ export default async function InspectionDetailPage({
                                   <h5 className="panel-title">{subsection.title}</h5>
                                   <p className="panel-subtitle">
                                     {subsection.summary?.questionCount ?? subsection.questions.length} questions /{" "}
-                                    {subsection.rating?.mandatoryQuestions ?? 0} mandatory /{" "}
-                                    {subsection.summary?.totalFindings ?? 0} findings
+                                    {subsection.rating?.mandatoryQuestions ?? 0} mandatory
                                   </p>
                                 </div>
                                 <div className="meta-row">
                                   <span className="chip chip-info">{subsection.location || "Subsection"}</span>
-                                  <span className="chip chip-success">
-                                    {(subsection.condition?.score ?? 0).toFixed(1)} condition
-                                  </span>
                                 </div>
                               </div>
-
-                              {subsection.comments ? <p className="small-text">{subsection.comments}</p> : null}
 
                               <div className="stack-list">
                                 {subsection.questions.map((question: LiveChecklistQuestion) => {
@@ -667,10 +678,10 @@ export default async function InspectionDetailPage({
                                                 selectedOptions={selectedOptions}
                                               />
 
-                                              <div className="field-wide" style={{ marginTop: "0.85rem" }}>
+                                            <div className="field-wide" style={{ marginTop: "0.85rem" }}>
                                                 <label htmlFor={`comment:${bindingQuestion.id}`}>Observation / evidence note</label>
                                                 <textarea
-                                                  defaultValue={answer?.comment ?? question.comments ?? ""}
+                                                  defaultValue={answer?.comment ?? ""}
                                                   disabled={!canEditInspection}
                                                   id={`comment:${bindingQuestion.id}`}
                                                   name={`comment:${bindingQuestion.id}`}
@@ -680,11 +691,10 @@ export default async function InspectionDetailPage({
                                             </>
                                           ) : (
                                             <div className="list-card">
-                                              <div className="question-code">Live workflow snapshot</div>
+                                              <div className="question-code">Question binding unavailable</div>
                                               <div className="small-text">
-                                                Outcome: {formatLiveOutcomeLabel(question)} / Score: {question.score ?? "N/A"}
+                                                This imported question is not yet linked to a managed template question.
                                               </div>
-                                              {question.comments ? <div className="small-text">{question.comments}</div> : null}
                                               {question.guidanceNotes ? (
                                                 <div className="small-text">{stripInlineHtml(question.guidanceNotes)}</div>
                                               ) : null}
@@ -730,8 +740,11 @@ export default async function InspectionDetailPage({
                                             <div className="question-evidence-gallery">
                                               {actualUploads.map((photo: any) => (
                                                 <div className="question-evidence-card" key={photo.id}>
-                                                  <a href={photo.url} rel="noreferrer" target="_blank">
-                                                    <img alt={photo.caption ?? photo.fileName ?? "Vessel evidence"} src={photo.url} />
+                                                  <a href={normalizeRemoteAssetUrl(photo.url)} rel="noreferrer" target="_blank">
+                                                    <img
+                                                      alt={photo.caption ?? photo.fileName ?? "Vessel evidence"}
+                                                      src={normalizeRemoteAssetUrl(photo.url)}
+                                                    />
                                                   </a>
                                                   <div className="small-text">{photo.caption ?? photo.fileName ?? "Uploaded evidence"}</div>
                                                 </div>
@@ -903,6 +916,98 @@ export default async function InspectionDetailPage({
                 ) : (
                   <div className="empty-state">No questionnaire section is currently available.</div>
                 )}
+
+                <section className="panel panel-elevated">
+                  <div className="section-header">
+                    <div>
+                      <h4 className="panel-title">Inspection narratives and attachments</h4>
+                      <p className="panel-subtitle">
+                        These sections flow into the report pack and can be updated during office or vessel review.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="form-grid">
+                    <div className="field-wide">
+                      <label htmlFor="itemsOfConcern">Items of concern</label>
+                      <textarea
+                        defaultValue={typeof narrativeMetadata.itemsOfConcern === "string" ? narrativeMetadata.itemsOfConcern : ""}
+                        disabled={!canEditInspection}
+                        id="itemsOfConcern"
+                        name="itemsOfConcern"
+                        placeholder={"Use one point per line.\n- Critical operational concern\n- Follow-up action pending"}
+                      />
+                    </div>
+
+                    <div className="field-wide">
+                      <label htmlFor="bestPractice">Best practice</label>
+                      <textarea
+                        defaultValue={typeof narrativeMetadata.bestPractice === "string" ? narrativeMetadata.bestPractice : ""}
+                        disabled={!canEditInspection}
+                        id="bestPractice"
+                        name="bestPractice"
+                        placeholder={"Use one point per line.\n- Strong housekeeping\n- Good permit-to-work discipline"}
+                      />
+                    </div>
+
+                    <div className="field-wide">
+                      <label htmlFor="equipmentNotWorking">Equipment not working / never tried out</label>
+                      <textarea
+                        defaultValue={
+                          typeof narrativeMetadata.equipmentNotWorking === "string" ? narrativeMetadata.equipmentNotWorking : ""
+                        }
+                        disabled={!canEditInspection}
+                        id="equipmentNotWorking"
+                        name="equipmentNotWorking"
+                        placeholder={"Use one point per line.\n- Fire pump no.2 not tested\n- Alarm loop isolated for maintenance"}
+                      />
+                    </div>
+
+                    <div className="field-wide">
+                      <label htmlFor="safetyMeeting">Safety meeting</label>
+                      <textarea
+                        defaultValue={typeof narrativeMetadata.safetyMeeting === "string" ? narrativeMetadata.safetyMeeting : ""}
+                        disabled={!canEditInspection}
+                        id="safetyMeeting"
+                        name="safetyMeeting"
+                        placeholder={"Use one point per line.\n- PPE awareness discussed\n- Reporting expectations reviewed"}
+                      />
+                    </div>
+
+                    <div className="field-wide">
+                      <label htmlFor="openingMeeting">Opening meeting</label>
+                      <textarea
+                        defaultValue={typeof narrativeMetadata.openingMeeting === "string" ? narrativeMetadata.openingMeeting : ""}
+                        disabled={!canEditInspection}
+                        id="openingMeeting"
+                        name="openingMeeting"
+                        placeholder={"Use one point per line.\n- Scope explained\n- Work/rest hour precautions discussed"}
+                      />
+                    </div>
+
+                    <div className="field-wide">
+                      <label htmlFor="closingMeeting">Closing meeting</label>
+                      <textarea
+                        defaultValue={typeof narrativeMetadata.closingMeeting === "string" ? narrativeMetadata.closingMeeting : ""}
+                        disabled={!canEditInspection}
+                        id="closingMeeting"
+                        name="closingMeeting"
+                        placeholder={"Use one point per line.\n- Findings reviewed\n- Close-out expectations agreed"}
+                      />
+                    </div>
+
+                    <div className="field-wide">
+                      <label htmlFor="conclusion">Conclusion</label>
+                      <textarea
+                        defaultValue={typeof narrativeMetadata.conclusion === "string" ? narrativeMetadata.conclusion : ""}
+                        disabled={!canEditInspection}
+                        id="conclusion"
+                        name="conclusion"
+                        placeholder={"Use one point per line.\n- Vessel satisfactory overall\n- Follow-up actions to be monitored"}
+                      />
+                    </div>
+                  </div>
+                </section>
 
                 {canEditInspection ? <SubmitButton className="btn">Save questionnaire answers</SubmitButton> : null}
               </form>
@@ -1304,6 +1409,9 @@ function isSavedAnswer(
         answerNumber?: number | null;
         answerDate?: Date | null;
         selectedOptions?: unknown;
+        answerBoolean?: boolean | null;
+        surveyStatus?: string | null;
+        score?: number | null;
       }
     | undefined
 ) {
@@ -1319,27 +1427,23 @@ function isSavedAnswer(
     return true;
   }
 
+  if (typeof answer.answerBoolean === "boolean") {
+    return true;
+  }
+
   if (answer.answerDate) {
     return true;
   }
 
-  return Array.isArray(answer.selectedOptions) && answer.selectedOptions.length > 0;
-}
+  if (typeof answer.surveyStatus === "string" && answer.surveyStatus.trim().length > 0) {
+    return true;
+  }
 
-function formatLiveOutcomeLabel(question: LiveChecklistQuestion) {
-  if (question.tested) {
-    return "Tested";
+  if (typeof answer.score === "number") {
+    return true;
   }
-  if (question.inspected) {
-    return "Inspected";
-  }
-  if (question.notSighted) {
-    return "Not sighted";
-  }
-  if (question.notApplicable) {
-    return "Not applicable";
-  }
-  return "Pending";
+
+  return Array.isArray(answer.selectedOptions) && answer.selectedOptions.length > 0;
 }
 
 function stripInlineHtml(value?: string | null) {
@@ -1463,6 +1567,30 @@ function buildInspectionActivity(
   return items.sort((left, right) => right.timeLabel.localeCompare(left.timeLabel)).slice(0, 80);
 }
 
+function collectSectionQuestionBindings(
+  section: {
+    subsections: Array<{
+      questions: LiveChecklistQuestion[];
+    }>;
+  },
+  byPrompt: Map<string, any>,
+  byCode: Map<string, any>,
+  answerMap: Map<string, any>
+) {
+  return section.subsections.flatMap((subsection) =>
+    subsection.questions.map((question) => {
+      const bindingQuestion = findBoundQuestion(question, byPrompt, byCode);
+      const answer = bindingQuestion ? answerMap.get(bindingQuestion.id) : undefined;
+      return {
+        question,
+        bindingQuestion,
+        answer,
+        uploads: bindingQuestion ? getQuestionUploads(question, answer) : [],
+      };
+    })
+  );
+}
+
 function QuestionInput({
   question,
   answer,
@@ -1479,14 +1607,19 @@ function QuestionInput({
         answerText: string | null;
         answerNumber: number | null;
         answerDate: Date | null;
+        answerBoolean?: boolean | null;
+        surveyStatus?: string | null;
+        score?: number | null;
       }
     | undefined;
   selectedOptions: string[];
   disabled: boolean;
 }) {
+  let answerField: ReactNode;
+
   switch (question.responseType) {
     case "YES_NO_NA":
-      return (
+      answerField = (
         <div className="field">
           <label htmlFor={`q:${question.id}`}>Answer</label>
           <select defaultValue={answer?.answerText ?? ""} disabled={disabled} id={`q:${question.id}`} name={`q:${question.id}`}>
@@ -1497,9 +1630,9 @@ function QuestionInput({
           </select>
         </div>
       );
+      break;
     case "NUMBER":
-    case "SCORE":
-      return (
+      answerField = (
         <div className="field">
           <label htmlFor={`q:${question.id}`}>Value</label>
           <input
@@ -1511,8 +1644,23 @@ function QuestionInput({
           />
         </div>
       );
+      break;
+    case "SCORE":
+      answerField = (
+        <div className="field">
+          <label htmlFor={`q:${question.id}`}>Template value</label>
+          <input
+            defaultValue={answer?.answerNumber ?? ""}
+            disabled={disabled}
+            id={`q:${question.id}`}
+            name={`q:${question.id}`}
+            type="number"
+          />
+        </div>
+      );
+      break;
     case "DATE":
-      return (
+      answerField = (
         <div className="field">
           <label htmlFor={`q:${question.id}`}>Date</label>
           <input
@@ -1524,8 +1672,9 @@ function QuestionInput({
           />
         </div>
       );
+      break;
     case "SINGLE_SELECT":
-      return (
+      answerField = (
         <div className="field">
           <label htmlFor={`q:${question.id}`}>Selection</label>
           <select defaultValue={answer?.answerText ?? ""} disabled={disabled} id={`q:${question.id}`} name={`q:${question.id}`}>
@@ -1538,8 +1687,9 @@ function QuestionInput({
           </select>
         </div>
       );
+      break;
     case "MULTI_SELECT":
-      return (
+      answerField = (
         <div className="field">
           <label htmlFor={`q:${question.id}`}>Selections</label>
           <select defaultValue={selectedOptions} disabled={disabled} id={`q:${question.id}`} multiple name={`q:${question.id}`}>
@@ -1551,13 +1701,49 @@ function QuestionInput({
           </select>
         </div>
       );
+      break;
     case "TEXT":
     default:
-      return (
+      answerField = (
         <div className="field-wide">
           <label htmlFor={`q:${question.id}`}>Answer</label>
           <textarea defaultValue={answer?.answerText ?? ""} disabled={disabled} id={`q:${question.id}`} name={`q:${question.id}`} />
         </div>
       );
+      break;
   }
+
+  return (
+    <div className="form-grid">
+      {answerField}
+      <div className="field">
+        <label htmlFor={`status:${question.id}`}>Inspection done</label>
+        <select
+          defaultValue={answer?.surveyStatus ?? ""}
+          disabled={disabled}
+          id={`status:${question.id}`}
+          name={`status:${question.id}`}
+        >
+          <option value="">Select</option>
+          <option value="T">Tested</option>
+          <option value="I">Inspected</option>
+          <option value="NS">Not sighted</option>
+          <option value="NA">Not applicable</option>
+        </select>
+      </div>
+      <div className="field">
+        <label htmlFor={`score:${question.id}`}>Manual score</label>
+        <input
+          defaultValue={answer?.score ?? ""}
+          disabled={disabled}
+          id={`score:${question.id}`}
+          max="5"
+          min="0"
+          name={`score:${question.id}`}
+          step="0.1"
+          type="number"
+        />
+      </div>
+    </div>
+  );
 }

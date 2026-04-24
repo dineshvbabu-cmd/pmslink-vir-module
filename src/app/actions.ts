@@ -1,6 +1,7 @@
 "use server";
 
 import type {
+  Prisma,
   VirCorrectiveActionStatus,
   VirFindingStatus,
   VirInspectionStatus,
@@ -397,6 +398,7 @@ export async function saveInspectionAnswersAction(inspectionId: string, formData
   const inspectionTemplate = await prisma.virInspection.findUnique({
     where: { id: inspection.id },
     select: {
+      metadata: true,
       template: {
         select: {
           sections: {
@@ -418,14 +420,45 @@ export async function saveInspectionAnswersAction(inspectionId: string, formData
     throw new Error("This inspection does not yet have a questionnaire template.");
   }
 
+  const existingMetadata =
+    inspectionTemplate.metadata && typeof inspectionTemplate.metadata === "object" && !Array.isArray(inspectionTemplate.metadata)
+      ? (inspectionTemplate.metadata as Record<string, unknown>)
+      : {};
+  const existingQuestionWorkflow =
+    existingMetadata.questionWorkflow &&
+    typeof existingMetadata.questionWorkflow === "object" &&
+    !Array.isArray(existingMetadata.questionWorkflow)
+      ? (existingMetadata.questionWorkflow as Record<string, unknown>)
+      : {};
+  const questionWorkflow: Record<string, { surveyStatus: string | null; score: number | null }> = Object.fromEntries(
+    Object.entries(existingQuestionWorkflow).map(([key, value]) => {
+      const record = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+      return [
+        key,
+        {
+          surveyStatus: typeof record.surveyStatus === "string" ? record.surveyStatus : null,
+          score: typeof record.score === "number" ? record.score : null,
+        },
+      ];
+    })
+  );
+
   for (const section of inspectionTemplate.template.sections) {
     for (const question of section.questions) {
       const fieldName = `q:${question.id}`;
       const commentName = `comment:${question.id}`;
+      const statusName = `status:${question.id}`;
+      const scoreName = `score:${question.id}`;
       const rawValue =
         question.responseType === "MULTI_SELECT" ? formData.getAll(fieldName) : formData.get(fieldName);
       const comment = toStringOrNull(formData.get(commentName));
+      const surveyStatus = toStringOrNull(formData.get(statusName));
+      const manualScoreValue = toStringOrNull(formData.get(scoreName));
+      const manualScore = manualScoreValue === null || manualScoreValue === "" ? null : Number(manualScoreValue);
       const payload = answerPayloadForQuestion(question.responseType, rawValue, comment);
+      const normalizedSurveyStatus =
+        surveyStatus && ["T", "I", "NS", "NA"].includes(surveyStatus.toUpperCase()) ? surveyStatus.toUpperCase() : null;
+      const normalizedScore = typeof manualScore === "number" && Number.isFinite(manualScore) ? manualScore : null;
 
       const hasValue =
         payload.answerText !== null ||
@@ -433,11 +466,18 @@ export async function saveInspectionAnswersAction(inspectionId: string, formData
         payload.answerBoolean !== null ||
         payload.answerDate !== null ||
         (Array.isArray(payload.selectedOptions) && payload.selectedOptions.length > 0) ||
-        payload.comment !== null;
+        payload.comment !== null ||
+        normalizedSurveyStatus !== null ||
+        normalizedScore !== null;
 
       if (!hasValue) {
         continue;
       }
+
+      questionWorkflow[question.id] = {
+        surveyStatus: normalizedSurveyStatus,
+        score: normalizedScore,
+      };
 
       await prisma.virAnswer.upsert({
         where: {
@@ -459,6 +499,33 @@ export async function saveInspectionAnswersAction(inspectionId: string, formData
       });
     }
   }
+
+  const narrativeKeys = [
+    "itemsOfConcern",
+    "bestPractice",
+    "equipmentNotWorking",
+    "safetyMeeting",
+    "openingMeeting",
+    "closingMeeting",
+    "conclusion",
+  ] as const;
+
+  const narrativeMetadata = Object.fromEntries(
+    narrativeKeys.map((key) => [key, toStringOrNull(formData.get(key))])
+  );
+
+  const metadataPayload = {
+    ...existingMetadata,
+    ...narrativeMetadata,
+    questionWorkflow,
+  } satisfies Prisma.JsonObject;
+
+  await prisma.virInspection.update({
+    where: { id: inspectionId },
+    data: {
+      metadata: metadataPayload,
+    },
+  });
 
   revalidateVirPaths(inspectionId);
 }
