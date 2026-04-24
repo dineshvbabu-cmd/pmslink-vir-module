@@ -34,27 +34,20 @@ export type VirWorkspaceFilter = {
 
 const officeNavigation: WorkspaceNavItem[] = [
   { href: "/", label: "Dashboard", note: "VIR dashboard" },
-  { href: "/vessels", label: "Vessel list", note: "Directory and actions" },
   { href: "/inspections?scope=approved", label: "Approved inspections", note: "Approved register" },
   { href: "/inspections?scope=history", label: "Inspection history", note: "All inspection records" },
   { href: "/schedule", label: "VIR Calendar", note: "Planner and compliance status" },
-  { href: "/dashboards", label: "Analytics Boards", note: "Fleet, vessel, class, vetting" },
-  { href: "/inspections?scope=shore-review", label: "Review Queue", note: "Office actions" },
-  { href: "/inspections", label: "Inspection Register", note: "Fleet-wide" },
-  { href: "/inspections/new", label: "Create VIR", note: "Schedule or launch" },
+  { href: "/inspections", label: "Inspection Register", note: "Draft, review, sync, and closure" },
+  { href: "/inspections/new", label: "Create VIR", note: "Draft planning and manager approval" },
   { href: "/templates", label: "Template Library", note: "Questionnaires" },
   { href: "/imports", label: "Import Engine", note: "Checklist normalization" },
 ];
 
 const vesselNavigation: WorkspaceNavItem[] = [
   { href: "/", label: "Dashboard", note: "Vessel dashboard" },
-  { href: "/vessels", label: "Vessel list", note: "Directory and actions" },
   { href: "/inspections?scope=history", label: "Inspection history", note: "My vessel record" },
-  { href: "/schedule", label: "VIR Calendar", note: "My upcoming plan" },
-  { href: "/dashboards", label: "Analytics Boards", note: "My vessel boards" },
-  { href: "/inspections?scope=my-drafts", label: "My VIR Queue", note: "Draft and return" },
-  { href: "/inspections", label: "Inspection Register", note: "Assigned to vessel" },
-  { href: "/inspections/new", label: "Start VIR", note: "Self assessment" },
+  { href: "/schedule", label: "VIR Calendar", note: "View-only vessel plan" },
+  { href: "/inspections", label: "Inspection Register", note: "Synced vessel inspections" },
 ];
 
 function secret() {

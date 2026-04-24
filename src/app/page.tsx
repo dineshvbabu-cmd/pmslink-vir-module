@@ -789,8 +789,8 @@ async function VesselDashboard({ vesselId, vesselName }: { vesselId: string; ves
                 },
               ]}
             />
-            <Link className="btn-secondary btn-compact" href="/inspections?scope=my-drafts">
-              My VIR Queue
+            <Link className="btn-secondary btn-compact" href="/inspections">
+              Inspection register
             </Link>
             <Link className="btn-secondary btn-compact" href="/inspections?scope=history">
               Inspection history

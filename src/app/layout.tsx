@@ -82,6 +82,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     aria-label="Dashboard"
                     className="topbar-icon-link"
                     href={buildWorkspaceHref("/", session.workspace, workspaceFilter)}
+                    title="Dashboard"
                   >
                     <House size={18} />
                   </Link>
@@ -89,6 +90,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     aria-label="Vessel list"
                     className="topbar-icon-link"
                     href={buildWorkspaceHref("/vessels", session.workspace, workspaceFilter)}
+                    title="Vessel list"
                   >
                     <Anchor size={18} />
                   </Link>
@@ -96,6 +98,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     aria-label="Approved inspections"
                     className="topbar-icon-link"
                     href={buildWorkspaceHref("/inspections?scope=approved", session.workspace, workspaceFilter)}
+                    title="Approved inspections"
                   >
                     <ShieldCheck size={18} />
                   </Link>
@@ -103,6 +106,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     aria-label="Inspection history"
                     className="topbar-icon-link"
                     href={buildWorkspaceHref("/inspections?scope=history", session.workspace, workspaceFilter)}
+                    title="Inspection history"
                   >
                     <History size={18} />
                   </Link>
@@ -110,6 +114,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     aria-label="VIR Calendar"
                     className="topbar-icon-link"
                     href={buildWorkspaceHref("/schedule", session.workspace, workspaceFilter)}
+                    title="VIR Calendar"
                   >
                     <CalendarDays size={18} />
                   </Link>
@@ -117,10 +122,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     aria-label="Analytics Boards"
                     className="topbar-icon-link"
                     href={buildWorkspaceHref("/dashboards", session.workspace, workspaceFilter)}
+                    title="Analytics Boards"
                   >
                     <Grid2x2 size={18} />
                   </Link>
-                  <button aria-label="Notifications" className="topbar-icon-link" type="button">
+                  <button aria-label="Notifications" className="topbar-icon-link" title="Notifications" type="button">
                     <Bell size={18} />
                   </button>
                   <Link
@@ -129,12 +135,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     href={buildWorkspaceHref("/instruction", session.workspace, workspaceFilter)}
                     rel="noreferrer"
                     target="_blank"
+                    title="Help"
                   >
                     <HelpCircle size={18} />
                     <span>Help</span>
                   </Link>
                   <form action={logoutAction}>
-                    <button aria-label="Logout" className="topbar-icon-link topbar-icon-link-danger" type="submit">
+                    <button aria-label="Logout" className="topbar-icon-link topbar-icon-link-danger" title="Logout" type="submit">
                       <LogOut size={18} />
                     </button>
                   </form>

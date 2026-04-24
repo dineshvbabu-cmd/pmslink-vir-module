@@ -150,9 +150,11 @@ export default async function SchedulePage({
           </p>
         </div>
         <div className="actions-row">
-          <Link className="btn btn-compact" href="/inspections/new">
-            Schedule VIR
-          </Link>
+          {isOffice ? (
+            <Link className="btn btn-compact" href="/inspections/new">
+              Schedule VIR
+            </Link>
+          ) : null}
           <Link
             className="btn-secondary btn-compact"
             href={`/inspections?scope=history${selectedVesselId ? `&vesselId=${encodeURIComponent(selectedVesselId)}` : ""}`}

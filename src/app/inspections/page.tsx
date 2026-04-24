@@ -243,10 +243,6 @@ export default async function InspectionsPage({
     }
 
     switch (scope) {
-      case "shore-review":
-        return ["SUBMITTED", "RETURNED", "SHORE_REVIEWED"].includes(inspection.status);
-      case "my-drafts":
-        return ["DRAFT", "RETURNED"].includes(inspection.status);
       case "closed":
         return inspection.status === "CLOSED";
       case "ready-to-submit":
@@ -278,12 +274,12 @@ export default async function InspectionsPage({
           eyebrow: "Inspection history",
           subtitle: "All inspection records with progress, status, inspection mode, and live action access.",
         }
-      : {
+        : {
           title: isOfficeSession(session) ? "Inspection Register" : "Inspection Register",
           eyebrow: "Inspection register",
           subtitle: isOfficeSession(session)
-            ? "Fleet-wide operations grid for review, closure, and intervention."
-            : "Execution queue scoped to the logged-in vessel workspace.",
+            ? "Draft, manager approval, vessel sync, office review, and closure are all managed in one fleet-wide register."
+            : "Synced vessel inspections stay in one execution register while office retains planning and approval control.",
         };
 
   return (
@@ -302,9 +298,11 @@ export default async function InspectionsPage({
             <Link className="btn-secondary btn-compact" href={modeHref("history", { vesselId: selectedVesselId, view: viewMode, q })}>
               Inspection history
             </Link>
-            <Link className="btn btn-compact" href="/inspections/new">
-              Create VIR
-            </Link>
+            {isOfficeSession(session) ? (
+              <Link className="btn btn-compact" href="/inspections/new">
+                Create VIR
+              </Link>
+            ) : null}
           </div>
         </div>
 

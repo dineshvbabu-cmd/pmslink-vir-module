@@ -7,23 +7,23 @@ const platformMap = [
   "Approved inspections",
   "Inspection history",
   "VIR Calendar",
-  "Instruction",
+  "Help",
 ];
 
 const officeWorkflow = [
-  "Open Dashboard to review total vessels, completed inspection, pending task, and not synced exceptions.",
-  "Use Approved inspections for finalized reports, PDF exports, and vessel-by-vessel drill-down review.",
-  "Use Inspection history for draft, returned, submitted, shore reviewed, and approved work in one register.",
-  "Use VIR Calendar to monitor last VIR done date, next due date, inspection compliance, and sailing compliance.",
-  "Open the inspection record, review questionnaire progress, findings, evidence, and sign-off before closure.",
+  "Create the VIR from office as a draft and keep it in Inspection Register for manager approval.",
+  "Approve the draft from office management so the inspection can be synced to vessel for execution.",
+  "Monitor execution, evidence, findings, and vessel responses after the synced record is worked by superintendent or external inspectors.",
+  "Review returned vessel updates from office, send back for vessel updates when required, and complete the second office approval.",
+  "Use Approved inspections for finalized double-approved reports, PDF exports, and vessel-by-vessel drill-down review.",
 ];
 
 const vesselWorkflow = [
-  "Open the assigned VIR from Dashboard, Inspection history, or the active vessel register.",
-  "Answer the questionnaire section by section, starting with mandatory and concentrated-focus questions.",
+  "Open only the synced VIR assigned from office using Dashboard, Inspection Register, or Inspection history.",
+  "Execute the questionnaire section by section, starting with mandatory and concentrated-focus questions.",
   "Attach actual evidence against the question or finding while comparing it with the reference image.",
-  "Complete section comments, findings, corrective actions, and sign-off before submission to shore.",
-  "Monitor synced count, pending queue, and offline evidence status until the shared record is fully updated.",
+  "Complete section comments, findings, corrective actions, and sign-off before submission back to office review.",
+  "Monitor sync status and office feedback until the shared record is fully updated and finally approved.",
 ];
 
 const statusLegend = [
@@ -56,8 +56,9 @@ const reviewModes = [
 ];
 
 const signOffRules = [
-  "Vessel submission confirms that the questionnaire, findings, evidence, and comments are ready for shore review.",
-  "Office review can approve, return, or close the VIR based on completion, evidence quality, and corrective action readiness.",
+  "Manager approval is required before a draft VIR is released from office and synced to vessel.",
+  "Vessel submission confirms that the questionnaire, findings, evidence, and comments are ready for office review.",
+  "Office review can return the VIR for vessel updates, then apply the second approval before closure and approved-register release.",
   "Every workflow action must appear in the activity timeline so the inspection retains a full operational audit trail.",
 ];
 
@@ -66,13 +67,13 @@ const workflowDiagram = [
     lane: "Office",
     step: "1. Create VIR",
     detail:
-      "Select vessel, report type, inspection mode, date range, location, alongside-by, operations at inspection, inspection authority, cause analysis page, and corrective action plan target before saving.",
+      "Select vessel, report type, inspection mode, date range, location, alongside-by, operations at inspection, inspection authority, cause analysis page, and corrective action plan target before saving the inspection as draft.",
   },
   {
     lane: "Office",
-    step: "2. Bind questionnaire",
+    step: "2. Manager approval and sync",
     detail:
-      "Attach the matching template so concentrated questions, reference images, and the correct section structure are loaded before release to vessel.",
+      "Approve the draft from office management, bind the matching questionnaire template, and sync the approved draft to vessel for execution.",
   },
   {
     lane: "Vessel",
@@ -82,21 +83,21 @@ const workflowDiagram = [
   },
   {
     lane: "Vessel",
-    step: "4. Submit to shore",
+    step: "4. Submit to office review",
     detail:
-      "Confirm section summaries, findings, evidence, meetings, sign-offs, and sync status before sending the VIR to the office review queue.",
+      "Confirm section summaries, findings, evidence, meetings, sign-offs, and sync status before sending the VIR back to office review.",
   },
   {
     lane: "Office",
-    step: "5. Review and return / approve",
+    step: "5. Review, return, or second approve",
     detail:
-      "Use inspection history, report views, deviation flow, and evidence drill-down to review completeness. Return when corrections are needed or approve when ready.",
+      "Use inspection history, report views, deviation flow, and evidence drill-down to review completeness. Return when vessel updates are needed or apply the second office approval when ready.",
   },
   {
     lane: "Office",
     step: "6. Close VIR",
     detail:
-      "Close only after questionnaire review, findings review, action review, approval confirmation, and management-ready reporting are complete.",
+      "Close only after questionnaire review, findings review, action review, approval confirmation, sync confirmation, and management-ready reporting are complete.",
   },
 ];
 
