@@ -410,6 +410,142 @@ const TEMPLATE_SEEDS: DemoTemplateSeed[] = [
   },
 ];
 
+const QHSE_LIBRARY_SEEDS: Array<{
+  code: string;
+  name: string;
+  description: string;
+  valueKind: "TEXT" | "NUMBER";
+  sortOrder: number;
+  items: Array<{ code: string; label: string; sortOrder: number; metadata?: Record<string, unknown> }>;
+}> = [
+  {
+    code: "GFPUNN",
+    name: "Grading: Good / Fair / Poor / Unsatisfactory / Not Seen / Not Applicable",
+    description: "Six-point condition grading scale used in Synergy VIR and OCIMF-aligned inspections.",
+    valueKind: "TEXT",
+    sortOrder: 1,
+    items: [
+      { code: "G", label: "Good", sortOrder: 1, metadata: { score: 100 } },
+      { code: "F", label: "Fair", sortOrder: 2, metadata: { score: 75 } },
+      { code: "P", label: "Poor", sortOrder: 3, metadata: { score: 40 } },
+      { code: "U", label: "Unsatisfactory", sortOrder: 4, metadata: { score: 0 } },
+      { code: "NS", label: "Not Seen", sortOrder: 5, metadata: { score: null } },
+      { code: "NA", label: "Not Applicable", sortOrder: 6, metadata: { score: null } },
+    ],
+  },
+  {
+    code: "YNN",
+    name: "Yes / No / Not Applicable",
+    description: "Standard tri-state compliance answer set used across QHSE inspection modules.",
+    valueKind: "TEXT",
+    sortOrder: 2,
+    items: [
+      { code: "Y", label: "Yes", sortOrder: 1, metadata: { score: 100 } },
+      { code: "N", label: "No", sortOrder: 2, metadata: { score: 0 } },
+      { code: "NA", label: "Not Applicable", sortOrder: 3, metadata: { score: null } },
+    ],
+  },
+  {
+    code: "YN",
+    name: "Yes / No",
+    description: "Binary yes/no answer set for questions where N/A is not applicable.",
+    valueKind: "TEXT",
+    sortOrder: 3,
+    items: [
+      { code: "Y", label: "Yes", sortOrder: 1, metadata: { score: 100 } },
+      { code: "N", label: "No", sortOrder: 2, metadata: { score: 0 } },
+    ],
+  },
+  {
+    code: "CNN",
+    name: "Compliant / Non-Compliant / Not Applicable",
+    description: "Compliance-oriented answer set for audit and vetting questionnaires.",
+    valueKind: "TEXT",
+    sortOrder: 4,
+    items: [
+      { code: "C", label: "Compliant", sortOrder: 1, metadata: { score: 100 } },
+      { code: "NC", label: "Non-Compliant", sortOrder: 2, metadata: { score: 0 } },
+      { code: "NA", label: "Not Applicable", sortOrder: 3, metadata: { score: null } },
+    ],
+  },
+  {
+    code: "QTY",
+    name: "Quantity / Count",
+    description: "Numeric quantity or count input — maps to NUMBER response type in the questionnaire.",
+    valueKind: "NUMBER",
+    sortOrder: 5,
+    items: [],
+  },
+  {
+    code: "DT",
+    name: "Date / Time",
+    description: "Date or date-time input — maps to DATE response type in the questionnaire.",
+    valueKind: "TEXT",
+    sortOrder: 6,
+    items: [],
+  },
+];
+
+async function seedQhseLibraries() {
+  let count = 0;
+
+  for (const lib of QHSE_LIBRARY_SEEDS) {
+    const libraryType = await prisma.virLibraryType.upsert({
+      where: { code: lib.code },
+      update: {
+        name: lib.name,
+        description: lib.description,
+        valueKind: lib.valueKind,
+        sortOrder: lib.sortOrder,
+        isActive: true,
+      },
+      create: {
+        code: lib.code,
+        name: lib.name,
+        description: lib.description,
+        valueKind: lib.valueKind,
+        sortOrder: lib.sortOrder,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+
+    for (const item of lib.items) {
+      const existing = await prisma.virLibraryItem.findFirst({
+        where: { libraryTypeId: libraryType.id, code: item.code },
+        select: { id: true },
+      });
+
+      if (existing) {
+        await prisma.virLibraryItem.update({
+          where: { id: existing.id },
+          data: {
+            label: item.label,
+            sortOrder: item.sortOrder,
+            metadata: (item.metadata ?? {}) as Prisma.InputJsonValue,
+            isActive: true,
+          },
+        });
+      } else {
+        await prisma.virLibraryItem.create({
+          data: {
+            libraryTypeId: libraryType.id,
+            code: item.code,
+            label: item.label,
+            sortOrder: item.sortOrder,
+            metadata: (item.metadata ?? {}) as Prisma.InputJsonValue,
+            isActive: true,
+          },
+        });
+      }
+    }
+
+    count += 1;
+  }
+
+  return count;
+}
+
 async function runSeed(request: Request) {
   const url = new URL(request.url);
   const secret = url.searchParams.get("secret");
@@ -435,6 +571,9 @@ async function runSeed(request: Request) {
 
   await archiveLegacyDemoData();
   results.push(`Seeded ${VIR_INSPECTION_TYPES.length} inspection types and archived the old PSC starter demo records.`);
+
+  const libraryCount = await seedQhseLibraries();
+  results.push(`Seeded ${libraryCount} QHSE library types (GFPUNN, YNN, YN, CNN, QTY, DT) with standard answer options for questionnaire bindings.`);
 
   const vessels = [];
   for (const vesselInput of DEMO_VESSELS) {
@@ -558,6 +697,7 @@ async function runSeed(request: Request) {
     results,
     summary: {
       vessels: vessels.length,
+      libraries: libraryCount,
       templates: templateMap.size,
       inspections: inspectionCount,
       importSessions: importSessionCount,

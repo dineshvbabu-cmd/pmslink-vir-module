@@ -35,6 +35,13 @@ enum VirQuestionResponseType {
   SCORE
 }
 
+enum VirLibraryValueKind {
+  TEXT
+  NUMBER
+  BOOLEAN
+  REFERENCE
+}
+
 enum VirRiskLevel {
   LOW
   MEDIUM
@@ -118,19 +125,76 @@ model VirInspectionType {
   @@index([name])
 }
 
-model VirTemplate {
-  id               String   @id @default(cuid())
-  inspectionTypeId String
-  name             String
-  version          String
-  description      String?  @db.Text
-  isActive         Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+model VirLibraryType {
+  id          String              @id @default(cuid())
+  code        String              @unique
+  name        String
+  description String?             @db.Text
+  valueKind   VirLibraryValueKind @default(TEXT)
+  isSystem    Boolean             @default(false)
+  isActive    Boolean             @default(true)
+  sortOrder   Int                 @default(0)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
 
-  inspectionType VirInspectionType   @relation(fields: [inspectionTypeId], references: [id], onDelete: Cascade)
-  sections       VirTemplateSection[]
-  inspections    VirInspection[]
+  items                    VirLibraryItem[]
+  templateQuestionnaires   VirTemplate[]          @relation("TemplateQuestionnaireLibrary")
+  questionAnswerBindings   VirTemplateQuestion[]  @relation("QuestionAnswerLibrary")
+
+  @@index([name])
+  @@index([sortOrder])
+}
+
+model VirLibraryItem {
+  id            String   @id @default(cuid())
+  libraryTypeId String
+  code          String?
+  label         String
+  description   String?  @db.Text
+  metadata      Json?
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  libraryType VirLibraryType       @relation(fields: [libraryTypeId], references: [id], onDelete: Cascade)
+  values      VirLibraryItemValue[]
+
+  @@index([libraryTypeId, sortOrder])
+  @@index([label])
+}
+
+model VirLibraryItemValue {
+  id            String   @id @default(cuid())
+  libraryItemId String
+  value         String
+  label         String?
+  metadata      Json?
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  libraryItem VirLibraryItem @relation(fields: [libraryItemId], references: [id], onDelete: Cascade)
+
+  @@index([libraryItemId, sortOrder])
+}
+
+model VirTemplate {
+  id                     String   @id @default(cuid())
+  inspectionTypeId       String
+  name                   String
+  version                String
+  description            String?  @db.Text
+  questionnaireLibraryId String?
+  workflowConfig         Json?
+  isActive               Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  inspectionType       VirInspectionType   @relation(fields: [inspectionTypeId], references: [id], onDelete: Cascade)
+  questionnaireLibrary VirLibraryType?     @relation("TemplateQuestionnaireLibrary", fields: [questionnaireLibraryId], references: [id], onDelete: SetNull)
+  sections             VirTemplateSection[]
+  inspections          VirInspection[]
 
   @@unique([inspectionTypeId, version])
 }
@@ -152,27 +216,29 @@ model VirTemplateSection {
 }
 
 model VirTemplateQuestion {
-  id                String                  @id @default(cuid())
-  sectionId         String
-  code              String
-  prompt            String                  @db.Text
-  responseType      VirQuestionResponseType
-  riskLevel         VirRiskLevel            @default(LOW)
-  isMandatory       Boolean                 @default(false)
-  allowsObservation Boolean                 @default(true)
-  allowsPhoto       Boolean                 @default(true)
-  isCicCandidate    Boolean                 @default(false)
-  cicTopic          String?
-  helpText          String?                 @db.Text
-  referenceImageUrl String?
-  sortOrder         Int
-  createdAt         DateTime                @default(now())
-  updatedAt         DateTime                @updatedAt
+  id                    String                  @id @default(cuid())
+  sectionId             String
+  code                  String
+  prompt                String                  @db.Text
+  responseType          VirQuestionResponseType
+  riskLevel             VirRiskLevel            @default(LOW)
+  isMandatory           Boolean                 @default(false)
+  allowsObservation     Boolean                 @default(true)
+  allowsPhoto           Boolean                 @default(true)
+  isCicCandidate        Boolean                 @default(false)
+  cicTopic              String?
+  helpText              String?                 @db.Text
+  referenceImageUrl     String?
+  answerLibraryTypeId   String?
+  sortOrder             Int
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
 
-  section  VirTemplateSection         @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  options  VirTemplateQuestionOption[]
-  answers  VirAnswer[]
-  findings VirFinding[]
+  section           VirTemplateSection         @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  answerLibraryType VirLibraryType?            @relation("QuestionAnswerLibrary", fields: [answerLibraryTypeId], references: [id], onDelete: SetNull)
+  options           VirTemplateQuestionOption[]
+  answers           VirAnswer[]
+  findings          VirFinding[]
 
   @@unique([sectionId, code])
   @@unique([sectionId, sortOrder])
@@ -211,11 +277,15 @@ model VirInspection {
   obsCount             Int                 @default(0)
   ncCount              Int                 @default(0)
   recCount             Int                 @default(0)
+  conditionScore       Float?
   shoreReviewedBy      String?
   shoreReviewDate      DateTime?
   closedAt             DateTime?
   importSessionId      String?
   metadata             Json?
+  isDeleted            Boolean             @default(false)
+  deletedAt            DateTime?
+  deletedBy            String?
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
 
@@ -232,6 +302,7 @@ model VirInspection {
 
   @@index([vesselId, inspectionDate])
   @@index([inspectionTypeId, inspectionDate])
+  @@index([isDeleted])
   @@index([status])
 }
 

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { createTemplateFromImportAction } from "@/app/actions";
 import { TemplateImportConsole } from "@/app/imports/template-import-console";
 import { FloatingActivityFeed } from "@/components/floating-activity-feed";
 import { prisma } from "@/lib/prisma";
@@ -106,6 +107,13 @@ export default async function ImportsPage({
                 {selectedSession.status}
               </span>
               {selectedSession.inspectionType ? <span className="chip chip-info">{selectedSession.inspectionType.name}</span> : null}
+              {selectedSession.status === "COMMITTED" ? (
+                <form action={createTemplateFromImportAction.bind(null, selectedSession.id)}>
+                  <button className="button button-primary" type="submit">
+                    Create template
+                  </button>
+                </form>
+              ) : null}
             </div>
           </div>
 

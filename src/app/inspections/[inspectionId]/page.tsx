@@ -76,10 +76,19 @@ export default async function InspectionDetailPage({
                   options: {
                     orderBy: { sortOrder: "asc" },
                   },
+                  answerLibraryType: {
+                    include: {
+                      items: {
+                        where: { isActive: true },
+                        orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
+                      },
+                    },
+                  },
                 },
               },
             },
           },
+          inspectionType: { select: { name: true } },
         },
       },
       answers: {
@@ -259,6 +268,11 @@ export default async function InspectionDetailPage({
             <span className={`chip ${isOfficeSession(session) ? "chip-info" : "chip-success"}`}>
               {isOfficeSession(session) ? "Office lane" : "Vessel lane"}
             </span>
+            {inspection.conditionScore !== null && inspection.conditionScore !== undefined ? (
+              <span className={`chip ${inspection.conditionScore >= 75 ? "chip-success" : inspection.conditionScore >= 40 ? "chip-warning" : "chip-danger"}`}>
+                {inspection.conditionScore >= 75 ? "Good condition" : inspection.conditionScore >= 40 ? "Fair condition" : "Poor condition"} {inspection.conditionScore}%
+              </span>
+            ) : null}
           </div>
           <h2 className="hero-title" style={{ marginTop: "0.55rem" }}>
             {inspection.title}
@@ -325,9 +339,24 @@ export default async function InspectionDetailPage({
           note={`${progress.mandatoryPct}% mandatory coverage`}
         />
         <MetricBox
+          label="Vessel condition"
+          value={
+            inspection.conditionScore !== null && inspection.conditionScore !== undefined
+              ? `${inspection.conditionScore}%`
+              : score.rawAverage !== null
+                ? `${Math.round(score.rawAverage)}%`
+                : "n/a"
+          }
+          note={
+            inspection.conditionScore !== null && inspection.conditionScore !== undefined
+              ? "Scored from GFPUNN / YNN answers"
+              : "Builds after first answer save"
+          }
+        />
+        <MetricBox
           label="Readiness score"
           value={score.finalScore !== null ? `${score.finalScore}` : "n/a"}
-          note={score.rawAverage !== null ? `Raw ${score.rawAverage} / penalty ${score.penaltyPoints}` : "Builds as answers are saved"}
+          note={score.rawAverage !== null ? `Avg ${score.rawAverage} — penalty ${score.penaltyPoints}` : "Adjusted for open findings"}
         />
         <MetricBox
           label="Open findings"
@@ -674,6 +703,7 @@ export default async function InspectionDetailPage({
                                                   id: bindingQuestion.id,
                                                   responseType,
                                                   options: bindingQuestion.options ?? [],
+                                                  answerLibraryType: (bindingQuestion as any).answerLibraryType ?? null,
                                                 }}
                                                 selectedOptions={selectedOptions}
                                               />
@@ -1231,15 +1261,17 @@ export default async function InspectionDetailPage({
             </div>
 
             <div className="signoff-stage-grid">
-              {buildSignoffStages(inspection.signOffs).map((stage) => (
+              {buildSignoffStages(inspection.signOffs, inspection.template?.workflowConfig ?? null).map((stage) => (
                 <div className="list-card signoff-stage-card" key={stage.key}>
                   <div className="meta-row">
                     <span className={`chip ${stage.approved ? "chip-success" : stage.present ? "chip-warning" : "chip-muted"}`}>
                       {stage.approved ? "Approved" : stage.present ? "Captured" : "Pending"}
                     </span>
                     <span className="chip chip-info">{stage.label}</span>
+                    {stage.actorRole ? <span className="chip chip-muted">{stage.actorRole}</span> : null}
                   </div>
                   <div className="list-card-title">{stage.actor ?? "Awaiting action"}</div>
+                  {stage.description ? <div className="small-text">{stage.description}</div> : null}
                   <div className="small-text">{stage.comment ?? "No note recorded yet."}</div>
                   <div className="small-text">{stage.timeLabel ?? "No timestamp yet."}</div>
                 </div>
@@ -1460,13 +1492,32 @@ function buildSignoffStages(
     actorName: string | null;
     comment: string | null;
     signedAt: Date;
-  }>
+  }>,
+  workflowConfig: unknown
 ) {
-  const stageOrder = [
-    { key: "VESSEL_SUBMISSION", label: "Vessel submission" },
-    { key: "SHORE_REVIEW", label: "Office review" },
-    { key: "FINAL_ACKNOWLEDGEMENT", label: "Vessel final acknowledgement" },
+  const defaultStages = [
+    { key: "VESSEL_SUBMISSION", label: "Vessel submission", actorRole: "Inspector / Master", description: null as string | null },
+    { key: "SHORE_REVIEW", label: "Office review", actorRole: "QHSE Superintendent", description: null as string | null },
+    { key: "FINAL_ACKNOWLEDGEMENT", label: "Final acknowledgement", actorRole: "Inspector / Master", description: null as string | null },
   ];
+
+  const configStages =
+    workflowConfig &&
+    typeof workflowConfig === "object" &&
+    "stages" in workflowConfig &&
+    Array.isArray((workflowConfig as { stages?: unknown }).stages)
+      ? (workflowConfig as { stages: Array<{ stage: string; label?: string; actorRole?: string; description?: string }> }).stages
+      : [];
+
+  const stageOrder = defaultStages.map((def) => {
+    const saved = configStages.find((s) => s.stage === def.key);
+    return {
+      key: def.key,
+      label: saved?.label || def.label,
+      actorRole: saved?.actorRole || def.actorRole,
+      description: saved?.description || def.description,
+    };
+  });
 
   return stageOrder.map((stage) => {
     const latest = signOffs.find((record) => record.stage === stage.key) ?? null;
@@ -1601,6 +1652,10 @@ function QuestionInput({
     id: string;
     responseType: string;
     options: Array<{ id: string; value: string; label: string }>;
+    answerLibraryType?: {
+      name: string;
+      items: Array<{ id: string; code: string | null; label: string }>;
+    } | null;
   };
   answer:
     | {
@@ -1615,18 +1670,37 @@ function QuestionInput({
   selectedOptions: string[];
   disabled: boolean;
 }) {
+  // Library items take precedence over inline options when bound
+  const libraryOptions = question.answerLibraryType?.items.map((item) => ({
+    id: item.id,
+    value: item.code ?? item.label.toUpperCase().replace(/\s+/g, "_"),
+    label: item.label,
+  })) ?? [];
+  const resolvedOptions = libraryOptions.length > 0 ? libraryOptions : question.options;
+  const libraryLabel = question.answerLibraryType?.name;
+
   let answerField: ReactNode;
 
   switch (question.responseType) {
     case "YES_NO_NA":
       answerField = (
         <div className="field">
-          <label htmlFor={`q:${question.id}`}>Answer</label>
+          <label htmlFor={`q:${question.id}`}>
+            Answer{libraryLabel ? <span className="chip chip-info" style={{ marginLeft: "0.5rem", fontSize: "0.7rem" }}>{libraryLabel}</span> : null}
+          </label>
           <select defaultValue={answer?.answerText ?? ""} disabled={disabled} id={`q:${question.id}`} name={`q:${question.id}`}>
             <option value="">Select</option>
-            <option value="YES">Yes</option>
-            <option value="NO">No</option>
-            <option value="NA">N/A</option>
+            {resolvedOptions.length > 0 ? (
+              resolvedOptions.map((opt) => (
+                <option key={opt.id} value={opt.value}>{opt.label}</option>
+              ))
+            ) : (
+              <>
+                <option value="YES">Yes</option>
+                <option value="NO">No</option>
+                <option value="NA">N/A</option>
+              </>
+            )}
           </select>
         </div>
       );
@@ -1676,10 +1750,12 @@ function QuestionInput({
     case "SINGLE_SELECT":
       answerField = (
         <div className="field">
-          <label htmlFor={`q:${question.id}`}>Selection</label>
+          <label htmlFor={`q:${question.id}`}>
+            Selection{libraryLabel ? <span className="chip chip-info" style={{ marginLeft: "0.5rem", fontSize: "0.7rem" }}>{libraryLabel}</span> : null}
+          </label>
           <select defaultValue={answer?.answerText ?? ""} disabled={disabled} id={`q:${question.id}`} name={`q:${question.id}`}>
             <option value="">Select</option>
-            {question.options.map((option) => (
+            {resolvedOptions.map((option) => (
               <option key={option.id} value={option.value}>
                 {option.label}
               </option>
@@ -1691,9 +1767,11 @@ function QuestionInput({
     case "MULTI_SELECT":
       answerField = (
         <div className="field">
-          <label htmlFor={`q:${question.id}`}>Selections</label>
+          <label htmlFor={`q:${question.id}`}>
+            Selections{libraryLabel ? <span className="chip chip-info" style={{ marginLeft: "0.5rem", fontSize: "0.7rem" }}>{libraryLabel}</span> : null}
+          </label>
           <select defaultValue={selectedOptions} disabled={disabled} id={`q:${question.id}`} multiple name={`q:${question.id}`}>
-            {question.options.map((option) => (
+            {resolvedOptions.map((option) => (
               <option key={option.id} value={option.value}>
                 {option.label}
               </option>

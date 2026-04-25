@@ -1,10 +1,11 @@
 "use server";
 
+import { Prisma } from "@prisma/client";
 import type {
-  Prisma,
   VirCorrectiveActionStatus,
   VirFindingStatus,
   VirInspectionStatus,
+  VirLibraryValueKind,
   VirSignOffStage,
 } from "@prisma/client";
 import { revalidatePath } from "next/cache";
@@ -21,8 +22,14 @@ import {
   toStringOrNull,
 } from "@/lib/vir/workflow";
 
+const VIR_RESPONSE_TYPES = ["YES_NO_NA", "TEXT", "NUMBER", "DATE", "SINGLE_SELECT", "MULTI_SELECT", "SCORE"] as const;
+const VIR_RISK_LEVELS = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
+type VirQuestionResponseType = (typeof VIR_RESPONSE_TYPES)[number];
+type VirRiskLevel = (typeof VIR_RISK_LEVELS)[number];
+
 function revalidateVirPaths(inspectionId?: string) {
   revalidatePath("/");
+  revalidatePath("/register");
   revalidatePath("/schedule");
   revalidatePath("/inspections");
   revalidatePath("/inspections/new");
@@ -106,6 +113,109 @@ function ensureOffice(session: VirSession, message = "Office workspace required 
   }
 }
 
+function normalizeLibraryCode(value: string) {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function parseSortOrder(value: FormDataEntryValue | null) {
+  const parsed = Number.parseInt(toStringOrNull(value) ?? "0", 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isChecked(formData: FormData, key: string) {
+  const value = toStringOrNull(formData.get(key));
+  return value === "on" || value === "true" || value === "YES";
+}
+
+function parseVirResponseType(value: FormDataEntryValue | null) {
+  const normalized = toStringOrNull(value)?.toUpperCase() ?? "YES_NO_NA";
+  return (VIR_RESPONSE_TYPES.includes(normalized as VirQuestionResponseType) ? normalized : "YES_NO_NA") as VirQuestionResponseType;
+}
+
+function parseVirRiskLevel(value: FormDataEntryValue | null) {
+  const normalized = toStringOrNull(value)?.toUpperCase() ?? "LOW";
+  return (VIR_RISK_LEVELS.includes(normalized as VirRiskLevel) ? normalized : "LOW") as VirRiskLevel;
+}
+
+function parseTemplateQuestionOptions(value: string | null) {
+  return (value ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => {
+      const [rawValue, rawLabel, rawScore] = line.split("|").map((item) => item.trim());
+      const optionValue = rawValue || `OPTION_${index + 1}`;
+      const score = rawScore ? Number.parseInt(rawScore, 10) : null;
+
+      return {
+        value: optionValue,
+        label: rawLabel || optionValue,
+        score: Number.isFinite(score ?? Number.NaN) ? score : null,
+        sortOrder: index + 1,
+      };
+    });
+}
+
+async function getNextTemplateVersion(inspectionTypeId: string, currentVersion: string) {
+  const versions = await prisma.virTemplate.findMany({
+    where: { inspectionTypeId },
+    select: { version: true },
+    orderBy: [{ createdAt: "desc" }],
+  });
+
+  const normalizedCurrent = currentVersion.trim() || "1";
+  const parts = normalizedCurrent.split(".");
+  const lastPart = parts.at(-1) ?? "0";
+  const parsedLastPart = Number.parseInt(lastPart, 10);
+
+  if (Number.isFinite(parsedLastPart)) {
+    let candidate = [...parts];
+    candidate[candidate.length - 1] = String(parsedLastPart + 1);
+    let nextVersion = candidate.join(".");
+    while (versions.some((record) => record.version === nextVersion)) {
+      candidate[candidate.length - 1] = String(Number.parseInt(candidate[candidate.length - 1]!, 10) + 1);
+      nextVersion = candidate.join(".");
+    }
+    return nextVersion;
+  }
+
+  let suffix = 1;
+  let nextVersion = `${normalizedCurrent}.${suffix}`;
+  while (versions.some((record) => record.version === nextVersion)) {
+    suffix += 1;
+    nextVersion = `${normalizedCurrent}.${suffix}`;
+  }
+
+  return nextVersion;
+}
+
+async function assertTemplateEditable(templateId: string) {
+  const template = await prisma.virTemplate.findUnique({
+    where: { id: templateId },
+    select: {
+      id: true,
+      inspectionTypeId: true,
+      name: true,
+      version: true,
+      inspections: {
+        where: { isDeleted: false },
+        select: { id: true },
+        take: 1,
+      },
+    },
+  });
+
+  if (!template) {
+    throw new Error("Template could not be found.");
+  }
+
+  return template;
+}
+
 function ensureInspectionAccess(session: VirSession, vesselId: string) {
   if (!canAccessVessel(session, vesselId)) {
     throw new Error("This VIR is not available in your current workspace.");
@@ -129,6 +239,620 @@ async function getInspectionAccess(inspectionId: string) {
 
   ensureInspectionAccess(session, inspection.vesselId);
   return { session, inspection };
+}
+
+export async function upsertVirLibraryTypeAction(formData: FormData) {
+  const session = await requireVirSession();
+  ensureOffice(session);
+
+  const id = toStringOrNull(formData.get("id"));
+  const codeInput = toStringOrNull(formData.get("code"));
+  const name = toStringOrNull(formData.get("name"));
+  const description = toStringOrNull(formData.get("description"));
+  const valueKind = (toStringOrNull(formData.get("valueKind")) ?? "TEXT") as VirLibraryValueKind;
+  const sortOrder = parseSortOrder(formData.get("sortOrder"));
+  const isActive = isChecked(formData, "isActive");
+
+  if (!name) {
+    throw new Error("Library name is required.");
+  }
+
+  const code = normalizeLibraryCode(codeInput ?? name);
+
+  await prisma.virLibraryType.upsert({
+    where: id ? { id } : { code },
+    update: {
+      code,
+      name,
+      description,
+      valueKind,
+      sortOrder,
+      isActive,
+    },
+    create: {
+      code,
+      name,
+      description,
+      valueKind,
+      sortOrder,
+      isActive,
+    },
+  });
+
+  revalidateVirPaths();
+}
+
+export async function upsertVirLibraryItemAction(formData: FormData) {
+  const session = await requireVirSession();
+  ensureOffice(session);
+
+  const id = toStringOrNull(formData.get("id"));
+  const libraryTypeId = toStringOrNull(formData.get("libraryTypeId"));
+  const codeInput = toStringOrNull(formData.get("code"));
+  const label = toStringOrNull(formData.get("label"));
+  const description = toStringOrNull(formData.get("description"));
+  const sortOrder = parseSortOrder(formData.get("sortOrder"));
+  const isActive = isChecked(formData, "isActive");
+  const valuesInput = toStringOrNull(formData.get("values"));
+
+  if (!libraryTypeId || !label) {
+    throw new Error("Library type and item label are required.");
+  }
+
+  const code = codeInput ? normalizeLibraryCode(codeInput) : null;
+  const values = (valuesInput ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  const payload = {
+    code,
+    label,
+    description,
+    sortOrder,
+    isActive,
+    metadata: values.length ? ({ values } satisfies Prisma.JsonObject) : Prisma.JsonNull,
+  };
+
+  let libraryItemId = id;
+
+  if (id) {
+    await prisma.virLibraryItem.update({
+      where: { id },
+      data: payload,
+    });
+  } else {
+    const created = await prisma.virLibraryItem.create({
+      data: {
+        libraryTypeId,
+        ...payload,
+      },
+      select: { id: true },
+    });
+    libraryItemId = created.id;
+  }
+
+  if (libraryItemId) {
+    await prisma.virLibraryItemValue.deleteMany({
+      where: { libraryItemId },
+    });
+
+    if (values.length) {
+      await prisma.virLibraryItemValue.createMany({
+        data: values.map((value, index) => ({
+          libraryItemId: libraryItemId!,
+          value,
+          label: value,
+          sortOrder: index,
+        })),
+      });
+    }
+  }
+
+  revalidateVirPaths();
+}
+
+export async function deleteVirLibraryItemAction(itemId: string) {
+  const session = await requireVirSession();
+  ensureOffice(session);
+
+  if (!itemId) {
+    throw new Error("Library item is required.");
+  }
+
+  await prisma.virLibraryItem.delete({
+    where: { id: itemId },
+  });
+
+  revalidateVirPaths();
+}
+
+export async function cloneVirTemplateVersionAction(templateId: string) {
+  const session = await requireVirSession();
+  ensureOffice(session);
+
+  if (!templateId) {
+    throw new Error("Template is required.");
+  }
+
+  const template = await prisma.virTemplate.findUnique({
+    where: { id: templateId },
+    include: {
+      sections: {
+        orderBy: { sortOrder: "asc" },
+        include: {
+          questions: {
+            orderBy: { sortOrder: "asc" },
+            include: {
+              options: {
+                orderBy: { sortOrder: "asc" },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!template) {
+    throw new Error("Template could not be found.");
+  }
+
+  const nextVersion = await getNextTemplateVersion(template.inspectionTypeId, template.version);
+  const clonedTemplate = await prisma.virTemplate.create({
+    data: {
+      inspectionTypeId: template.inspectionTypeId,
+      name: template.name,
+      version: nextVersion,
+      description: template.description,
+      questionnaireLibraryId: template.questionnaireLibraryId ?? null,
+      workflowConfig: template.workflowConfig ?? undefined,
+      isActive: true,
+      sections: {
+        create: template.sections.map((section) => ({
+          code: section.code,
+          title: section.title,
+          guidance: section.guidance,
+          sortOrder: section.sortOrder,
+          questions: {
+            create: section.questions.map((question) => ({
+              code: question.code,
+              prompt: question.prompt,
+              responseType: question.responseType,
+              riskLevel: question.riskLevel,
+              isMandatory: question.isMandatory,
+              allowsObservation: question.allowsObservation,
+              allowsPhoto: question.allowsPhoto,
+              isCicCandidate: question.isCicCandidate,
+              cicTopic: question.cicTopic,
+              helpText: question.helpText,
+              referenceImageUrl: question.referenceImageUrl,
+              answerLibraryTypeId: question.answerLibraryTypeId ?? null,
+              sortOrder: question.sortOrder,
+              options: {
+                create: question.options.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                  score: option.score,
+                  sortOrder: option.sortOrder,
+                })),
+              },
+            })),
+          },
+        })),
+      },
+    },
+    select: { id: true, inspectionType: { select: { name: true } } },
+  });
+
+  revalidateVirPaths();
+  redirect(`/templates?type=${encodeURIComponent(clonedTemplate.inspectionType.name)}&template=${clonedTemplate.id}`);
+}
+
+export async function createVirTemplateAction(formData: FormData) {
+  const session = await requireVirSession();
+  ensureOffice(session);
+
+  const inspectionTypeId = toStringOrNull(formData.get("inspectionTypeId"));
+  const name = toStringOrNull(formData.get("name"));
+  const description = toStringOrNull(formData.get("description"));
+  const version = toStringOrNull(formData.get("version")) ?? "1";
+  const questionnaireLibraryId = toStringOrNull(formData.get("questionnaireLibraryId"));
+
+  if (!inspectionTypeId || !name) {
+    throw new Error("Inspection type and template name are required.");
+  }
+
+  const existing = await prisma.virTemplate.findUnique({
+    where: { inspectionTypeId_version: { inspectionTypeId, version } },
+    select: { id: true },
+  });
+
+  if (existing) {
+    throw new Error(`Version ${version} already exists for this inspection type. Choose a different version.`);
+  }
+
+  const created = await prisma.virTemplate.create({
+    data: {
+      inspectionTypeId,
+      name,
+      description,
+      version,
+      questionnaireLibraryId: questionnaireLibraryId || null,
+      isActive: true,
+    },
+    select: { id: true, inspectionType: { select: { name: true } } },
+  });
+
+  revalidateVirPaths();
+  redirect(`/templates?type=${encodeURIComponent(created.inspectionType.name)}&template=${created.id}`);
+}
+
+export async function upsertVirTemplateAction(formData: FormData) {
+  const session = await requireVirSession();
+  ensureOffice(session);
+
+  const id = toStringOrNull(formData.get("id"));
+  const name = toStringOrNull(formData.get("name"));
+  const description = toStringOrNull(formData.get("description"));
+  const isActive = isChecked(formData, "isActive");
+  const questionnaireLibraryId = toStringOrNull(formData.get("questionnaireLibraryId"));
+
+  if (!id || !name) {
+    throw new Error("Template and template name are required.");
+  }
+
+  await assertTemplateEditable(id);
+
+  await prisma.virTemplate.update({
+    where: { id },
+    data: {
+      name,
+      description,
+      isActive,
+      questionnaireLibraryId: questionnaireLibraryId || null,
+    },
+  });
+
+  revalidateVirPaths();
+  revalidatePath(`/templates/${id}/edit`);
+}
+
+export async function upsertVirTemplateWorkflowAction(formData: FormData) {
+  const session = await requireVirSession();
+  ensureOffice(session);
+
+  const id = toStringOrNull(formData.get("id"));
+
+  if (!id) {
+    throw new Error("Template id is required.");
+  }
+
+  const STAGES = ["VESSEL_SUBMISSION", "SHORE_REVIEW", "FINAL_ACKNOWLEDGEMENT"] as const;
+
+  const stages = STAGES.map((stage) => ({
+    stage,
+    label: toStringOrNull(formData.get(`stage_${stage}_label`)) ?? defaultStageLabel(stage),
+    description: toStringOrNull(formData.get(`stage_${stage}_description`)) ?? null,
+    actorRole: toStringOrNull(formData.get(`stage_${stage}_actorRole`)) ?? null,
+    isRequired: formData.get(`stage_${stage}_isRequired`) === "on",
+  }));
+
+  await prisma.virTemplate.update({
+    where: { id },
+    data: { workflowConfig: { stages } },
+  });
+
+  revalidateVirPaths();
+}
+
+function defaultStageLabel(stage: "VESSEL_SUBMISSION" | "SHORE_REVIEW" | "FINAL_ACKNOWLEDGEMENT") {
+  switch (stage) {
+    case "VESSEL_SUBMISSION":
+      return "Vessel submission";
+    case "SHORE_REVIEW":
+      return "Office review";
+    case "FINAL_ACKNOWLEDGEMENT":
+      return "Final acknowledgement";
+  }
+}
+
+export async function upsertVirTemplateSectionAction(formData: FormData) {
+  const session = await requireVirSession();
+  ensureOffice(session);
+
+  const id = toStringOrNull(formData.get("id"));
+  const templateId = toStringOrNull(formData.get("templateId"));
+  const title = toStringOrNull(formData.get("title"));
+  const guidance = toStringOrNull(formData.get("guidance"));
+  const codeInput = toStringOrNull(formData.get("code"));
+  let sortOrder = parseSortOrder(formData.get("sortOrder"));
+
+  if (!templateId || !title) {
+    throw new Error("Template and section title are required.");
+  }
+
+  await assertTemplateEditable(templateId);
+
+  if (!id && sortOrder <= 0) {
+    const lastSection = await prisma.virTemplateSection.findFirst({
+      where: { templateId },
+      orderBy: { sortOrder: "desc" },
+      select: { sortOrder: true },
+    });
+    sortOrder = (lastSection?.sortOrder ?? 0) + 1;
+  }
+
+  const code = codeInput ? normalizeLibraryCode(codeInput) : null;
+
+  if (id) {
+    await prisma.virTemplateSection.update({
+      where: { id },
+      data: {
+        code,
+        title,
+        guidance,
+        sortOrder,
+      },
+    });
+  } else {
+    await prisma.virTemplateSection.create({
+      data: {
+        templateId,
+        code,
+        title,
+        guidance,
+        sortOrder,
+      },
+    });
+  }
+
+  revalidateVirPaths();
+  revalidatePath(`/templates/${templateId}/edit`);
+}
+
+export async function deleteVirTemplateSectionAction(sectionId: string) {
+  const session = await requireVirSession();
+  ensureOffice(session);
+
+  if (!sectionId) {
+    throw new Error("Section is required.");
+  }
+
+  const section = await prisma.virTemplateSection.findUnique({
+    where: { id: sectionId },
+    select: {
+      id: true,
+      templateId: true,
+      template: {
+        select: {
+          inspections: {
+            where: { isDeleted: false },
+            select: { id: true },
+            take: 1,
+          },
+        },
+      },
+    },
+  });
+
+  if (!section) {
+    throw new Error("Section could not be found.");
+  }
+
+  if (section.template.inspections.length) {
+    throw new Error("Create a new template version before deleting sections from a template already used by inspections.");
+  }
+
+  await prisma.virTemplateSection.delete({
+    where: { id: sectionId },
+  });
+
+  revalidateVirPaths();
+  revalidatePath(`/templates/${section.templateId}/edit`);
+}
+
+export async function upsertVirTemplateQuestionAction(formData: FormData) {
+  const session = await requireVirSession();
+  ensureOffice(session);
+
+  const id = toStringOrNull(formData.get("id"));
+  const sectionId = toStringOrNull(formData.get("sectionId"));
+  const codeInput = toStringOrNull(formData.get("code"));
+  const prompt = toStringOrNull(formData.get("prompt"));
+  const helpText = toStringOrNull(formData.get("helpText"));
+  const cicTopic = toStringOrNull(formData.get("cicTopic"));
+  const referenceImageUrl = toStringOrNull(formData.get("referenceImageUrl"));
+  const responseType = parseVirResponseType(formData.get("responseType"));
+  const riskLevel = parseVirRiskLevel(formData.get("riskLevel"));
+  const isMandatory = isChecked(formData, "isMandatory");
+  const allowsObservation = isChecked(formData, "allowsObservation");
+  const allowsPhoto = isChecked(formData, "allowsPhoto");
+  const isCicCandidate = isChecked(formData, "isCicCandidate");
+  const optionsText = toStringOrNull(formData.get("optionsText"));
+  const answerLibraryTypeId = toStringOrNull(formData.get("answerLibraryTypeId"));
+  let sortOrder = parseSortOrder(formData.get("sortOrder"));
+
+  if (!sectionId || !prompt) {
+    throw new Error("Section and question prompt are required.");
+  }
+
+  const section = await prisma.virTemplateSection.findUnique({
+    where: { id: sectionId },
+    select: {
+      id: true,
+      templateId: true,
+      questions: {
+        orderBy: { sortOrder: "desc" },
+        select: { sortOrder: true },
+        take: 1,
+      },
+      template: {
+        select: {
+          inspections: {
+            where: { isDeleted: false },
+            select: { id: true },
+            take: 1,
+          },
+        },
+      },
+    },
+  });
+
+  if (!section) {
+    throw new Error("Section could not be found.");
+  }
+
+  if (!id && sortOrder <= 0) {
+    sortOrder = (section.questions[0]?.sortOrder ?? 0) + 1;
+  }
+
+  const code = normalizeLibraryCode(codeInput ?? prompt);
+  const options = parseTemplateQuestionOptions(optionsText);
+
+  if (id) {
+    if (section.template.inspections.length) {
+      throw new Error("Create a new template version before editing questions on a template already used by inspections.");
+    }
+
+    await prisma.virTemplateQuestion.update({
+      where: { id },
+      data: {
+        code,
+        prompt,
+        responseType,
+        riskLevel,
+        isMandatory,
+        allowsObservation,
+        allowsPhoto,
+        isCicCandidate,
+        cicTopic,
+        helpText,
+        referenceImageUrl,
+        answerLibraryTypeId: answerLibraryTypeId || null,
+        sortOrder,
+      },
+    });
+
+    await prisma.virTemplateQuestionOption.deleteMany({
+      where: { questionId: id },
+    });
+
+    if (options.length) {
+      await prisma.virTemplateQuestionOption.createMany({
+        data: options.map((option) => ({
+          questionId: id,
+          value: option.value,
+          label: option.label,
+          score: option.score,
+          sortOrder: option.sortOrder,
+        })),
+      });
+    }
+  } else {
+    await prisma.virTemplateQuestion.create({
+      data: {
+        sectionId,
+        code,
+        prompt,
+        responseType,
+        riskLevel,
+        isMandatory,
+        allowsObservation,
+        allowsPhoto,
+        isCicCandidate,
+        cicTopic,
+        helpText,
+        referenceImageUrl,
+        answerLibraryTypeId: answerLibraryTypeId || null,
+        sortOrder,
+        options: {
+          create: options,
+        },
+      },
+    });
+  }
+
+  revalidateVirPaths();
+  revalidatePath(`/templates/${section.templateId}/edit`);
+}
+
+export async function deleteVirTemplateQuestionAction(questionId: string) {
+  const session = await requireVirSession();
+  ensureOffice(session);
+
+  if (!questionId) {
+    throw new Error("Question is required.");
+  }
+
+  const question = await prisma.virTemplateQuestion.findUnique({
+    where: { id: questionId },
+    select: {
+      id: true,
+      section: {
+        select: {
+          templateId: true,
+          template: {
+            select: {
+              inspections: {
+                where: { isDeleted: false },
+                select: { id: true },
+                take: 1,
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!question) {
+    throw new Error("Question could not be found.");
+  }
+
+  if (question.section.template.inspections.length) {
+    throw new Error("Create a new template version before deleting questions from a template already used by inspections.");
+  }
+
+  await prisma.virTemplateQuestion.delete({
+    where: { id: questionId },
+  });
+
+  revalidateVirPaths();
+  revalidatePath(`/templates/${question.section.templateId}/edit`);
+}
+
+export async function deleteDraftInspectionAction(inspectionId: string) {
+  const session = await requireVirSession();
+  ensureOffice(session);
+
+  const inspection = await prisma.virInspection.findUnique({
+    where: { id: inspectionId },
+    select: { id: true, status: true, isDeleted: true },
+  });
+
+  if (!inspection) {
+    throw new Error("Inspection could not be found.");
+  }
+
+  if (inspection.isDeleted) {
+    return;
+  }
+
+  if (inspection.status !== "DRAFT") {
+    throw new Error("Only draft inspections can be deleted.");
+  }
+
+  await prisma.virInspection.update({
+    where: { id: inspectionId },
+    data: {
+      isDeleted: true,
+      deletedAt: new Date(),
+      deletedBy: session.actorName,
+    },
+  });
+
+  revalidateVirPaths();
 }
 
 export async function createInspectionAction(formData: FormData) {
@@ -861,4 +1585,96 @@ export async function submitTemplateImportAction(formData: FormData) {
 
   revalidateVirPaths();
   redirect(`/imports?session=${importSessionId}`);
+}
+
+export async function createTemplateFromImportAction(sessionId: string) {
+  const session = await requireVirSession();
+  ensureOffice(session);
+
+  const importSession = await prisma.virImportSession.findUnique({
+    where: { id: sessionId },
+    select: {
+      id: true,
+      status: true,
+      payload: true,
+      inspectionTypeId: true,
+      inspectionType: { select: { id: true, name: true } },
+    },
+  });
+
+  if (!importSession) {
+    throw new Error("Import session not found.");
+  }
+
+  if (importSession.status !== "COMMITTED") {
+    throw new Error("Only COMMITTED import sessions can be promoted to templates.");
+  }
+
+  const { normalized } = normalizeVirTemplateImport(importSession.payload);
+
+  const inspectionType = importSession.inspectionType ??
+    await prisma.virInspectionType.findFirst({
+      where: { code: normalized.inspectionTypeCode },
+      select: { id: true, name: true },
+    });
+
+  if (!inspectionType) {
+    throw new Error(`Inspection type '${normalized.inspectionTypeCode}' not found. Register it before promoting this import.`);
+  }
+
+  const existing = await prisma.virTemplate.findFirst({
+    where: { inspectionTypeId: inspectionType.id, version: normalized.version },
+    select: { id: true },
+  });
+
+  if (existing) {
+    revalidateVirPaths();
+    redirect(`/templates?type=${encodeURIComponent(inspectionType.name)}&template=${existing.id}`);
+  }
+
+  const created = await prisma.virTemplate.create({
+    data: {
+      inspectionTypeId: inspectionType.id,
+      name: normalized.templateName,
+      version: normalized.version,
+      description: normalized.description,
+      isActive: true,
+      sections: {
+        create: normalized.sections.map((section) => ({
+          code: section.code,
+          title: section.title,
+          guidance: section.guidance,
+          sortOrder: section.sortOrder,
+          questions: {
+            create: section.questions.map((question) => ({
+              code: question.code,
+              prompt: question.prompt,
+              responseType: question.responseType,
+              riskLevel: question.riskLevel,
+              isMandatory: question.isMandatory,
+              allowsObservation: question.allowsObservation,
+              allowsPhoto: question.allowsPhoto,
+              isCicCandidate: question.isCicCandidate,
+              cicTopic: question.cicTopic,
+              helpText: question.helpText,
+              referenceImageUrl: question.referenceImageUrl,
+              sortOrder: question.sortOrder,
+              options: {
+                create: question.options.map((option, optionIndex) => ({
+                  value: option.value,
+                  label: option.label,
+                  score: option.score,
+                  sortOrder: optionIndex + 1,
+                })),
+              },
+            })),
+          },
+        })),
+      },
+    },
+    select: { id: true },
+  });
+
+  revalidateVirPaths();
+  redirect(`/templates?type=${encodeURIComponent(inspectionType.name)}&template=${created.id}`);
 }

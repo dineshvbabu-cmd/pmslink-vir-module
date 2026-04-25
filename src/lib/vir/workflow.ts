@@ -105,11 +105,24 @@ export function toneForRisk(level: VirRiskLevel) {
 }
 
 export async function syncInspectionCounters(inspectionId: string) {
-  const grouped = await prisma.virFinding.groupBy({
-    by: ["findingType"],
-    where: { inspectionId },
-    _count: { _all: true },
-  });
+  const [grouped, answers] = await Promise.all([
+    prisma.virFinding.groupBy({
+      by: ["findingType"],
+      where: { inspectionId },
+      _count: { _all: true },
+    }),
+    prisma.virAnswer.findMany({
+      where: { inspectionId },
+      include: {
+        question: {
+          include: {
+            options: true,
+            answerLibraryType: { include: { items: { where: { isActive: true } } } },
+          },
+        },
+      },
+    }),
+  ]);
 
   const totals = grouped.reduce(
     (acc, row) => {
@@ -127,16 +140,91 @@ export async function syncInspectionCounters(inspectionId: string) {
           acc.recCount = row._count._all;
           break;
       }
-
       return acc;
     },
     { posCount: 0, obsCount: 0, ncCount: 0, recCount: 0 }
   );
 
+  const conditionScore = computeConditionScore(answers);
+
   await prisma.virInspection.update({
     where: { id: inspectionId },
-    data: totals,
+    data: { ...totals, conditionScore },
   });
+}
+
+function computeConditionScore(
+  answers: Array<{
+    answerText: string | null;
+    answerBoolean: boolean | null;
+    selectedOptions: unknown;
+    question: {
+      responseType: string;
+      options: Array<{ value: string; score: number | null }>;
+      answerLibraryType: { items: Array<{ code: string | null; label: string; metadata: unknown }> } | null;
+    };
+  }>
+): number | null {
+  const scoredValues: number[] = [];
+
+  for (const answer of answers) {
+    const q = answer.question;
+
+    // Resolve scored options from library items or inline options
+    const libraryItems = q.answerLibraryType?.items ?? [];
+    const inlineOptions = q.options;
+
+    function scoreFromLibraryItem(code: string): number | null {
+      const item = libraryItems.find(
+        (i) => (i.code ?? i.label.toUpperCase()) === code.toUpperCase()
+      );
+      if (!item?.metadata || typeof item.metadata !== "object") return null;
+      const meta = item.metadata as Record<string, unknown>;
+      return typeof meta.score === "number" ? meta.score : null;
+    }
+
+    function scoreFromInlineOption(value: string): number | null {
+      const option = inlineOptions.find((o) => o.value === value);
+      return option?.score ?? null;
+    }
+
+    switch (q.responseType) {
+      case "YES_NO_NA": {
+        const val = answer.answerText;
+        if (val === "YES") scoredValues.push(100);
+        else if (val === "NO") scoredValues.push(0);
+        // NA / null = no contribution
+        break;
+      }
+      case "SINGLE_SELECT": {
+        const val = answer.answerText;
+        if (!val) break;
+        const libScore = scoreFromLibraryItem(val);
+        const inlineScore = scoreFromInlineOption(val);
+        const resolved = libScore ?? inlineScore;
+        if (typeof resolved === "number") scoredValues.push(resolved);
+        break;
+      }
+      case "MULTI_SELECT": {
+        const selected = Array.isArray(answer.selectedOptions) ? answer.selectedOptions as string[] : [];
+        const multiScores = selected
+          .map((v) => {
+            const lib = scoreFromLibraryItem(v);
+            const inline = scoreFromInlineOption(v);
+            return lib ?? inline;
+          })
+          .filter((s): s is number => typeof s === "number");
+        if (multiScores.length > 0) {
+          scoredValues.push(multiScores.reduce((a, b) => a + b, 0) / multiScores.length);
+        }
+        break;
+      }
+    }
+  }
+
+  if (scoredValues.length === 0) return null;
+  const avg = scoredValues.reduce((a, b) => a + b, 0) / scoredValues.length;
+  return Math.round(avg * 10) / 10;
 }
 
 export function toDateOrNull(value: FormDataEntryValue | null) {

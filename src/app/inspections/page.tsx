@@ -1,6 +1,7 @@
 import type { VirInspectionTypeCategory } from "@prisma/client";
 import Link from "next/link";
-import { Eye, FileText, LayoutGrid, TableProperties, TriangleAlert } from "lucide-react";
+import { Eye, FileText, LayoutGrid, TableProperties, Trash2, TriangleAlert } from "lucide-react";
+import { deleteDraftInspectionAction } from "@/app/actions";
 import { ActionIconLink } from "@/components/action-icon-link";
 import { prisma } from "@/lib/prisma";
 import { summarizeProgress } from "@/lib/vir/analytics";
@@ -79,6 +80,7 @@ type InspectionRow = {
   inspectionMode: string;
   syncLabel: "Synced" | "Not Synced";
   placeOfInspection: string;
+  conditionScore: number | null;
 };
 
 export default async function InspectionsPage({
@@ -102,16 +104,18 @@ export default async function InspectionsPage({
 
   const where =
     session.workspace === "OFFICE"
-      ? {
-          status: { not: "ARCHIVED" as const },
-          inspectionType: { is: { category: { in: visibleInspectionCategories } } },
-          ...(selectedVesselId ? { vesselId: selectedVesselId } : {}),
-        }
-      : {
-          vesselId: session.vesselId ?? "",
-          status: { not: "ARCHIVED" as const },
-          inspectionType: { is: { category: { in: visibleInspectionCategories } } },
-        };
+    ? {
+        isDeleted: false,
+        status: { not: "ARCHIVED" as const },
+        inspectionType: { is: { category: { in: visibleInspectionCategories } } },
+        ...(selectedVesselId ? { vesselId: selectedVesselId } : {}),
+      }
+    : {
+        vesselId: session.vesselId ?? "",
+        isDeleted: false,
+        status: { not: "ARCHIVED" as const },
+        inspectionType: { is: { category: { in: visibleInspectionCategories } } },
+      };
 
   const [inspections, vessels] = await Promise.all([
     prisma.virInspection.findMany({
@@ -632,6 +636,17 @@ function InspectionRegisterGrid({
                       tone="warning"
                     />
                   ) : null}
+                  {isOffice && inspection.status === "DRAFT" ? (
+                    <form action={deleteDraftInspectionAction.bind(null, inspection.id)}>
+                      <button
+                        className="action-icon-button action-icon-button-danger"
+                        title="Delete draft inspection"
+                        type="submit"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </form>
+                  ) : null}
                 </div>
               </td>
             </tr>
@@ -684,6 +699,11 @@ function SummaryInspectionView({
             ) : null}
             <span className="chip chip-warning">Mandatory {inspection.progress.answeredMandatory}/{inspection.progress.mandatoryQuestions}</span>
             <span className="chip chip-danger">Findings {inspection.findings.length}</span>
+            {inspection.conditionScore !== null && inspection.conditionScore !== undefined ? (
+              <span className={`chip ${inspection.conditionScore >= 75 ? "chip-success" : inspection.conditionScore >= 40 ? "chip-warning" : "chip-danger"}`}>
+                {inspection.conditionScore}%
+              </span>
+            ) : null}
             <span className={`chip ${inspection.syncLabel === "Synced" ? "chip-success" : "chip-danger"}`}>{inspection.syncLabel}</span>
           </div>
 
