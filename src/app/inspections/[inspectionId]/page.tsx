@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Eye, FileText, TriangleAlert } from "lucide-react";
+import { Edit, Eye, FileText, TriangleAlert } from "lucide-react";
 import {
   addCorrectiveActionAction,
   addFindingAction,
   addSignOffAction,
   saveInspectionAnswersAction,
+  saveInspectionHeaderAction,
   updateCorrectiveActionStatusAction,
   updateFindingStatusAction,
   updateInspectionStatusAction,
@@ -40,17 +41,18 @@ import {
 export const dynamic = "force-dynamic";
 
 const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+const fmtDate = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
 
 export default async function InspectionDetailPage({
   params,
   searchParams,
 }: {
   params: Promise<{ inspectionId: string }>;
-  searchParams: Promise<{ pane?: string; section?: string }>;
+  searchParams: Promise<{ pane?: string; section?: string; findingQ?: string }>;
 }) {
   const session = await requireVirSession();
   const { inspectionId } = await params;
-  const { pane, section } = await searchParams;
+  const { pane, section, findingQ } = await searchParams;
 
   const inspection = await prisma.virInspection.findUnique({
     where: { id: inspectionId },
@@ -156,9 +158,6 @@ export default async function InspectionDetailPage({
   const templateQuestionCount = liveChecklist
     ? liveChecklist.summary.questionCount
     : inspection.template?.sections.reduce((sum, section) => sum + section.questions.length, 0) ?? 0;
-  const pendingCorrectiveActions = inspection.findings
-    .flatMap((finding) => finding.correctiveActions)
-    .filter((action) => ["OPEN", "IN_PROGRESS", "REJECTED"].includes(action.status)).length;
   const concentratedQuestions = liveChecklist
     ? liveSections.flatMap((section) =>
         section.subsections.flatMap((subsection) => subsection.questions.filter((question) => question.isCicCandidate))
@@ -200,34 +199,7 @@ export default async function InspectionDetailPage({
     ? inspection.template?.sections.find((item) => item.id === selectedSectionId) ?? inspection.template?.sections[0] ?? null
     : null;
   const selectedSection = liveSelectedSection ?? legacySelectedSection;
-  const selectedSectionQuestionCount = liveChecklist
-    ? liveSelectedSection?.summary?.questionCount ?? 0
-    : legacySelectedSection?.questions.length ?? 0;
-  const selectedSectionMandatoryCount = liveChecklist
-    ? liveSelectedSection?.subsections?.reduce(
-        (sum: number, subsection: any) => sum + (subsection.rating?.mandatoryQuestions ?? 0),
-        0
-      ) ?? 0
-    : legacySelectedSection?.questions.filter((question: any) => question.isMandatory).length ?? 0;
-  const selectedSectionFocusCount = liveChecklist
-    ? liveSelectedSection?.subsections?.reduce(
-        (sum: number, subsection: any) =>
-          sum + subsection.questions.filter((question: any) => question.isCicCandidate).length,
-        0
-      ) ?? 0
-    : legacySelectedSection?.questions.filter((question: any) => question.isCicCandidate).length ?? 0;
-  const selectedSectionQuestionBindings = liveChecklist && liveSelectedSection
-    ? collectSectionQuestionBindings(liveSelectedSection, dbQuestionByPrompt, dbQuestionByCode, answerMap)
-    : [];
-  const selectedSectionAnsweredCount = liveChecklist
-    ? selectedSectionQuestionBindings.filter((item) => isSavedAnswer(item.answer)).length
-    : legacySelectedSection?.questions.filter((question: any) => isSavedAnswer(answerMap.get(question.id))).length ?? 0;
-  const selectedSectionVisualCount = liveChecklist
-    ? selectedSectionQuestionBindings.reduce((sum, item) => sum + item.uploads.length, 0)
-    : legacySelectedSection?.questions.reduce(
-        (sum: number, question: any) => sum + (answerMap.get(question.id)?.photos.length ?? 0),
-        0
-      ) ?? 0;
+
   const narrativeMetadata =
     inspection.metadata && typeof inspection.metadata === "object" && !Array.isArray(inspection.metadata)
       ? (inspection.metadata as Record<string, unknown>)
@@ -236,10 +208,13 @@ export default async function InspectionDetailPage({
   const vesselProfile = buildVesselProfile(inspection.vessel);
   const selectedSectionQuery = selectedSectionId ? `&section=${selectedSectionId}` : "";
   const historyHref = `/inspections?scope=history&vesselId=${inspection.vesselId}`;
+  const closeHref = `/inspections/${inspection.id}?pane=${activePane}${selectedSectionQuery}`;
 
   const saveAnswers = saveInspectionAnswersAction.bind(null, inspection.id);
+  const saveHeader = saveInspectionHeaderAction.bind(null, inspection.id);
   const addFinding = addFindingAction.bind(null, inspection.id);
   const addSignOff = addSignOffAction.bind(null, inspection.id);
+
   const questionOptions = questions.map((question) => ({
     id: question.id,
     label: `${question.code} / ${question.prompt}`,
@@ -249,829 +224,1020 @@ export default async function InspectionDetailPage({
     label: finding.title,
   }));
 
+  const pendingCorrectiveActions = inspection.findings
+    .flatMap((finding) => finding.correctiveActions)
+    .filter((action) => ["OPEN", "IN_PROGRESS", "REJECTED"].includes(action.status)).length;
+
+  const approvedSignOffs = inspection.signOffs.filter((item) => item.approved);
+  const refNo = inspection.externalReference ?? inspection.title;
+
+  // Finding question panel data
+  const findingQuestion = findingQ
+    ? questions.find((q) => q.id === findingQ) ?? null
+    : null;
+
   return (
     <div className="page-stack">
       <Link className="back-link" href={historyHref} scroll={false}>
-        <ArrowLeft size={16} />
-        <span>Back to inspection history</span>
+        ← Back to inspection history
       </Link>
 
-      <section className="hero-panel">
-        <div>
-          <div className="meta-row">
-            <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>
-              {inspectionStatusLabel[inspection.status]}
+      {/* ── Synergy-style report header bar ── */}
+      <div className="panel panel-elevated" style={{ padding: 0, overflow: "hidden" }}>
+        <div className="vir-report-topbar">
+          <span className="vir-report-topbar-vessel">{inspection.vessel.name}</span>
+          <span className="vir-report-topbar-sep">|</span>
+          <span className="vir-report-topbar-refno">{refNo}</span>
+          <span className="vir-report-topbar-sep">|</span>
+          <span className={`chip ${toneForInspectionStatus(inspection.status)}`} style={{ fontSize: "0.76rem" }}>
+            {inspectionStatusLabel[inspection.status]}
+          </span>
+          {approvedSignOffs.length > 0 ? (
+            <span style={{ fontSize: "0.78rem", opacity: 0.9 }}>
+              ({approvedSignOffs.map((s) => s.actorName).filter(Boolean).join(", ")})
             </span>
-            <span className="chip chip-info">{inspection.inspectionType.name}</span>
-            {inspection.template ? <span className="chip chip-warning">{inspection.template.name}</span> : null}
-            {inspection.template ? <span className="chip chip-muted">v{inspection.template.version}</span> : null}
-            <span className={`chip ${isOfficeSession(session) ? "chip-info" : "chip-success"}`}>
-              {isOfficeSession(session) ? "Office lane" : "Vessel lane"}
-            </span>
-            {inspection.conditionScore !== null && inspection.conditionScore !== undefined ? (
-              <span className={`chip ${inspection.conditionScore >= 75 ? "chip-success" : inspection.conditionScore >= 40 ? "chip-warning" : "chip-danger"}`}>
-                {inspection.conditionScore >= 75 ? "Good condition" : inspection.conditionScore >= 40 ? "Fair condition" : "Poor condition"} {inspection.conditionScore}%
-              </span>
-            ) : null}
-          </div>
-          <h2 className="hero-title" style={{ marginTop: "0.55rem" }}>
-            {inspection.title}
-          </h2>
-          <p className="hero-copy">
-            {inspection.vessel.name} / {fmt.format(inspection.inspectionDate)}
-            {inspection.port ? ` / ${inspection.port}` : ""}
-            {inspection.country ? ` / ${inspection.country}` : ""}
-          </p>
-        </div>
-
-        <div className="actions-row">
-          <Link className="btn-secondary" href={`/reports/inspection/${inspection.id}?variant=detailed`} scroll={false}>
-            Detailed report
-          </Link>
-          <Link className="btn-secondary" href={`/reports/inspection/${inspection.id}?variant=summary`} scroll={false}>
-            Summary report
-          </Link>
-          <Link className="btn-secondary" href={`/reports/inspection/${inspection.id}?variant=findings`} scroll={false}>
-            Finding report
-          </Link>
-          <Link className="btn-secondary" href={`/reports/inspection/${inspection.id}?variant=consolidate`} scroll={false}>
-            Consolidate report
-          </Link>
-          <a className="btn-secondary" href={`/api/reports/inspection/${inspection.id}/pdf?variant=detailed`}>
-            PDF
-          </a>
-          {isVesselSession(session) ? (
-            <form action={updateInspectionStatusAction.bind(null, inspection.id, "SUBMITTED")}>
-              <SubmitButton className="btn">Submit to office</SubmitButton>
-            </form>
           ) : null}
-
-          {isOfficeSession(session) ? (
-            <>
-              <form action={updateInspectionStatusAction.bind(null, inspection.id, "RETURNED")}>
-                <SubmitButton className="btn-danger">Return to vessel</SubmitButton>
+          <div className="vir-report-topbar-progress">
+            <div className="vir-progress-track">
+              <div className="vir-progress-fill" style={{ width: `${progress.completionPct}%` }} />
+            </div>
+            <span style={{ fontSize: "0.78rem" }}>{progress.completionPct}%</span>
+          </div>
+          <div className="vir-report-topbar-actions">
+            {isVesselSession(session) ? (
+              <form action={updateInspectionStatusAction.bind(null, inspection.id, "SUBMITTED")}>
+                <SubmitButton className="btn btn-compact" style={{ fontSize: "0.78rem", padding: "0.3rem 0.7rem" }}>
+                  Send for approval
+                </SubmitButton>
               </form>
-              <form action={updateInspectionStatusAction.bind(null, inspection.id, "SHORE_REVIEWED")}>
-                <SubmitButton className="btn-secondary">Mark shore reviewed</SubmitButton>
-              </form>
+            ) : null}
+            {isOfficeSession(session) && inspection.status === "SUBMITTED" ? (
+              <>
+                <form action={updateInspectionStatusAction.bind(null, inspection.id, "RETURNED")}>
+                  <SubmitButton className="btn-danger btn-compact" style={{ fontSize: "0.78rem", padding: "0.3rem 0.7rem" }}>
+                    Return
+                  </SubmitButton>
+                </form>
+                <form action={updateInspectionStatusAction.bind(null, inspection.id, "SHORE_REVIEWED")}>
+                  <SubmitButton className="btn-secondary btn-compact" style={{ fontSize: "0.78rem", padding: "0.3rem 0.7rem" }}>
+                    Approve
+                  </SubmitButton>
+                </form>
+              </>
+            ) : null}
+            {isOfficeSession(session) && ["SHORE_REVIEWED"].includes(inspection.status) ? (
               <form action={updateInspectionStatusAction.bind(null, inspection.id, "CLOSED")}>
                 <SubmitButton
-                  className="btn"
-                  confirmMessage="Close VIR only after questionnaire review, findings review, evidence review, and required sign-offs are complete. Continue?"
+                  className="btn btn-compact"
+                  confirmMessage="Close VIR after all reviews and sign-offs are complete. Continue?"
+                  style={{ fontSize: "0.78rem", padding: "0.3rem 0.7rem" }}
                 >
                   Close VIR
                 </SubmitButton>
               </form>
-            </>
-          ) : null}
+            ) : null}
+            <Link
+              className="btn-secondary btn-compact"
+              href={`/inspections/${inspection.id}?pane=questionnaire&section=${selectedSectionId}&findingQ=__show`}
+              scroll={false}
+              style={{ fontSize: "0.78rem", padding: "0.3rem 0.7rem" }}
+            >
+              Show defects only
+            </Link>
+            <a
+              className="btn-secondary btn-compact"
+              href={`/api/reports/inspection/${inspection.id}/pdf?variant=detailed`}
+              style={{ fontSize: "0.78rem", padding: "0.3rem 0.7rem" }}
+            >
+              PDF
+            </a>
+            <Link
+              className="btn-secondary btn-compact"
+              href={`/reports/inspection/${inspection.id}?variant=detailed`}
+              scroll={false}
+              style={{ fontSize: "0.78rem", padding: "0.3rem 0.7rem" }}
+            >
+              Full report
+            </Link>
+          </div>
         </div>
-      </section>
 
+        {/* Pane navigation tabs */}
+        <div className="vir-pane-tabs">
+          {[
+            { id: "details", label: "Report Details", note: `Vessel & audit header` },
+            { id: "questionnaire", label: "Checklist", note: `${templateQuestionCount} questions` },
+            { id: "findings", label: "Findings", note: `${inspection.findings.length} active` },
+            { id: "evidence", label: "Evidence", note: `${inspection.photos.length} synced` },
+            { id: "signoff", label: "Sign-off", note: `${inspection.signOffs.length} records` },
+          ].map((item) => (
+            <Link
+              className={`vir-pane-tab ${activePane === item.id ? "vir-pane-tab-active" : ""}`}
+              href={`/inspections/${inspection.id}?pane=${item.id}${selectedSectionQuery}`}
+              key={item.id}
+              scroll={false}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Metrics strip ── */}
       <section className="erp-metrics-grid">
+        <MetricBox label="Completion" value={`${progress.completionPct}%`} note={`${progress.answeredQuestions}/${progress.totalQuestions} answered`} />
+        <MetricBox label="Mandatory" value={`${progress.answeredMandatory}/${progress.mandatoryQuestions}`} note={`${progress.mandatoryPct}% coverage`} />
         <MetricBox
-          label="Completion"
-          value={`${progress.completionPct}%`}
-          note={`${progress.answeredQuestions}/${progress.totalQuestions} answered`}
+          label="Condition"
+          value={inspection.conditionScore !== null && inspection.conditionScore !== undefined ? `${inspection.conditionScore}%` : score.rawAverage !== null ? `${Math.round(score.rawAverage)}%` : "n/a"}
+          note="Derived from scored answers"
         />
-        <MetricBox
-          label="Mandatory"
-          value={`${progress.answeredMandatory}/${progress.mandatoryQuestions}`}
-          note={`${progress.mandatoryPct}% mandatory coverage`}
-        />
-        <MetricBox
-          label="Vessel condition"
-          value={
-            inspection.conditionScore !== null && inspection.conditionScore !== undefined
-              ? `${inspection.conditionScore}%`
-              : score.rawAverage !== null
-                ? `${Math.round(score.rawAverage)}%`
-                : "n/a"
-          }
-          note={
-            inspection.conditionScore !== null && inspection.conditionScore !== undefined
-              ? "Scored from GFPUNN / YNN answers"
-              : "Builds after first answer save"
-          }
-        />
-        <MetricBox
-          label="Readiness score"
-          value={score.finalScore !== null ? `${score.finalScore}` : "n/a"}
-          note={score.rawAverage !== null ? `Avg ${score.rawAverage} — penalty ${score.penaltyPoints}` : "Adjusted for open findings"}
-        />
-        <MetricBox
-          label="Open findings"
-          value={`${inspection.findings.filter((finding) => finding.status !== "CLOSED").length}`}
-          note={`${inspection.ncCount} NC / ${inspection.obsCount} Obs / ${inspection.recCount} Rec`}
-        />
-        <MetricBox label="Pending CAR" value={`${pendingCorrectiveActions}`} note="Open, in progress, or rejected" />
-        <MetricBox
-          label="Approved sign-offs"
-          value={`${inspection.signOffs.filter((item) => item.approved).length}`}
-          note="Workflow audit trail"
-        />
+        <MetricBox label="Readiness" value={score.finalScore !== null ? `${score.finalScore}` : "n/a"} note={`Avg ${score.rawAverage ?? "—"} / penalty ${score.penaltyPoints}`} />
+        <MetricBox label="Open findings" value={`${inspection.findings.filter((f) => f.status !== "CLOSED").length}`} note={`${inspection.ncCount} NC / ${inspection.obsCount} Obs`} />
+        <MetricBox label="Pending CAR" value={`${pendingCorrectiveActions}`} note="Open or in progress" />
+        <MetricBox label="Sign-offs" value={`${approvedSignOffs.length}`} note="Approved workflow records" />
         <MetricBox label="Evidence" value={`${inspection.photos.length}`} note="Synced photo records" />
       </section>
 
-      <details className="panel panel-elevated inspection-snapshot-shell">
-        <summary className="inspection-snapshot-summary">
-          <div>
-            <h3 className="panel-title">Vessel workflow snapshot</h3>
-            <p className="panel-subtitle">Expand for particulars, component configuration, machinery context, and scoring guides.</p>
-          </div>
-          <span className="chip chip-muted">Expandable</span>
-        </summary>
-
-        <div className="inspection-snapshot-body">
-          <div className="inspection-snapshot-toolbar">
-            <Link className="btn-secondary btn-compact" href={`/vessels/${inspection.vesselId}`} scroll={false}>
-              Open vessel details
-            </Link>
-          </div>
-
-          <div className="report-detail-grid report-detail-grid-compact">
-            {vesselProfile.principalParticulars.slice(0, 6).map((item) => (
-              <MetricBox compact key={item.label} label={item.label} value={item.value} note="Vessel particulars" />
-            ))}
-          </div>
-
-          <div className="table-shell table-shell-compact inspection-snapshot-components">
-            <table className="table data-table vir-data-table">
-              <thead>
-                <tr>
-                  <th>Component</th>
-                  <th>Configuration</th>
-                </tr>
-              </thead>
-              <tbody>
-                {vesselProfile.componentConfiguration.slice(0, 6).map((item) => (
-                  <tr key={item.label}>
-                    <td>{item.label}</td>
-                    <td>{item.value}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="inspection-snapshot-grid">
-            <div className="list-card">
-              <div className="list-card-title">Machinery particulars</div>
-              <div className="report-detail-grid inspection-snapshot-detail-grid">
-                {vesselProfile.machineryBlocks.slice(0, 3).flatMap((block) =>
-                  block.rows.slice(0, 2).map((item) => (
-                    <DetailRow key={`${block.title}-${item.label}`} label={`${block.title} / ${item.label}`} value={item.value} />
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="list-card">
-              <div className="list-card-title">Inspection scoring guides</div>
-              <div className="report-detail-grid inspection-snapshot-detail-grid">
-                <DetailRow
-                  label="Vessel rating"
-                  value={`${vesselProfile.vesselRatingGuide[0]?.rating ?? "High"} / ${vesselProfile.vesselRatingGuide[1]?.rating ?? "Medium"} / ${vesselProfile.vesselRatingGuide[2]?.rating ?? "Low"}`}
-                />
-                <DetailRow
-                  label="Condition scoring"
-                  value={`${vesselProfile.vesselConditionGuide.length} reference rows available`}
-                />
-                <DetailRow label="Section configuration" value={`${sectionNavigation.length} questionnaire sections`} />
-                <DetailRow label="Question bank" value={`${templateQuestionCount} inspection questions`} />
-              </div>
-            </div>
-          </div>
-        </div>
-      </details>
-
-      <section className="workspace-console-shell">
-        <aside className="workspace-console-rail">
-          <section className="panel panel-elevated">
-            <div className="section-header">
-              <div>
-                <div className="eyebrow">Inspection workspace</div>
-                <h3 className="panel-title">Work lanes</h3>
-              </div>
-            </div>
-            <div className="stack-list">
-              {[ 
-                { id: "questionnaire", label: "Questionnaire", note: `${templateQuestionCount} questions` },
-                { id: "findings", label: "Findings", note: `${inspection.findings.length} active items` },
-                { id: "evidence", label: "Evidence", note: `${inspection.photos.length} synced images` },
-                { id: "signoff", label: "Sign-off", note: `${inspection.signOffs.length} workflow records` },
-              ].map((item) => (
-                <Link
-                  className={`section-nav-link ${activePane === item.id ? "section-nav-link-active" : ""}`}
-                  href={`/inspections/${inspection.id}?pane=${item.id}${selectedSectionQuery}`}
-                  key={item.id}
-                  scroll={false}
-                >
-                  <span>{item.label}</span>
-                  <span className="small-text">{item.note}</span>
-                </Link>
+      {/* ── PANE: Report Details ── */}
+      {activePane === "details" ? (
+        <div className="vir-details-pane panel panel-elevated" style={{ padding: 0 }}>
+          {/* Vessel Particulars */}
+          <div className="vir-report-section">
+            <div className="vir-report-section-title">Vessel Particulars</div>
+            <div className="vir-detail-grid">
+              <VirField label="Vessel Name" value={inspection.vessel.name} />
+              <VirField label="IMO Number" value={inspection.vessel.imoNumber ?? "—"} />
+              <VirField label="Flag Registry" value={inspection.vessel.flag ?? "—"} />
+              <VirField label="Vessel Type" value={inspection.vessel.vesselType ?? "—"} />
+              <VirField label="Fleet" value={inspection.vessel.fleet ?? "—"} />
+              {vesselProfile.principalParticulars.slice(0, 4).map((item) => (
+                <VirField key={item.label} label={item.label} value={item.value} />
               ))}
             </div>
-          </section>
+          </div>
 
-          <section className="panel panel-elevated">
-            <h3 className="panel-title">Inspection metadata</h3>
-            <div className="stack-list" style={{ marginTop: "1rem" }}>
-              <div className="list-card">
-                <strong>Inspection / checklist / questionnaire</strong>
-                <div className="small-text">{inspection.inspectionType.name}</div>
-                <div className="small-text">
-                  {inspection.template ? `${inspection.template.name} / v${inspection.template.version}` : "No template attached"}
+          {/* Internal Audit Inspection */}
+          <div className="vir-report-section">
+            <div className="vir-report-section-title">Inspection Details</div>
+            <form action={saveHeader}>
+              <div className="vir-detail-grid" style={{ marginBottom: "0.8rem" }}>
+                <VirField label="Vessel Name" value={inspection.vessel.name} />
+                <VirField label="Audit Type" value={inspection.inspectionType.name} />
+                <VirField label="Audit From Date" value={fmtDate.format(inspection.inspectionDate)} />
+                <div className="vir-detail-field">
+                  <span className="vir-detail-label">Audit From Time</span>
+                  <input
+                    className="field-input"
+                    defaultValue={typeof narrativeMetadata.auditFromTime === "string" ? narrativeMetadata.auditFromTime : ""}
+                    disabled={!canEditInspection}
+                    name="auditFromTime"
+                    placeholder="e.g. 09:00 AM"
+                    style={{ padding: "0.25rem 0.4rem", fontSize: "0.85rem" }}
+                    type="text"
+                  />
                 </div>
-                <div className="small-text">
-                  {sectionNavigation.length} sections / {templateQuestionCount} questions
+                <div className="vir-detail-field">
+                  <span className="vir-detail-label">Audit To Date</span>
+                  <input
+                    className="field-input"
+                    defaultValue={typeof narrativeMetadata.auditEndDate === "string" ? narrativeMetadata.auditEndDate : ""}
+                    disabled={!canEditInspection}
+                    name="auditEndDate"
+                    style={{ padding: "0.25rem 0.4rem", fontSize: "0.85rem" }}
+                    type="date"
+                  />
+                </div>
+                <div className="vir-detail-field">
+                  <span className="vir-detail-label">Audit To Time</span>
+                  <input
+                    className="field-input"
+                    defaultValue={typeof narrativeMetadata.auditToTime === "string" ? narrativeMetadata.auditToTime : ""}
+                    disabled={!canEditInspection}
+                    name="auditToTime"
+                    placeholder="e.g. 05:00 PM"
+                    style={{ padding: "0.25rem 0.4rem", fontSize: "0.85rem" }}
+                    type="text"
+                  />
+                </div>
+                <VirField label="Place of Audit" value={[inspection.port, inspection.country].filter(Boolean).join(", ") || "—"} />
+                <div className="vir-detail-field">
+                  <span className="vir-detail-label">Port of Disembarkation</span>
+                  <input
+                    className="field-input"
+                    defaultValue={typeof narrativeMetadata.portOfDisembarkation === "string" ? narrativeMetadata.portOfDisembarkation : ""}
+                    disabled={!canEditInspection}
+                    name="portOfDisembarkation"
+                    placeholder="Port name"
+                    style={{ padding: "0.25rem 0.4rem", fontSize: "0.85rem" }}
+                    type="text"
+                  />
+                </div>
+                <div className="vir-detail-field">
+                  <span className="vir-detail-label">Audit Based on Incidents?</span>
+                  <select
+                    className="field-input"
+                    defaultValue={typeof narrativeMetadata.auditBasedOnIncidents === "string" ? narrativeMetadata.auditBasedOnIncidents : "No"}
+                    disabled={!canEditInspection}
+                    name="auditBasedOnIncidents"
+                    style={{ padding: "0.25rem 0.4rem", fontSize: "0.85rem" }}
+                  >
+                    <option value="No">No</option>
+                    <option value="Yes">Yes</option>
+                  </select>
+                </div>
+                <div className="vir-detail-field">
+                  <span className="vir-detail-label">Audit Based on External?</span>
+                  <select
+                    className="field-input"
+                    defaultValue={typeof narrativeMetadata.auditBasedOnExternal === "string" ? narrativeMetadata.auditBasedOnExternal : "No"}
+                    disabled={!canEditInspection}
+                    name="auditBasedOnExternal"
+                    style={{ padding: "0.25rem 0.4rem", fontSize: "0.85rem" }}
+                  >
+                    <option value="No">No</option>
+                    <option value="Yes">Yes</option>
+                  </select>
+                </div>
+                <div className="vir-detail-field">
+                  <span className="vir-detail-label">Operations at Time of Inspection</span>
+                  <input
+                    className="field-input"
+                    defaultValue={typeof narrativeMetadata.operationsAtTime === "string" ? narrativeMetadata.operationsAtTime : ""}
+                    disabled={!canEditInspection}
+                    name="operationsAtTime"
+                    placeholder="e.g. Berthing — Mooring"
+                    style={{ padding: "0.25rem 0.4rem", fontSize: "0.85rem" }}
+                    type="text"
+                  />
+                </div>
+                <div className="vir-detail-field">
+                  <span className="vir-detail-label">Audit Authority</span>
+                  <input
+                    className="field-input"
+                    defaultValue={typeof narrativeMetadata.auditAuthority === "string" ? narrativeMetadata.auditAuthority : ""}
+                    disabled={!canEditInspection}
+                    name="auditAuthority"
+                    placeholder="e.g. MSI, BV, LR"
+                    style={{ padding: "0.25rem 0.4rem", fontSize: "0.85rem" }}
+                    type="text"
+                  />
                 </div>
               </div>
-              <div className="list-card">
-                <strong>Inspector / operator</strong>
-                <div className="small-text">{inspection.inspectorName ?? "Not recorded"}</div>
+
+              {/* Auditor Details */}
+              <div className="vir-report-section-title">Auditor Details</div>
+              <div className="vir-detail-grid" style={{ marginBottom: "0.8rem" }}>
+                <VirField label="Auditor Name" value={inspection.inspectorName ?? "—"} />
+                <div className="vir-detail-field">
+                  <span className="vir-detail-label">Qualification</span>
+                  <input
+                    className="field-input"
+                    defaultValue={typeof narrativeMetadata.auditorQualification === "string" ? narrativeMetadata.auditorQualification : ""}
+                    disabled={!canEditInspection}
+                    name="auditorQualification"
+                    placeholder="e.g. Master / Internal Auditor"
+                    style={{ padding: "0.25rem 0.4rem", fontSize: "0.85rem" }}
+                    type="text"
+                  />
+                </div>
+                <div className="vir-detail-field">
+                  <span className="vir-detail-label">Command Experience</span>
+                  <input
+                    className="field-input"
+                    defaultValue={typeof narrativeMetadata.commandExperience === "string" ? narrativeMetadata.commandExperience : ""}
+                    disabled={!canEditInspection}
+                    name="commandExperience"
+                    placeholder="e.g. 50 months"
+                    style={{ padding: "0.25rem 0.4rem", fontSize: "0.85rem" }}
+                    type="text"
+                  />
+                </div>
+                <div className="vir-detail-field">
+                  <span className="vir-detail-label">Audit Experience</span>
+                  <input
+                    className="field-input"
+                    defaultValue={typeof narrativeMetadata.auditExperience === "string" ? narrativeMetadata.auditExperience : ""}
+                    disabled={!canEditInspection}
+                    name="auditExperience"
+                    placeholder="e.g. 24 months"
+                    style={{ padding: "0.25rem 0.4rem", fontSize: "0.85rem" }}
+                    type="text"
+                  />
+                </div>
               </div>
-              <div className="list-card">
-                <strong>Reference</strong>
-                <div className="small-text">{inspection.externalReference ?? "Not recorded"}</div>
-              </div>
-              {sectionNavigation.length ? (
-                <div className="list-card">
-                  <strong>Questionnaire navigation</strong>
-                  <div className="stack-list" style={{ marginTop: "0.75rem" }}>
-                    {sectionNavigation.map((sectionItem) => (
-                      <Link
-                        className={`section-nav-link ${selectedSectionId === sectionItem.sectionId ? "section-nav-link-active" : ""}`}
-                        href={`/inspections/${inspection.id}?pane=questionnaire&section=${sectionItem.sectionId}`}
-                        key={sectionItem.id}
-                        scroll={false}
-                      >
-                        <span>{sectionItem.title}</span>
-                        <span className="small-text">
-                          {sectionItem.questionCount} q / {sectionItem.mandatoryCount} mandatory
-                        </span>
-                      </Link>
-                    ))}
+
+              {/* Auditees */}
+              <div className="vir-report-section-title">Auditees</div>
+              <table className="vir-crew-table" style={{ marginBottom: "0.5rem" }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: "40px" }}>Sl.no</th>
+                    <th>Crew Name</th>
+                    <th>Rank</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {parseCrewList(narrativeMetadata.auditees).map((crew, i) => (
+                    <tr key={i}>
+                      <td>{i + 1}</td>
+                      <td>{crew.name}</td>
+                      <td>{crew.rank}</td>
+                    </tr>
+                  ))}
+                  {parseCrewList(narrativeMetadata.auditees).length === 0 ? (
+                    <tr><td colSpan={3} style={{ color: "var(--color-ink-soft)", fontStyle: "italic", textAlign: "center" }}>No auditees added yet</td></tr>
+                  ) : null}
+                </tbody>
+              </table>
+              {canEditInspection ? (
+                <div className="form-grid" style={{ marginBottom: "0.8rem" }}>
+                  <div className="field-wide">
+                    <label htmlFor="auditees">Auditees (one per line: Name, Rank)</label>
+                    <textarea
+                      defaultValue={typeof narrativeMetadata.auditees === "string" ? narrativeMetadata.auditees : ""}
+                      id="auditees"
+                      name="auditees"
+                      placeholder={"John Smith, Chief Officer\nSantos Cruz, 2nd Engineer"}
+                      rows={4}
+                    />
                   </div>
                 </div>
               ) : null}
-            </div>
-          </section>
-        </aside>
 
-        <div className="workspace-console-main">
-          {activePane === "questionnaire" ? (
-          <section className="panel panel-elevated" id="questionnaire">
-            <div className="section-header">
-              <div>
-                <h3 className="panel-title">Questionnaire execution</h3>
-                <p className="panel-subtitle">
-                  {isOfficeSession(session)
-                    ? "Office and vessel can both update the live answer set, upload evidence, and leave a tracked activity trail."
-                    : "Answer mandatory questions, capture evidence notes, and prepare for submission."}
-                </p>
+              {/* Opening / Closing Meeting Attendees */}
+              <div className="vir-report-section-title">Opening Meeting Attendees</div>
+              {canEditInspection ? (
+                <div className="form-grid" style={{ marginBottom: "0.8rem" }}>
+                  <div className="field-wide">
+                    <textarea
+                      defaultValue={typeof narrativeMetadata.openingMeetingAttendees === "string" ? narrativeMetadata.openingMeetingAttendees : ""}
+                      name="openingMeetingAttendees"
+                      placeholder={"John Smith, Chief Officer\nSantos Cruz, 2nd Engineer"}
+                      rows={3}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <table className="vir-crew-table" style={{ marginBottom: "0.5rem" }}>
+                  <thead><tr><th style={{ width: "40px" }}>Sl.no</th><th>Crew Name</th><th>Rank</th></tr></thead>
+                  <tbody>
+                    {parseCrewList(narrativeMetadata.openingMeetingAttendees).map((c, i) => (
+                      <tr key={i}><td>{i + 1}</td><td>{c.name}</td><td>{c.rank}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+
+              <div className="vir-report-section-title">Closing Meeting Attendees</div>
+              {canEditInspection ? (
+                <div className="form-grid" style={{ marginBottom: "0.8rem" }}>
+                  <div className="field-wide">
+                    <textarea
+                      defaultValue={typeof narrativeMetadata.closingMeetingAttendees === "string" ? narrativeMetadata.closingMeetingAttendees : ""}
+                      name="closingMeetingAttendees"
+                      placeholder={"John Smith, Chief Officer\nSantos Cruz, 2nd Engineer"}
+                      rows={3}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Summary */}
+              <div className="vir-report-section-title">Summary</div>
+              <div className="form-grid" style={{ marginBottom: "0.8rem" }}>
+                <div className="field-wide">
+                  <textarea
+                    defaultValue={inspection.summary ?? ""}
+                    disabled={!canEditInspection}
+                    name="summary"
+                    placeholder="Overall inspection summary and key observations..."
+                    rows={4}
+                  />
+                </div>
+              </div>
+
+              {canEditInspection ? (
+                <div style={{ display: "flex", justifyContent: "flex-end", padding: "0.5rem 0" }}>
+                  <SubmitButton className="btn">Save report details</SubmitButton>
+                </div>
+              ) : null}
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── PANE: Checklist (Synergy split-pane table) ── */}
+      {activePane === "questionnaire" ? (
+        <div className="checklist-shell">
+          {/* LEFT: Chapter tree */}
+          <div className="checklist-tree">
+            <div className="checklist-tree-header">
+              <div style={{ fontSize: "0.88rem", fontWeight: 800 }}>
+                {progress.completionPct}% COMPLETED
+              </div>
+              <div style={{ fontSize: "0.76rem", opacity: 0.85 }}>
+                {progress.answeredQuestions} / {templateQuestionCount}
+              </div>
+              <div className="checklist-tree-progress-bar">
+                <div className="checklist-tree-progress-fill" style={{ width: `${progress.completionPct}%` }} />
               </div>
             </div>
+            <div className="checklist-tree-tabs">
+              <span className="checklist-tree-tab checklist-tree-tab-active">Chapter</span>
+              <span className="checklist-tree-tab">Location</span>
+            </div>
+            {sectionNavigation.map((sectionItem) => {
+              const isActive = selectedSectionId === sectionItem.sectionId;
+              const liveSection = liveChecklist
+                ? liveSections.find((s) => s.id === sectionItem.sectionId)
+                : null;
+              const sectionBindings = liveSection
+                ? collectSectionQuestionBindings(liveSection, dbQuestionByPrompt, dbQuestionByCode, answerMap)
+                : [];
+              const answeredCount = liveChecklist
+                ? sectionBindings.filter((b) => isSavedAnswer(b.answer)).length
+                : (inspection.template?.sections
+                    .find((s) => s.id === sectionItem.sectionId)
+                    ?.questions.filter((q) => isSavedAnswer(answerMap.get(q.id))).length ?? 0);
+              const isComplete = answeredCount >= sectionItem.questionCount && sectionItem.questionCount > 0;
 
-            {!inspection.template ? (
-              <div className="empty-state">This inspection does not have a questionnaire template attached yet.</div>
-            ) : (
-              <form action={saveAnswers} className="page-stack">
-                {concentratedQuestions.length > 0 ? (
-                  <div className="focus-banner">
-                    <div>
-                      <strong>Concentrated inspection focus active</strong>
-                      <div className="small-text" style={{ marginTop: "0.25rem" }}>
-                        {concentratedQuestions.length} concentrated questions were detected from the imported template
-                        and are highlighted below for fast review.
-                      </div>
+              return (
+                <div className="checklist-tree-chapter" key={sectionItem.sectionId}>
+                  <Link
+                    className={`checklist-tree-chapter-link ${isActive ? "checklist-tree-chapter-link-active" : ""}`}
+                    href={`/inspections/${inspection.id}?pane=questionnaire&section=${sectionItem.sectionId}`}
+                    scroll={false}
+                  >
+                    <span style={{ flex: 1 }}>{sectionItem.title}</span>
+                    <span className="checklist-tree-chapter-count">
+                      {isComplete ? <span className="checklist-tree-check">✔</span> : null}
+                      {answeredCount}/{sectionItem.questionCount}
+                    </span>
+                  </Link>
+                  {isActive && liveSection ? (
+                    <div className="checklist-tree-sub">
+                      {liveSection.subsections.map((sub) => {
+                        const subAnswered = sub.questions.filter((q) => {
+                          const bq = findBoundQuestion(q, dbQuestionByPrompt, dbQuestionByCode);
+                          return bq ? isSavedAnswer(answerMap.get(bq.id)) : false;
+                        }).length;
+                        const subTotal = sub.questions.length;
+                        return (
+                          <div className="checklist-tree-sub-link" key={sub.id}>
+                            <span>{sub.title}</span>
+                            <span style={{ fontSize: "0.72rem", color: "var(--color-ink-soft)" }}>
+                              ({subAnswered}/{subTotal})
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div className="meta-row">
-                      {concentratedQuestions.slice(0, 4).map((question) => (
-                        <span className="chip chip-warning" key={question.id}>
-                          {question.code}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
+                  ) : isActive && legacySelectedSection ? null : null}
+                </div>
+              );
+            })}
+          </div>
 
-                {selectedSection ? (
-                  <section className="workspace-detail-frame">
-                    <div className="workspace-detail-header">
-                      <div>
-                        <h4 className="section-title">{selectedSection.title}</h4>
-                        <div className="small-text">
-                          {selectedSectionQuestionCount} questions / {selectedSectionMandatoryCount} mandatory /{" "}
-                          {selectedSectionFocusCount} CIR focus
-                        </div>
-                      </div>
-                      <div className="meta-row">
-                        <span className="chip chip-info">
-                          {liveChecklist ? selectedSection.id : ((selectedSection as any).code ?? "SECTION")}
-                        </span>
-                        <span className="chip chip-success">
-                          Section {sectionNavigation.findIndex((item) => item.sectionId === selectedSection.id) + 1} of{" "}
-                          {sectionNavigation.length}
-                        </span>
-                      </div>
-                    </div>
+          {/* RIGHT: Question table */}
+          <div className="checklist-main">
+            <div className="checklist-notes-bar">
+              Note: T – Tested &nbsp;|&nbsp; I – Inspected &nbsp;|&nbsp; NS – Not Sighted &nbsp;|&nbsp; NA – Not Applicable &nbsp;|&nbsp;
+              Score: 1 – Unsatisfactory / 2 – Fair / 3 – Good / 4 – Very Good / 5 – Excellent
+            </div>
 
-                     {!liveChecklist && (selectedSection as any).guidance ? (
-                       <p className="small-text">{(selectedSection as any).guidance}</p>
-                     ) : null}
+            {concentratedQuestions.length > 0 ? (
+              <div style={{ padding: "0.4rem 0.85rem", background: "var(--color-amber-soft)", borderBottom: "1px solid var(--color-border)", fontSize: "0.78rem", color: "var(--color-amber)" }}>
+                ⚡ {concentratedQuestions.length} concentrated inspection items detected
+              </div>
+            ) : null}
 
-                     <div className="questionnaire-summary-grid">
-                       <div className="questionnaire-summary-card">
-                         <span>Questions</span>
-                         <strong>{selectedSectionQuestionCount}</strong>
-                         <div className="small-text">Total questions in this section</div>
-                       </div>
-                       <div className="questionnaire-summary-card">
-                         <span>Mandatory</span>
-                         <strong>{selectedSectionMandatoryCount}</strong>
-                         <div className="small-text">Questions requiring completion before submission</div>
-                       </div>
-                       <div className="questionnaire-summary-card">
-                         <span>Answered</span>
-                         <strong>{selectedSectionAnsweredCount}</strong>
-                         <div className="small-text">Responses currently saved in this section</div>
-                       </div>
-                       <div className="questionnaire-summary-card">
-                         <span>Visuals</span>
-                         <strong>{selectedSectionVisualCount}</strong>
-                         <div className="small-text">Actual uploads linked to this section</div>
-                       </div>
-                     </div>
+            {selectedSection ? (
+              <div className="checklist-section-label">
+                {selectedSection.title}
+              </div>
+            ) : null}
 
-                     <div className="questionnaire-section-actions">
-                       <div>
-                         <strong>Section actions</strong>
-                         <div className="small-text" style={{ marginTop: "0.35rem" }}>
-                           Open the matching report, findings lane, or section summary without leaving the inspection workspace.
-                         </div>
-                       </div>
-                        <div className="table-actions table-actions-icons">
-                          <ActionIconLink
-                            href={`/reports/inspection/${inspection.id}?variant=summary&section=${selectedSection.id}`}
-                            icon={Eye}
-                            label="Section summary"
-                            tone="primary"
-                            scroll={false}
-                          />
-                          <ActionIconLink
-                            href={`/reports/inspection/${inspection.id}?variant=detailed&section=${selectedSection.id}`}
-                            icon={FileText}
-                            label="Detailed report"
-                            tone="success"
-                            scroll={false}
-                          />
-                          <ActionIconLink
-                            href={`/inspections/${inspection.id}?pane=findings${selectedSectionQuery}`}
-                            icon={TriangleAlert}
-                            label="Raise or review findings"
-                            tone="warning"
-                            scroll={false}
-                          />
-                        </div>
-                      </div>
+            <form action={saveAnswers} style={{ display: "contents" }}>
+              <div className="checklist-table-scroll">
+                <table className="vir-q-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: "26px" }}>S.No</th>
+                      <th style={{ width: "26px" }}>⊕</th>
+                      <th className="th-left">QUESTION</th>
+                      <th style={{ width: "28px" }}>T</th>
+                      <th style={{ width: "28px" }}>I</th>
+                      <th style={{ width: "28px" }}>NS</th>
+                      <th style={{ width: "28px" }}>NA</th>
+                      <th style={{ width: "58px" }}>SCORE</th>
+                      <th style={{ width: "76px" }}>FINDING</th>
+                      <th>COMMENTS</th>
+                      <th style={{ width: "28px" }}>ACT</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {!selectedSection ? (
+                      <tr><td colSpan={11} style={{ textAlign: "center", padding: "2rem", color: "var(--color-ink-soft)" }}>No section selected</td></tr>
+                    ) : liveChecklist && liveSelectedSection ? (
+                      liveSelectedSection.subsections.map((subsection: any) => (
+                        <>
+                          <tr className="checklist-subsection-label-row" key={`sub-${subsection.id}`}>
+                            <td colSpan={11}>{subsection.title}{subsection.location ? ` — ${subsection.location}` : ""}</td>
+                          </tr>
+                          {subsection.questions.map((question: LiveChecklistQuestion, qi: number) => {
+                            const bindingQuestion = findBoundQuestion(question, dbQuestionByPrompt, dbQuestionByCode);
+                            const answer = bindingQuestion ? answerMap.get(bindingQuestion.id) : undefined;
+                            const surveyStatus = answer?.surveyStatus ?? null;
+                            const manualScore = answer?.score ?? null;
+                            const isCic = question.isCicCandidate ?? bindingQuestion?.isCicCandidate ?? false;
+                            const hasFinding = inspection.findings.some((f) => f.questionId === bindingQuestion?.id);
+                            const questionKey = bindingQuestion?.id ?? `live-${question.id}`;
+                            const guidanceText = question.guidanceNotes
+                              ? stripInlineHtml(question.guidanceNotes).slice(0, 120)
+                              : bindingQuestion?.helpText?.slice(0, 120) ?? null;
 
-                     <div className="question-list-viewport" style={{ marginTop: "1rem" }}>
-                       <div className="stack-list">
-                      {liveChecklist
-                        ? (selectedSection as any).subsections.map((subsection: any) => (
-                            <section className="panel question-section" key={subsection.id}>
-                              <div className="section-header">
-                                <div>
-                                  <h5 className="panel-title">{subsection.title}</h5>
-                                  <p className="panel-subtitle">
-                                    {subsection.summary?.questionCount ?? subsection.questions.length} questions /{" "}
-                                    {subsection.rating?.mandatoryQuestions ?? 0} mandatory
-                                  </p>
-                                </div>
-                                <div className="meta-row">
-                                  <span className="chip chip-info">{subsection.location || "Subsection"}</span>
-                                </div>
-                              </div>
-
-                              <div className="stack-list">
-                                {subsection.questions.map((question: LiveChecklistQuestion) => {
-                                  const bindingQuestion = findBoundQuestion(question, dbQuestionByPrompt, dbQuestionByCode);
-                                  const answer = bindingQuestion ? answerMap.get(bindingQuestion.id) : undefined;
-                                  const selectedOptions = Array.isArray(answer?.selectedOptions)
-                                    ? answer.selectedOptions.filter((item): item is string => typeof item === "string")
-                                    : [];
-                                  const actualUploads = getQuestionUploads(question, answer);
-                                  const responseType = bindingQuestion?.responseType ?? inferLiveResponseType(question);
-                                  const allowsPhoto = question.allowsPhoto ?? bindingQuestion?.allowsPhoto ?? actualUploads.length > 0;
-                                  const isMandatory = question.isMandatory ?? bindingQuestion?.isMandatory ?? false;
-                                  const isCicCandidate = question.isCicCandidate ?? bindingQuestion?.isCicCandidate ?? false;
-                                  const referenceImageUrl = normalizeRemoteAssetUrl(question.referenceImageUrl);
-                                  const riskLevel: keyof typeof riskLabel =
-                                    (bindingQuestion?.riskLevel as keyof typeof riskLabel | undefined) ??
-                                    inferLiveRiskLevel(question);
-                                  const questionKey = bindingQuestion?.id ?? `live-${question.id}`;
-
-                                  return (
-                                    <div className={`question-card ${isCicCandidate ? "question-card-focus" : ""}`} key={questionKey}>
-                                      <div className="question-header">
-                                        <div>
-                                          <div className="question-code">{question.code}</div>
-                                          <p className="question-prompt">{question.prompt}</p>
-                                          <div className="meta-row">
-                                            <span className={`chip ${toneForRisk(riskLevel)}`}>{riskLabel[riskLevel]}</span>
-                                            <span className="chip chip-info">{responseType}</span>
-                                            {isMandatory ? <span className="chip chip-warning">Mandatory</span> : null}
-                                            {allowsPhoto ? <span className="chip chip-success">Actual upload enabled</span> : null}
-                                            {isCicCandidate ? <span className="chip chip-danger">Concentrated topic</span> : null}
-                                          </div>
-                                        </div>
-                                        {referenceImageUrl ? (
-                                          <a className="btn-secondary btn-compact" href={referenceImageUrl} rel="noreferrer" target="_blank">
-                                            Open reference
-                                          </a>
-                                        ) : null}
-                                      </div>
-
-                                      <div className="question-card-layout">
-                                        <div className="question-card-main">
-                                          {bindingQuestion ? (
-                                            <>
-                                              <QuestionInput
-                                                answer={answer}
-                                                disabled={!canEditInspection}
-                                                question={{
-                                                  id: bindingQuestion.id,
-                                                  responseType,
-                                                  options: bindingQuestion.options ?? [],
-                                                  answerLibraryType: (bindingQuestion as any).answerLibraryType ?? null,
-                                                }}
-                                                selectedOptions={selectedOptions}
-                                              />
-
-                                            <div className="field-wide" style={{ marginTop: "0.85rem" }}>
-                                                <label htmlFor={`comment:${bindingQuestion.id}`}>Observation / evidence note</label>
-                                                <textarea
-                                                  defaultValue={answer?.comment ?? ""}
-                                                  disabled={!canEditInspection}
-                                                  id={`comment:${bindingQuestion.id}`}
-                                                  name={`comment:${bindingQuestion.id}`}
-                                                  placeholder="Record narrative, evidence note, or inspector observation."
-                                                />
-                                              </div>
-                                            </>
-                                          ) : (
-                                            <div className="list-card">
-                                              <div className="question-code">Question binding unavailable</div>
-                                              <div className="small-text">
-                                                This imported question is not yet linked to a managed template question.
-                                              </div>
-                                              {question.guidanceNotes ? (
-                                                <div className="small-text">{stripInlineHtml(question.guidanceNotes)}</div>
-                                              ) : null}
-                                            </div>
-                                          )}
-                                        </div>
-
-                                        <div className="question-card-side">
-                                          {referenceImageUrl ? (
-                                            <div className="reference-panel">
-                                              <div className="small-text visual-label">Reference standard</div>
-                                              <div className="reference-thumb">
-                                                <img alt={`${question.code} reference`} src={referenceImageUrl} />
-                                              </div>
-                                              <div className="small-text">
-                                                Smaller guidance image for side-by-side comparison against vessel evidence.
-                                              </div>
-                                            </div>
-                                          ) : null}
-
-                                          {bindingQuestion ? (
-                                            <QuestionEvidenceInline
-                                              canUpload={canEditInspection}
-                                              existingCount={actualUploads.length}
-                                              inspectionId={inspection.id}
-                                              questionCode={question.code}
-                                              questionId={bindingQuestion.id}
-                                            />
-                                          ) : (
-                                            <div className="evidence-sync-panel">
-                                              <div className="small-text visual-label">Evidence availability</div>
-                                              <strong>{actualUploads.length}</strong>
-                                              <div className="small-text">Live uploads already linked to this question.</div>
-                                            </div>
-                                          )}
-                                        </div>
-                                      </div>
-
-                                      {actualUploads.length ? (
-                                        <div className="question-visual-lane">
-                                          <div className="evidence-panel" style={{ gridColumn: "1 / -1" }}>
-                                            <div className="small-text visual-label">Actual vessel evidence</div>
-                                            <div className="question-evidence-gallery">
-                                              {actualUploads.map((photo: any) => (
-                                                <div className="question-evidence-card" key={photo.id}>
-                                                  <a href={normalizeRemoteAssetUrl(photo.url)} rel="noreferrer" target="_blank">
-                                                    <img
-                                                      alt={photo.caption ?? photo.fileName ?? "Vessel evidence"}
-                                                      src={normalizeRemoteAssetUrl(photo.url)}
-                                                    />
-                                                  </a>
-                                                  <div className="small-text">{photo.caption ?? photo.fileName ?? "Uploaded evidence"}</div>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      ) : null}
-
-                                      <div className="table-actions table-actions-icons question-inline-actions">
-                                        <ActionIconLink
-                                          href={`/inspections/${inspection.id}?pane=findings${selectedSectionQuery}`}
-                                          icon={TriangleAlert}
-                                          label="Open finding lane"
-                                          tone="warning"
-                                          scroll={false}
-                                        />
-                                        <ActionIconLink
-                                          href={`/reports/inspection/${inspection.id}?variant=detailed&section=${selectedSection.id}`}
-                                          icon={FileText}
-                                          label="View in detailed report"
-                                          tone="success"
-                                          scroll={false}
-                                        />
-                                        <ActionIconLink
-                                          href={`/reports/inspection/${inspection.id}?variant=summary&section=${selectedSection.id}`}
-                                          icon={Eye}
-                                          label="View section summary"
-                                          tone="primary"
-                                          scroll={false}
-                                        />
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </section>
-                          ))
-                        : [...(selectedSection as any).questions]
-                            .sort((a, b) => Number(b.isCicCandidate) - Number(a.isCicCandidate) || a.sortOrder - b.sortOrder)
-                            .map((question) => {
-                              const answer = answerMap.get(question.id);
-                              const selectedOptions = Array.isArray(answer?.selectedOptions)
-                                ? answer.selectedOptions.filter((item): item is string => typeof item === "string")
-                                : [];
-                              const legacyRiskLevel = question.riskLevel as keyof typeof riskLabel;
-
-                              return (
-                                <div className={`question-card ${question.isCicCandidate ? "question-card-focus" : ""}`} key={question.id}>
-                                  <div className="question-header">
-                                    <div>
-                                      <div className="question-code">{question.code}</div>
-                                      <p className="question-prompt">{question.prompt}</p>
-                                      <div className="meta-row">
-                                        <span className={`chip ${toneForRisk(legacyRiskLevel)}`}>{riskLabel[legacyRiskLevel]}</span>
-                                        <span className="chip chip-info">{question.responseType}</span>
-                                        {question.isMandatory ? <span className="chip chip-warning">Mandatory</span> : null}
-                                        {question.allowsPhoto ? <span className="chip chip-success">Actual upload enabled</span> : null}
-                                        {question.isCicCandidate ? (
-                                          <span className="chip chip-danger">
-                                            {question.cicTopic ? `Concentrated / ${question.cicTopic}` : "Concentrated topic"}
-                                          </span>
-                                        ) : null}
-                                      </div>
-                                    </div>
-                                    {question.referenceImageUrl ? (
-                                      <a
-                                        className="btn-secondary btn-compact"
-                                        href={normalizeRemoteAssetUrl(question.referenceImageUrl)}
-                                        rel="noreferrer"
-                                        target="_blank"
-                                      >
-                                        Open reference
-                                      </a>
-                                    ) : null}
-                                  </div>
-
-                                  <div className="question-card-layout">
-                                    <div className="question-card-main">
-                                      <QuestionInput
-                                        answer={answer}
-                                        disabled={!canEditInspection}
-                                        question={question}
-                                        selectedOptions={selectedOptions}
-                                      />
-
-                                      <div className="field-wide" style={{ marginTop: "0.85rem" }}>
-                                        <label htmlFor={`comment:${question.id}`}>Observation / evidence note</label>
-                                        <textarea
-                                          defaultValue={answer?.comment ?? ""}
-                                          disabled={!canEditInspection}
-                                          id={`comment:${question.id}`}
-                                          name={`comment:${question.id}`}
-                                          placeholder="Record narrative, evidence note, or inspector observation."
-                                        />
-                                      </div>
-                                    </div>
-
-                                    <div className="question-card-side">
-                                      {question.referenceImageUrl ? (
-                                        <div className="reference-panel">
-                                          <div className="small-text visual-label">Reference standard</div>
-                                          <div className="reference-thumb">
-                                            <img alt={`${question.code} reference`} src={normalizeRemoteAssetUrl(question.referenceImageUrl)} />
-                                          </div>
-                                          <div className="small-text">
-                                            Smaller guidance image for side-by-side comparison against vessel evidence.
-                                          </div>
-                                        </div>
-                                      ) : null}
-
-                                      <QuestionEvidenceInline
-                                        canUpload={canEditInspection}
-                                        existingCount={answer?.photos.length ?? 0}
-                                        inspectionId={inspection.id}
-                                        questionCode={question.code}
-                                        questionId={question.id}
-                                      />
-                                    </div>
-                                  </div>
-
-                                  {answer?.photos.length ? (
-                                    <div className="question-visual-lane">
-                                      <div className="evidence-panel" style={{ gridColumn: "1 / -1" }}>
-                                        <div className="small-text visual-label">Actual vessel evidence</div>
-                                        <div className="question-evidence-gallery">
-                                          {answer.photos.map((photo) => (
-                                            <div className="question-evidence-card" key={photo.id}>
-                                              <a href={normalizeRemoteAssetUrl(photo.url)} rel="noreferrer" target="_blank">
-                                                <img alt={photo.caption ?? photo.fileName ?? "Vessel evidence"} src={normalizeRemoteAssetUrl(photo.url)} />
-                                              </a>
-                                              <div className="small-text">{photo.caption ?? photo.fileName ?? "Uploaded evidence"}</div>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    </div>
+                            return (
+                              <tr className={isCic ? "cic-row" : ""} key={questionKey}>
+                                <td className="td-no">{qi + 1}</td>
+                                <td className="td-guidance">
+                                  {guidanceText ? (
+                                    <span className="guidance-btn" title={guidanceText}>?</span>
                                   ) : null}
-
-                                  <div className="table-actions table-actions-icons question-inline-actions">
-                                    <ActionIconLink
-                                      href={`/inspections/${inspection.id}?pane=findings${selectedSectionQuery}`}
-                                      icon={TriangleAlert}
-                                      label="Open finding lane"
-                                      tone="warning"
-                                      scroll={false}
-                                    />
-                                    <ActionIconLink
-                                      href={`/reports/inspection/${inspection.id}?variant=detailed&section=${selectedSection.id}`}
-                                      icon={FileText}
-                                      label="View in detailed report"
-                                      tone="success"
-                                      scroll={false}
-                                    />
-                                    <ActionIconLink
-                                      href={`/reports/inspection/${inspection.id}?variant=summary&section=${selectedSection.id}`}
-                                      icon={Eye}
-                                      label="View section summary"
-                                      tone="primary"
-                                      scroll={false}
-                                    />
+                                </td>
+                                <td className="td-question">
+                                  {question.code ? <span style={{ fontWeight: 700, color: "var(--color-blue)", fontSize: "0.72rem", marginRight: "0.3rem" }}>{question.code}</span> : null}
+                                  {question.prompt}
+                                  {isCic ? <span className="chip chip-warning" style={{ marginLeft: "0.3rem", fontSize: "0.62rem", padding: "1px 5px" }}>CIC</span> : null}
+                                </td>
+                                {(["T", "I", "NS", "NA"] as const).map((status) => (
+                                  <td className="td-checkbox survey-radio" key={status}>
+                                    {bindingQuestion ? (
+                                      <input
+                                        defaultChecked={surveyStatus === status}
+                                        disabled={!canEditInspection}
+                                        name={`status:${bindingQuestion.id}`}
+                                        type="radio"
+                                        value={status}
+                                      />
+                                    ) : <span style={{ color: "var(--color-ink-soft)", fontSize: "0.7rem" }}>—</span>}
+                                  </td>
+                                ))}
+                                <td className="td-score">
+                                  {bindingQuestion ? (
+                                    <select
+                                      className="score-select"
+                                      defaultValue={manualScore !== null ? String(manualScore) : ""}
+                                      disabled={!canEditInspection}
+                                      name={`score:${bindingQuestion.id}`}
+                                    >
+                                      <option value="">—</option>
+                                      <option value="1">1</option>
+                                      <option value="2">2</option>
+                                      <option value="3">3</option>
+                                      <option value="4">4</option>
+                                      <option value="5">5</option>
+                                    </select>
+                                  ) : null}
+                                </td>
+                                <td className="td-finding">
+                                  <div className="finding-radio-group">
+                                    <label className="finding-radio-label" style={{ color: hasFinding ? "var(--color-green)" : "var(--color-ink-soft)" }}>
+                                      <input
+                                        defaultChecked={hasFinding}
+                                        disabled
+                                        name={`finding:${questionKey}`}
+                                        type="radio"
+                                        value="Y"
+                                      />
+                                      Y
+                                    </label>
+                                    <label className="finding-radio-label" style={{ color: "var(--color-amber)" }}>
+                                      <input
+                                        disabled
+                                        name={`finding:${questionKey}`}
+                                        type="radio"
+                                        value="O"
+                                      />
+                                      O
+                                    </label>
+                                    <label className="finding-radio-label" style={{ color: "var(--color-ink-soft)" }}>
+                                      <input
+                                        defaultChecked={!hasFinding}
+                                        disabled
+                                        name={`finding:${questionKey}`}
+                                        type="radio"
+                                        value="N"
+                                      />
+                                      N
+                                    </label>
                                   </div>
+                                </td>
+                                <td className="td-comments">
+                                  {bindingQuestion ? (
+                                    <input
+                                      className="comment-input"
+                                      defaultValue={answer?.comment ?? ""}
+                                      disabled={!canEditInspection}
+                                      name={`comment:${bindingQuestion.id}`}
+                                      placeholder="Comment..."
+                                      type="text"
+                                    />
+                                  ) : null}
+                                </td>
+                                <td className="td-action">
+                                  {bindingQuestion ? (
+                                    <Link
+                                      href={`/inspections/${inspection.id}?pane=questionnaire&section=${selectedSectionId}&findingQ=${bindingQuestion.id}`}
+                                      scroll={false}
+                                      style={{ color: "var(--color-blue)", fontSize: "0.85rem" }}
+                                      title="Add / view finding"
+                                    >
+                                      ✏
+                                    </Link>
+                                  ) : null}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </>
+                      ))
+                    ) : !liveChecklist && legacySelectedSection ? (
+                      [...(legacySelectedSection as any).questions]
+                        .sort((a, b) => Number(b.isCicCandidate) - Number(a.isCicCandidate) || a.sortOrder - b.sortOrder)
+                        .map((question, qi) => {
+                          const answer = answerMap.get(question.id);
+                          const surveyStatus = answer?.surveyStatus ?? null;
+                          const manualScore = answer?.score ?? null;
+                          const hasFinding = inspection.findings.some((f) => f.questionId === question.id);
+                          return (
+                            <tr className={question.isCicCandidate ? "cic-row" : ""} key={question.id}>
+                              <td className="td-no">{qi + 1}</td>
+                              <td className="td-guidance">
+                                {question.helpText ? (
+                                  <span className="guidance-btn" title={question.helpText}>?</span>
+                                ) : null}
+                              </td>
+                              <td className="td-question">
+                                <span style={{ fontWeight: 700, color: "var(--color-blue)", fontSize: "0.72rem", marginRight: "0.3rem" }}>{question.code}</span>
+                                {question.prompt}
+                                {question.isCicCandidate ? <span className="chip chip-warning" style={{ marginLeft: "0.3rem", fontSize: "0.62rem", padding: "1px 5px" }}>CIC</span> : null}
+                              </td>
+                              {(["T", "I", "NS", "NA"] as const).map((status) => (
+                                <td className="td-checkbox survey-radio" key={status}>
+                                  <input
+                                    defaultChecked={surveyStatus === status}
+                                    disabled={!canEditInspection}
+                                    name={`status:${question.id}`}
+                                    type="radio"
+                                    value={status}
+                                  />
+                                </td>
+                              ))}
+                              <td className="td-score">
+                                <select
+                                  className="score-select"
+                                  defaultValue={manualScore !== null ? String(manualScore) : ""}
+                                  disabled={!canEditInspection}
+                                  name={`score:${question.id}`}
+                                >
+                                  <option value="">—</option>
+                                  <option value="1">1</option>
+                                  <option value="2">2</option>
+                                  <option value="3">3</option>
+                                  <option value="4">4</option>
+                                  <option value="5">5</option>
+                                </select>
+                              </td>
+                              <td className="td-finding">
+                                <div className="finding-radio-group">
+                                  <label className="finding-radio-label" style={{ color: hasFinding ? "var(--color-green)" : "var(--color-ink-soft)" }}>
+                                    <input defaultChecked={hasFinding} disabled name={`finding:${question.id}`} type="radio" value="Y" />
+                                    Y
+                                  </label>
+                                  <label className="finding-radio-label" style={{ color: "var(--color-amber)" }}>
+                                    <input disabled name={`finding:${question.id}`} type="radio" value="O" />
+                                    O
+                                  </label>
+                                  <label className="finding-radio-label" style={{ color: "var(--color-ink-soft)" }}>
+                                    <input defaultChecked={!hasFinding} disabled name={`finding:${question.id}`} type="radio" value="N" />
+                                    N
+                                  </label>
                                 </div>
-                              );
-                            })}
-                      </div>
-                    </div>
-                  </section>
-                ) : (
-                  <div className="empty-state">No questionnaire section is currently available.</div>
-                )}
+                              </td>
+                              <td className="td-comments">
+                                <input
+                                  className="comment-input"
+                                  defaultValue={answer?.comment ?? ""}
+                                  disabled={!canEditInspection}
+                                  name={`comment:${question.id}`}
+                                  placeholder="Comment..."
+                                  type="text"
+                                />
+                              </td>
+                              <td className="td-action">
+                                <Link
+                                  href={`/inspections/${inspection.id}?pane=questionnaire&section=${selectedSectionId}&findingQ=${question.id}`}
+                                  scroll={false}
+                                  style={{ color: "var(--color-blue)", fontSize: "0.85rem" }}
+                                  title="Add / view finding"
+                                >
+                                  ✏
+                                </Link>
+                              </td>
+                            </tr>
+                          );
+                        })
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
 
-                <section className="panel panel-elevated">
+              {canEditInspection ? (
+                <div className="checklist-mark-done">
+                  <span className="small-text" style={{ color: "var(--color-ink-soft)" }}>
+                    Save answers for <strong>{selectedSection?.title}</strong>
+                  </span>
+                  <SubmitButton className="btn">Mark as done</SubmitButton>
+                </div>
+              ) : null}
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── PANE: Findings ── */}
+      {activePane === "findings" ? (
+        <section className="panel panel-elevated" id="findings">
+          <div className="section-header">
+            <div>
+              <h3 className="panel-title">Findings and corrective flow</h3>
+              <p className="panel-subtitle">
+                Vessel progresses findings; office verifies and closes them.
+              </p>
+            </div>
+          </div>
+
+          <form action={addFinding} className="form-grid" style={{ marginBottom: "1rem" }}>
+            <div className="field">
+              <label htmlFor="questionId">Linked question</label>
+              <select id="questionId" name="questionId">
+                <option value="">General finding</option>
+                {questions.map((question) => (
+                  <option key={question.id} value={question.id}>
+                    {question.code} / {question.prompt.slice(0, 80)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="findingType">Finding type</label>
+              <select id="findingType" name="findingType" required>
+                <option value="OBSERVATION">Observation</option>
+                <option value="NON_CONFORMITY">Non-Conformity</option>
+                <option value="RECOMMENDATION">Recommendation</option>
+                <option value="POSITIVE">Positive</option>
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="severity">Severity</label>
+              <select id="severity" name="severity" required>
+                <option value="LOW">Low</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="HIGH">High</option>
+                <option value="CRITICAL">Critical</option>
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="dueDate">Target date</label>
+              <input id="dueDate" name="dueDate" type="date" />
+            </div>
+            <div className="field-wide">
+              <label htmlFor="title">Title</label>
+              <input id="title" name="title" placeholder="Finding title" required />
+            </div>
+            <div className="field-wide">
+              <label htmlFor="description">Description</label>
+              <textarea id="description" name="description" placeholder="Describe the issue, evidence, and impact." required />
+            </div>
+            <div className="field">
+              <label htmlFor="ownerName">Action owner</label>
+              <input id="ownerName" name="ownerName" placeholder="Chief Engineer" />
+            </div>
+            <div className="field">
+              <label htmlFor="vesselResponse">Immediate vessel response</label>
+              <input id="vesselResponse" name="vesselResponse" placeholder="Immediate action taken" />
+            </div>
+            <div className="field-wide">
+              <SubmitButton className="btn">Raise finding</SubmitButton>
+            </div>
+          </form>
+
+          <div className="stack-list">
+            {inspection.findings.length === 0 ? (
+              <div className="empty-state">No findings have been raised on this VIR yet.</div>
+            ) : (
+              inspection.findings.map((finding) => (
+                <div className="list-card" key={finding.id}>
                   <div className="section-header">
                     <div>
-                      <h4 className="panel-title">Inspection narratives and attachments</h4>
-                      <p className="panel-subtitle">
-                        These sections flow into the report pack and can be updated during office or vessel review.
-                      </p>
+                      <div className="meta-row">
+                        <span className={`chip ${toneForRisk(finding.severity)}`}>{riskLabel[finding.severity]}</span>
+                        <span className={`chip ${toneForFindingStatus(finding.status)}`}>{findingStatusLabel[finding.status]}</span>
+                      </div>
+                      <div className="list-card-title">{finding.title}</div>
+                      <p className="small-text">{finding.description}</p>
+                      {finding.question ? (
+                        <div className="small-text">Linked to {finding.question.code} / {finding.question.prompt}</div>
+                      ) : null}
+                    </div>
+                    <div className="actions-row">
+                      {isVesselSession(session) ? (
+                        <>
+                          <form action={updateFindingStatusAction.bind(null, inspection.id, finding.id, "IN_PROGRESS")}>
+                            <SubmitButton className="btn-secondary">In progress</SubmitButton>
+                          </form>
+                          <form action={updateFindingStatusAction.bind(null, inspection.id, finding.id, "READY_FOR_REVIEW")}>
+                            <SubmitButton className="btn-secondary">Ready for review</SubmitButton>
+                          </form>
+                        </>
+                      ) : null}
+                      {isOfficeSession(session) ? (
+                        <form action={updateFindingStatusAction.bind(null, inspection.id, finding.id, "CLOSED")}>
+                          <SubmitButton className="btn">Close finding</SubmitButton>
+                        </form>
+                      ) : null}
                     </div>
                   </div>
 
-                  <div className="form-grid">
-                    <div className="field-wide">
-                      <label htmlFor="itemsOfConcern">Items of concern</label>
-                      <textarea
-                        defaultValue={typeof narrativeMetadata.itemsOfConcern === "string" ? narrativeMetadata.itemsOfConcern : ""}
-                        disabled={!canEditInspection}
-                        id="itemsOfConcern"
-                        name="itemsOfConcern"
-                        placeholder={"Use one point per line.\n- Critical operational concern\n- Follow-up action pending"}
-                      />
-                    </div>
+                  <div className="stack-list">
+                    {finding.correctiveActions.map((action) => (
+                      <div className="question-card" key={action.id}>
+                        <div className="section-header">
+                          <div>
+                            <div style={{ fontWeight: 700 }}>{action.actionText}</div>
+                            <div className="small-text">
+                              {action.ownerName ? `${action.ownerName} / ` : ""}
+                              {action.targetDate ? `Target ${fmt.format(action.targetDate)}` : "No target date"}
+                            </div>
+                          </div>
+                          <span className={`chip ${toneForCorrectiveActionStatus(action.status)}`}>
+                            {correctiveActionStatusLabel[action.status]}
+                          </span>
+                        </div>
+                        <div className="actions-row">
+                          {isVesselSession(session) ? (
+                            <>
+                              <form action={updateCorrectiveActionStatusAction.bind(null, inspection.id, action.id, "IN_PROGRESS")}>
+                                <SubmitButton className="btn-secondary">Start</SubmitButton>
+                              </form>
+                              <form action={updateCorrectiveActionStatusAction.bind(null, inspection.id, action.id, "COMPLETED")}>
+                                <SubmitButton className="btn-secondary">Complete</SubmitButton>
+                              </form>
+                            </>
+                          ) : null}
+                          {isOfficeSession(session) ? (
+                            <form action={updateCorrectiveActionStatusAction.bind(null, inspection.id, action.id, "VERIFIED")}>
+                              <SubmitButton className="btn">Verify</SubmitButton>
+                            </form>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
 
-                    <div className="field-wide">
-                      <label htmlFor="bestPractice">Best practice</label>
-                      <textarea
-                        defaultValue={typeof narrativeMetadata.bestPractice === "string" ? narrativeMetadata.bestPractice : ""}
-                        disabled={!canEditInspection}
-                        id="bestPractice"
-                        name="bestPractice"
-                        placeholder={"Use one point per line.\n- Strong housekeeping\n- Good permit-to-work discipline"}
-                      />
-                    </div>
-
-                    <div className="field-wide">
-                      <label htmlFor="equipmentNotWorking">Equipment not working / never tried out</label>
-                      <textarea
-                        defaultValue={
-                          typeof narrativeMetadata.equipmentNotWorking === "string" ? narrativeMetadata.equipmentNotWorking : ""
-                        }
-                        disabled={!canEditInspection}
-                        id="equipmentNotWorking"
-                        name="equipmentNotWorking"
-                        placeholder={"Use one point per line.\n- Fire pump no.2 not tested\n- Alarm loop isolated for maintenance"}
-                      />
-                    </div>
-
-                    <div className="field-wide">
-                      <label htmlFor="safetyMeeting">Safety meeting</label>
-                      <textarea
-                        defaultValue={typeof narrativeMetadata.safetyMeeting === "string" ? narrativeMetadata.safetyMeeting : ""}
-                        disabled={!canEditInspection}
-                        id="safetyMeeting"
-                        name="safetyMeeting"
-                        placeholder={"Use one point per line.\n- PPE awareness discussed\n- Reporting expectations reviewed"}
-                      />
-                    </div>
-
-                    <div className="field-wide">
-                      <label htmlFor="openingMeeting">Opening meeting</label>
-                      <textarea
-                        defaultValue={typeof narrativeMetadata.openingMeeting === "string" ? narrativeMetadata.openingMeeting : ""}
-                        disabled={!canEditInspection}
-                        id="openingMeeting"
-                        name="openingMeeting"
-                        placeholder={"Use one point per line.\n- Scope explained\n- Work/rest hour precautions discussed"}
-                      />
-                    </div>
-
-                    <div className="field-wide">
-                      <label htmlFor="closingMeeting">Closing meeting</label>
-                      <textarea
-                        defaultValue={typeof narrativeMetadata.closingMeeting === "string" ? narrativeMetadata.closingMeeting : ""}
-                        disabled={!canEditInspection}
-                        id="closingMeeting"
-                        name="closingMeeting"
-                        placeholder={"Use one point per line.\n- Findings reviewed\n- Close-out expectations agreed"}
-                      />
-                    </div>
-
-                    <div className="field-wide">
-                      <label htmlFor="conclusion">Conclusion</label>
-                      <textarea
-                        defaultValue={typeof narrativeMetadata.conclusion === "string" ? narrativeMetadata.conclusion : ""}
-                        disabled={!canEditInspection}
-                        id="conclusion"
-                        name="conclusion"
-                        placeholder={"Use one point per line.\n- Vessel satisfactory overall\n- Follow-up actions to be monitored"}
-                      />
-                    </div>
+                    <form action={addCorrectiveActionAction.bind(null, inspection.id, finding.id)} className="form-grid">
+                      <div className="field-wide">
+                        <label htmlFor={`actionText-${finding.id}`}>Add corrective action / CAR</label>
+                        <textarea id={`actionText-${finding.id}`} name="actionText" placeholder="Describe the corrective action to close this finding." />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`owner-${finding.id}`}>Owner</label>
+                        <input id={`owner-${finding.id}`} name="ownerName" placeholder="Master / Chief Officer / CE" />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`target-${finding.id}`}>Target date</label>
+                        <input id={`target-${finding.id}`} name="targetDate" type="date" />
+                      </div>
+                      <div className="field-wide">
+                        <SubmitButton className="btn-secondary">Add corrective action</SubmitButton>
+                      </div>
+                    </form>
                   </div>
-                </section>
-
-                {canEditInspection ? <SubmitButton className="btn">Save questionnaire answers</SubmitButton> : null}
-              </form>
+                </div>
+              ))
             )}
-          </section>
-          ) : null}
+          </div>
+        </section>
+      ) : null}
 
-          {activePane === "findings" ? (
-          <section className="panel panel-elevated" id="findings">
-            <div className="section-header">
-              <div>
-                <h3 className="panel-title">Findings and corrective flow</h3>
-                <p className="panel-subtitle">
-                  Vessel progresses findings and corrective actions; office verifies and closes them.
-                </p>
-              </div>
+      {/* ── PANE: Evidence ── */}
+      {activePane === "evidence" ? (
+        <div id="evidence">
+          <EvidenceSyncPanel
+            canUpload={canEditInspection}
+            existingEvidence={inspection.photos.map((photo) => ({
+              id: photo.id,
+              url: photo.url,
+              caption: photo.caption,
+              fileName: photo.fileName,
+              uploadedBy: photo.uploadedBy,
+              createdAt: photo.createdAt.toISOString(),
+            }))}
+            findingOptions={findingOptions}
+            inspectionId={inspection.id}
+            questionOptions={questionOptions}
+          />
+        </div>
+      ) : null}
+
+      {/* ── PANE: Sign-off ── */}
+      {activePane === "signoff" ? (
+        <section className="panel panel-elevated" id="signoff">
+          <div className="section-header">
+            <div>
+              <h3 className="panel-title">Sign-off trail</h3>
+              <p className="panel-subtitle">Vessel submission, office review, and final acknowledgement.</p>
             </div>
+          </div>
 
-            <form action={addFinding} className="form-grid" style={{ marginBottom: "1rem" }}>
-              <div className="field">
-                <label htmlFor="questionId">Linked question</label>
-                <select id="questionId" name="questionId">
-                  <option value="">General finding</option>
-                  {questions.map((question) => (
-                    <option key={question.id} value={question.id}>
-                      {question.code} / {question.prompt}
-                    </option>
-                  ))}
-                </select>
+          <div className="signoff-stage-grid">
+            {buildSignoffStages(inspection.signOffs, inspection.template?.workflowConfig ?? null).map((stage) => (
+              <div className="list-card signoff-stage-card" key={stage.key}>
+                <div className="meta-row">
+                  <span className={`chip ${stage.approved ? "chip-success" : stage.present ? "chip-warning" : "chip-muted"}`}>
+                    {stage.approved ? "Approved" : stage.present ? "Captured" : "Pending"}
+                  </span>
+                  <span className="chip chip-info">{stage.label}</span>
+                </div>
+                <div className="list-card-title">{stage.actor ?? "Awaiting action"}</div>
+                <div className="small-text">{stage.comment ?? "No note recorded yet."}</div>
+                <div className="small-text">{stage.timeLabel ?? "No timestamp yet."}</div>
               </div>
+            ))}
+          </div>
+
+          <form action={addSignOff} className="form-grid" style={{ marginBottom: "1rem" }}>
+            <input name="stage" type="hidden" value={isOfficeSession(session) ? "SHORE_REVIEW" : "FINAL_ACKNOWLEDGEMENT"} />
+            <div className="field">
+              <label htmlFor="approved">Decision</label>
+              <select id="approved" name="approved">
+                <option value="YES">Approved</option>
+                <option value="NO">Rejected / returned</option>
+              </select>
+            </div>
+            <div className="field-wide">
+              <label htmlFor="comment">Comment</label>
+              <textarea id="comment" name="comment" placeholder={isOfficeSession(session) ? "Shore review note." : "Final vessel acknowledgement."} />
+            </div>
+            <div className="field-wide">
+              <SubmitButton className="btn-secondary">
+                {isOfficeSession(session) ? "Record office sign-off" : "Record vessel acknowledgement"}
+              </SubmitButton>
+            </div>
+          </form>
+
+          <div className="stack-list">
+            {inspection.signOffs.length === 0 ? (
+              <div className="empty-state">No sign-off records captured yet.</div>
+            ) : (
+              inspection.signOffs.map((signOff) => (
+                <div className="list-card" key={signOff.id}>
+                  <div className="meta-row">
+                    <span className={`chip ${signOff.approved ? "chip-success" : "chip-danger"}`}>
+                      {signOff.approved ? "Approved" : "Returned"}
+                    </span>
+                    <span className="chip chip-info">{signOff.stage.replaceAll("_", " ")}</span>
+                  </div>
+                  <div className="list-card-title">{signOff.actorName ?? "Unnamed actor"}</div>
+                  {signOff.comment ? <p className="small-text">{signOff.comment}</p> : null}
+                  <div className="small-text">{fmt.format(signOff.signedAt)}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      {/* ── Finding details panel (slide-in) ── */}
+      {findingQ && findingQ !== "__show" && findingQuestion ? (
+        <>
+          <Link className="finding-panel-overlay" href={closeHref} scroll={false} aria-label="Close finding panel" />
+          <div className="finding-panel">
+            <div className="finding-panel-header">
+              <div>
+                <div className="finding-panel-title">FINDING DETAILS</div>
+                <div className="finding-panel-ref">
+                  {findingQuestion.code} — {findingQuestion.prompt.slice(0, 80)}
+                </div>
+              </div>
+              <Link className="finding-panel-close" href={closeHref} scroll={false}>✕</Link>
+            </div>
+            <form action={addFinding} className="finding-panel-body">
+              <input name="questionId" type="hidden" value={findingQ} />
 
               <div className="field">
-                <label htmlFor="findingType">Finding type</label>
-                <select id="findingType" name="findingType" required>
+                <label htmlFor="fp-findingType">Type of Finding</label>
+                <select id="fp-findingType" name="findingType" required>
                   <option value="OBSERVATION">Observation</option>
                   <option value="NON_CONFORMITY">Non-Conformity</option>
                   <option value="RECOMMENDATION">Recommendation</option>
@@ -1080,8 +1246,8 @@ export default async function InspectionDetailPage({
               </div>
 
               <div className="field">
-                <label htmlFor="severity">Severity</label>
-                <select id="severity" name="severity" required>
+                <label htmlFor="fp-severity">Severity</label>
+                <select id="fp-severity" name="severity" required>
                   <option value="LOW">Low</option>
                   <option value="MEDIUM">Medium</option>
                   <option value="HIGH">High</option>
@@ -1089,254 +1255,53 @@ export default async function InspectionDetailPage({
                 </select>
               </div>
 
-              <div className="field">
-                <label htmlFor="dueDate">Target date</label>
-                <input id="dueDate" name="dueDate" type="date" />
+              <div className="field-wide">
+                <label htmlFor="fp-title">Title</label>
+                <input id="fp-title" name="title" placeholder="Finding title" required />
               </div>
 
               <div className="field-wide">
-                <label htmlFor="title">Title</label>
-                <input id="title" name="title" placeholder="Emergency fire pump delivery pressure below expected range" required />
+                <label htmlFor="fp-description">Description of Finding</label>
+                <textarea id="fp-description" name="description" placeholder="Describe the defect, evidence observed, and impact." required rows={4} />
               </div>
 
-              <div className="field-wide">
-                <label htmlFor="description">Description</label>
-                <textarea id="description" name="description" placeholder="Describe the issue, evidence, and impact." required />
-              </div>
-
-              <div className="field">
-                <label htmlFor="ownerName">Action owner</label>
-                <input id="ownerName" name="ownerName" placeholder="Chief Engineer" />
+              <div className="checkbox-row">
+                <input id="fp-drydock" name="isDrydockRelated" type="checkbox" value="yes" />
+                <label htmlFor="fp-drydock">Is the Defect Associated to Drydock?</label>
               </div>
 
               <div className="field">
-                <label htmlFor="vesselResponse">Immediate vessel response</label>
-                <input id="vesselResponse" name="vesselResponse" placeholder="Spare pump test planned before sailing" />
+                <label htmlFor="fp-dueDate">Due date</label>
+                <input id="fp-dueDate" name="dueDate" type="date" />
               </div>
 
-              <div className="field-wide">
-                <SubmitButton className="btn">Raise finding</SubmitButton>
+              <div className="field">
+                <label htmlFor="fp-owner">Action owner</label>
+                <input id="fp-owner" name="ownerName" placeholder="Chief Officer / CE" />
               </div>
-            </form>
 
-            <div className="stack-list">
-              {inspection.findings.length === 0 ? (
-                <div className="empty-state">No findings have been raised on this VIR yet.</div>
-              ) : (
-                inspection.findings.map((finding) => (
-                  <div className="list-card" key={finding.id}>
-                    <div className="section-header">
-                      <div>
-                        <div className="meta-row">
-                          <span className={`chip ${toneForRisk(finding.severity)}`}>{riskLabel[finding.severity]}</span>
-                          <span className={`chip ${toneForFindingStatus(finding.status)}`}>{findingStatusLabel[finding.status]}</span>
-                        </div>
-                        <div className="list-card-title">{finding.title}</div>
-                        <p className="small-text">{finding.description}</p>
-                        {finding.question ? (
-                          <div className="small-text">
-                            Linked to {finding.question.code} / {finding.question.prompt}
-                          </div>
-                        ) : null}
-                        {finding.carriedFromFinding ? (
-                          <div className="small-text">
-                            Carried from {finding.carriedFromFinding.inspection.title} / {finding.carriedFromFinding.title}
-                          </div>
-                        ) : null}
-                      </div>
-
-                      <div className="actions-row">
-                        {isVesselSession(session) ? (
-                          <>
-                            <form action={updateFindingStatusAction.bind(null, inspection.id, finding.id, "IN_PROGRESS")}>
-                              <SubmitButton className="btn-secondary">In progress</SubmitButton>
-                            </form>
-                            <form action={updateFindingStatusAction.bind(null, inspection.id, finding.id, "READY_FOR_REVIEW")}>
-                              <SubmitButton className="btn-secondary">Ready for review</SubmitButton>
-                            </form>
-                          </>
-                        ) : null}
-
-                        {isOfficeSession(session) ? (
-                          <form action={updateFindingStatusAction.bind(null, inspection.id, finding.id, "CLOSED")}>
-                            <SubmitButton className="btn">Close finding</SubmitButton>
-                          </form>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="stack-list">
-                      {finding.correctiveActions.map((action) => (
-                        <div className="question-card" key={action.id}>
-                          <div className="section-header">
-                            <div>
-                              <div style={{ fontWeight: 700 }}>{action.actionText}</div>
-                              <div className="small-text">
-                                {action.ownerName ? `${action.ownerName} / ` : ""}
-                                {action.targetDate ? `Target ${fmt.format(action.targetDate)}` : "No target date"}
-                              </div>
-                            </div>
-                            <span className={`chip ${toneForCorrectiveActionStatus(action.status)}`}>
-                              {correctiveActionStatusLabel[action.status]}
-                            </span>
-                          </div>
-                          <div className="actions-row">
-                            {isVesselSession(session) ? (
-                              <>
-                                <form action={updateCorrectiveActionStatusAction.bind(null, inspection.id, action.id, "IN_PROGRESS")}>
-                                  <SubmitButton className="btn-secondary">Start</SubmitButton>
-                                </form>
-                                <form action={updateCorrectiveActionStatusAction.bind(null, inspection.id, action.id, "COMPLETED")}>
-                                  <SubmitButton className="btn-secondary">Complete</SubmitButton>
-                                </form>
-                              </>
-                            ) : null}
-
-                            {isOfficeSession(session) ? (
-                              <form action={updateCorrectiveActionStatusAction.bind(null, inspection.id, action.id, "VERIFIED")}>
-                                <SubmitButton className="btn">Verify</SubmitButton>
-                              </form>
-                            ) : null}
-                          </div>
-                        </div>
-                      ))}
-
-                      <form action={addCorrectiveActionAction.bind(null, inspection.id, finding.id)} className="form-grid">
-                        <div className="field-wide">
-                          <label htmlFor={`actionText-${finding.id}`}>Add corrective action / CAR</label>
-                          <textarea
-                            id={`actionText-${finding.id}`}
-                            name="actionText"
-                            placeholder="Describe the corrective action to close this finding."
-                          />
-                        </div>
-                        <div className="field">
-                          <label htmlFor={`owner-${finding.id}`}>Owner</label>
-                          <input id={`owner-${finding.id}`} name="ownerName" placeholder="Master / Chief Officer / CE" />
-                        </div>
-                        <div className="field">
-                          <label htmlFor={`target-${finding.id}`}>Target date</label>
-                          <input id={`target-${finding.id}`} name="targetDate" type="date" />
-                        </div>
-                        <div className="field-wide">
-                          <SubmitButton className="btn-secondary">Add corrective action</SubmitButton>
-                        </div>
-                      </form>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-          ) : null}
-
-          {activePane === "evidence" ? (
-          <div id="evidence">
-            <EvidenceSyncPanel
-              canUpload={canEditInspection}
-              existingEvidence={inspection.photos.map((photo) => ({
-                id: photo.id,
-                url: photo.url,
-                caption: photo.caption,
-                fileName: photo.fileName,
-                uploadedBy: photo.uploadedBy,
-                createdAt: photo.createdAt.toISOString(),
-              }))}
-              findingOptions={findingOptions}
-              inspectionId={inspection.id}
-              questionOptions={questionOptions}
-            />
-          </div>
-          ) : null}
-
-          {activePane === "signoff" ? (
-          <section className="panel panel-elevated" id="signoff">
-            <div className="section-header">
-              <div>
-                <h3 className="panel-title">Sign-off trail</h3>
-                <p className="panel-subtitle">
-                  Interactive workflow board for vessel submission, office review, and final acknowledgement before closure.
-                </p>
-              </div>
-            </div>
-
-            <div className="signoff-stage-grid">
-              {buildSignoffStages(inspection.signOffs, inspection.template?.workflowConfig ?? null).map((stage) => (
-                <div className="list-card signoff-stage-card" key={stage.key}>
-                  <div className="meta-row">
-                    <span className={`chip ${stage.approved ? "chip-success" : stage.present ? "chip-warning" : "chip-muted"}`}>
-                      {stage.approved ? "Approved" : stage.present ? "Captured" : "Pending"}
-                    </span>
-                    <span className="chip chip-info">{stage.label}</span>
-                    {stage.actorRole ? <span className="chip chip-muted">{stage.actorRole}</span> : null}
-                  </div>
-                  <div className="list-card-title">{stage.actor ?? "Awaiting action"}</div>
-                  {stage.description ? <div className="small-text">{stage.description}</div> : null}
-                  <div className="small-text">{stage.comment ?? "No note recorded yet."}</div>
-                  <div className="small-text">{stage.timeLabel ?? "No timestamp yet."}</div>
+              <div className="finding-panel-attach">
+                <div>📎 ATTACHMENTS</div>
+                <div style={{ fontSize: "0.75rem", marginTop: "0.3rem", color: "var(--color-ink-soft)" }}>
+                  You can upload a max of 10 images. Allowed: .png, .jpeg, .gif, .tif, .webp, .heic
                 </div>
-              ))}
-            </div>
-
-            <form action={addSignOff} className="form-grid" style={{ marginBottom: "1rem" }}>
-              <input
-                name="stage"
-                type="hidden"
-                value={isOfficeSession(session) ? "SHORE_REVIEW" : "FINAL_ACKNOWLEDGEMENT"}
-              />
-
-              <div className="field">
-                <label htmlFor="approved">Decision</label>
-                <select id="approved" name="approved">
-                  <option value="YES">Approved</option>
-                  <option value="NO">Rejected / returned</option>
-                </select>
-              </div>
-
-              <div className="field-wide">
-                <label htmlFor="comment">Comment</label>
-                <textarea
-                  id="comment"
-                  name="comment"
-                  placeholder={
-                    isOfficeSession(session)
-                      ? "Record shore review note or return reason."
-                      : "Record final vessel acknowledgement note."
-                  }
+                <input
+                  accept=".png,.jpg,.jpeg,.gif,.tif,.tiff,.webp,.heic"
+                  multiple
+                  name="attachments"
+                  style={{ marginTop: "0.5rem" }}
+                  type="file"
                 />
               </div>
 
-              <div className="field-wide">
-                <SubmitButton className="btn-secondary">
-                  {isOfficeSession(session) ? "Record office sign-off" : "Record vessel acknowledgement"}
-                </SubmitButton>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "auto", paddingTop: "0.5rem" }}>
+                <Link className="btn-secondary" href={closeHref} scroll={false}>Cancel</Link>
+                <SubmitButton className="btn">Mark as done</SubmitButton>
               </div>
             </form>
-
-            <div className="stack-list">
-              {inspection.signOffs.length === 0 ? (
-                <div className="empty-state">No sign-off records have been captured yet.</div>
-              ) : (
-                inspection.signOffs.map((signOff) => (
-                  <div className="list-card" key={signOff.id}>
-                    <div className="meta-row">
-                      <span className={`chip ${signOff.approved ? "chip-success" : "chip-danger"}`}>
-                        {signOff.approved ? "Approved" : "Returned"}
-                      </span>
-                      <span className="chip chip-info">{signOff.stage.replaceAll("_", " ")}</span>
-                    </div>
-                    <div className="list-card-title">{signOff.actorName ?? "Unnamed actor"}</div>
-                    <div className="small-text">{signOff.actorRole ?? "Role not recorded"}</div>
-                    {signOff.comment ? <p className="small-text">{signOff.comment}</p> : null}
-                    <div className="small-text">{fmt.format(signOff.signedAt)}</div>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-          ) : null}
-        </div>
-      </section>
+          </div>
+        </>
+      ) : null}
 
       <FloatingActivityFeed
         items={activityItems}
@@ -1347,19 +1312,11 @@ export default async function InspectionDetailPage({
   );
 }
 
-function MetricBox({
-  label,
-  value,
-  note,
-  compact = false,
-}: {
-  label: string;
-  value: string;
-  note: string;
-  compact?: boolean;
-}) {
+// ─── Small helpers ─────────────────────────────────────────────────────────
+
+function MetricBox({ label, value, note }: { label: string; value: string; note: string }) {
   return (
-    <div className={`metric-tile metric-tile-static ${compact ? "metric-tile-compact" : ""}`}>
+    <div className="metric-tile metric-tile-static">
       <div className="metric-tile-label">{label}</div>
       <div className="metric-tile-value">{value}</div>
       <div className="metric-tile-note">{note}</div>
@@ -1367,11 +1324,11 @@ function MetricBox({
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function VirField({ label, value }: { label: string; value: string }) {
   return (
-    <div className="detail-row">
-      <div className="detail-row-label">{label}</div>
-      <div className="detail-row-value">{value}</div>
+    <div className="vir-detail-field">
+      <span className="vir-detail-label">{label}</span>
+      <span className="vir-detail-value">{value || "—"}</span>
     </div>
   );
 }
@@ -1381,249 +1338,110 @@ function slugify(value: string) {
 }
 
 function normalizeInspectionPane(value: string | undefined) {
-  if (value === "findings" || value === "evidence" || value === "signoff") {
+  if (value === "findings" || value === "evidence" || value === "signoff" || value === "details") {
     return value;
   }
-
   return "questionnaire";
 }
 
 function normalizeLookupKey(value: string | null | undefined) {
-  return String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
+  return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function findBoundQuestion(
-  question: LiveChecklistQuestion,
-  byPrompt: Map<string, any>,
-  byCode: Map<string, any>
-) {
+function findBoundQuestion(question: LiveChecklistQuestion, byPrompt: Map<string, any>, byCode: Map<string, any>) {
   const promptMatch = byPrompt.get(normalizeLookupKey(question.prompt));
-  if (promptMatch) {
-    return promptMatch;
-  }
-
+  if (promptMatch) return promptMatch;
   return byCode.get(normalizeLookupKey(question.code)) ?? null;
 }
 
-function inferLiveResponseType(question: LiveChecklistQuestion) {
-  if (question.notApplicable || question.notSighted || question.tested || question.inspected) {
-    return "YES_NO_NA";
-  }
-
-  if (question.score !== null && question.score !== undefined) {
-    return "SCORE";
-  }
-
-  return "TEXT";
-}
-
-function inferLiveRiskLevel(question: LiveChecklistQuestion) {
-  const severity = String(question.severity ?? "").trim().toUpperCase();
-  if (severity === "CRITICAL") {
-    return "CRITICAL" as keyof typeof riskLabel;
-  }
-  if (severity === "HIGH") {
-    return "HIGH" as keyof typeof riskLabel;
-  }
-  if (severity === "MEDIUM") {
-    return "MEDIUM" as keyof typeof riskLabel;
-  }
-  return "LOW" as keyof typeof riskLabel;
-}
-
 function isSavedAnswer(
-  answer:
-    | {
-        answerText?: string | null;
-        answerNumber?: number | null;
-        answerDate?: Date | null;
-        selectedOptions?: unknown;
-        answerBoolean?: boolean | null;
-        surveyStatus?: string | null;
-        score?: number | null;
-      }
-    | undefined
+  answer: { answerText?: string | null; answerNumber?: number | null; answerDate?: Date | null; selectedOptions?: unknown; answerBoolean?: boolean | null; surveyStatus?: string | null; score?: number | null } | undefined
 ) {
-  if (!answer) {
-    return false;
-  }
-
-  if (typeof answer.answerText === "string" && answer.answerText.trim().length > 0) {
-    return true;
-  }
-
-  if (typeof answer.answerNumber === "number") {
-    return true;
-  }
-
-  if (typeof answer.answerBoolean === "boolean") {
-    return true;
-  }
-
-  if (answer.answerDate) {
-    return true;
-  }
-
-  if (typeof answer.surveyStatus === "string" && answer.surveyStatus.trim().length > 0) {
-    return true;
-  }
-
-  if (typeof answer.score === "number") {
-    return true;
-  }
-
+  if (!answer) return false;
+  if (typeof answer.answerText === "string" && answer.answerText.trim().length > 0) return true;
+  if (typeof answer.answerNumber === "number") return true;
+  if (typeof answer.answerBoolean === "boolean") return true;
+  if (answer.answerDate) return true;
+  if (typeof answer.surveyStatus === "string" && answer.surveyStatus.trim().length > 0) return true;
+  if (typeof answer.score === "number") return true;
   return Array.isArray(answer.selectedOptions) && answer.selectedOptions.length > 0;
 }
 
 function stripInlineHtml(value?: string | null) {
-  return String(value ?? "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return String(value ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function parseCrewList(raw: unknown): Array<{ name: string; rank: string }> {
+  if (typeof raw !== "string" || !raw.trim()) return [];
+  return raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const comma = line.lastIndexOf(",");
+      if (comma > 0) {
+        return { name: line.slice(0, comma).trim(), rank: line.slice(comma + 1).trim() };
+      }
+      return { name: line, rank: "" };
+    });
 }
 
 function buildSignoffStages(
-  signOffs: Array<{
-    stage: string;
-    approved: boolean;
-    actorName: string | null;
-    comment: string | null;
-    signedAt: Date;
-  }>,
+  signOffs: Array<{ stage: string; approved: boolean; actorName: string | null; comment: string | null; signedAt: Date }>,
   workflowConfig: unknown
 ) {
   const defaultStages = [
-    { key: "VESSEL_SUBMISSION", label: "Vessel submission", actorRole: "Inspector / Master", description: null as string | null },
-    { key: "SHORE_REVIEW", label: "Office review", actorRole: "QHSE Superintendent", description: null as string | null },
-    { key: "FINAL_ACKNOWLEDGEMENT", label: "Final acknowledgement", actorRole: "Inspector / Master", description: null as string | null },
+    { key: "VESSEL_SUBMISSION", label: "Vessel submission", actorRole: "Inspector / Master" },
+    { key: "SHORE_REVIEW", label: "Office review", actorRole: "QHSE Superintendent" },
+    { key: "FINAL_ACKNOWLEDGEMENT", label: "Final acknowledgement", actorRole: "Inspector / Master" },
   ];
-
   const configStages =
     workflowConfig &&
     typeof workflowConfig === "object" &&
     "stages" in workflowConfig &&
     Array.isArray((workflowConfig as { stages?: unknown }).stages)
-      ? (workflowConfig as { stages: Array<{ stage: string; label?: string; actorRole?: string; description?: string }> }).stages
+      ? (workflowConfig as { stages: Array<{ stage: string; label?: string; actorRole?: string }> }).stages
       : [];
-
-  const stageOrder = defaultStages.map((def) => {
+  return defaultStages.map((def) => {
     const saved = configStages.find((s) => s.stage === def.key);
+    const latest = signOffs.find((record) => record.stage === def.key) ?? null;
     return {
       key: def.key,
-      label: saved?.label || def.label,
-      actorRole: saved?.actorRole || def.actorRole,
-      description: saved?.description || def.description,
-    };
-  });
-
-  return stageOrder.map((stage) => {
-    const latest = signOffs.find((record) => record.stage === stage.key) ?? null;
-    return {
-      ...stage,
+      label: saved?.label ?? def.label,
+      actorRole: saved?.actorRole ?? def.actorRole,
       present: Boolean(latest),
       approved: Boolean(latest?.approved),
       actor: latest?.actorName ?? null,
       comment: latest?.comment ?? null,
-      timeLabel: latest ? fmt.format(latest.signedAt) : null,
+      timeLabel: latest ? new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(latest.signedAt) : null,
     };
   });
 }
 
-function buildInspectionActivity(
-  inspection: {
-    id: string;
-    title: string;
-    createdAt: Date;
-    updatedAt: Date;
-    inspectorName: string | null;
-    status: string;
-    answers: Array<{ id: string; questionId: string; answeredBy: string | null; answeredAt: Date | null; updatedAt?: Date }>;
-    findings: Array<{
-      id: string;
-      title: string;
-      ownerName: string | null;
-      createdAt: Date;
-      status: string;
-      correctiveActions: Array<{ id: string; actionText: string; ownerName: string | null; createdAt: Date; status: string }>;
-    }>;
-    signOffs: Array<{ id: string; stage: string; actorName: string | null; approved: boolean; signedAt: Date }>;
-    photos: Array<{ id: string; caption: string | null; uploadedBy: string | null; createdAt: Date }>;
-  }
-) {
+function buildInspectionActivity(inspection: {
+  id: string; title: string; createdAt: Date; updatedAt: Date; inspectorName: string | null; status: string;
+  answers: Array<{ id: string; questionId: string; answeredBy: string | null; answeredAt: Date | null }>;
+  findings: Array<{ id: string; title: string; ownerName: string | null; createdAt: Date; status: string; correctiveActions: Array<{ id: string; actionText: string; ownerName: string | null; createdAt: Date; status: string }> }>;
+  signOffs: Array<{ id: string; stage: string; actorName: string | null; approved: boolean; signedAt: Date }>;
+  photos: Array<{ id: string; caption: string | null; uploadedBy: string | null; createdAt: Date }>;
+}) {
+  const fmtLocal = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   const items = [
-    {
-      id: `${inspection.id}-created`,
-      title: "Inspection created",
-      detail: `${inspection.title} entered the VIR workflow.`,
-      timeLabel: fmt.format(inspection.createdAt),
-      actor: inspection.inspectorName,
-      tone: "success" as const,
-    },
-    {
-      id: `${inspection.id}-status`,
-      title: "Latest inspection status",
-      detail: inspection.status.replaceAll("_", " "),
-      timeLabel: fmt.format(inspection.updatedAt),
-      tone: "info" as const,
-    },
-    ...inspection.answers
-      .filter((answer) => answer.answeredAt)
-      .map((answer) => ({
-        id: answer.id,
-        title: "Questionnaire answer saved",
-        detail: `Question ${answer.questionId} updated.`,
-        timeLabel: fmt.format(answer.answeredAt ?? inspection.updatedAt),
-        actor: answer.answeredBy,
-        tone: "info" as const,
-      })),
-    ...inspection.findings.flatMap((finding) => [
-      {
-        id: finding.id,
-        title: "Finding raised",
-        detail: `${finding.title} / ${finding.status.replaceAll("_", " ")}`,
-        timeLabel: fmt.format(finding.createdAt),
-        actor: finding.ownerName,
-        tone: "warning" as const,
-      },
-      ...finding.correctiveActions.map((action) => ({
-        id: action.id,
-        title: "Corrective action updated",
-        detail: `${action.actionText} / ${action.status.replaceAll("_", " ")}`,
-        timeLabel: fmt.format(action.createdAt),
-        actor: action.ownerName,
-        tone: action.status === "VERIFIED" ? ("success" as const) : ("info" as const),
-      })),
+    { id: `${inspection.id}-created`, title: "Inspection created", detail: inspection.title, timeLabel: fmtLocal.format(inspection.createdAt), actor: inspection.inspectorName, tone: "success" as const },
+    { id: `${inspection.id}-status`, title: "Latest status", detail: inspection.status.replaceAll("_", " "), timeLabel: fmtLocal.format(inspection.updatedAt), tone: "info" as const },
+    ...inspection.answers.filter((a) => a.answeredAt).map((a) => ({ id: a.id, title: "Answer saved", detail: `Question ${a.questionId.slice(0, 8)}…`, timeLabel: fmtLocal.format(a.answeredAt!), actor: a.answeredBy, tone: "info" as const })),
+    ...inspection.findings.flatMap((f) => [
+      { id: f.id, title: "Finding raised", detail: `${f.title} / ${f.status.replaceAll("_", " ")}`, timeLabel: fmtLocal.format(f.createdAt), actor: f.ownerName, tone: "warning" as const },
+      ...f.correctiveActions.map((a) => ({ id: a.id, title: "CAR updated", detail: `${a.actionText.slice(0, 60)} / ${a.status.replaceAll("_", " ")}`, timeLabel: fmtLocal.format(a.createdAt), actor: a.ownerName, tone: a.status === "VERIFIED" ? "success" as const : "info" as const })),
     ]),
-    ...inspection.signOffs.map((signOff) => ({
-      id: signOff.id,
-      title: signOff.approved ? "Sign-off approved" : "Sign-off returned",
-      detail: signOff.stage.replaceAll("_", " "),
-      timeLabel: fmt.format(signOff.signedAt),
-      actor: signOff.actorName,
-      tone: signOff.approved ? ("success" as const) : ("danger" as const),
-    })),
-    ...inspection.photos.map((photo) => ({
-      id: photo.id,
-      title: "Evidence synced",
-      detail: photo.caption ?? "Inspection evidence uploaded.",
-      timeLabel: fmt.format(photo.createdAt),
-      actor: photo.uploadedBy,
-      tone: "info" as const,
-    })),
+    ...inspection.signOffs.map((s) => ({ id: s.id, title: s.approved ? "Sign-off approved" : "Sign-off returned", detail: s.stage.replaceAll("_", " "), timeLabel: fmtLocal.format(s.signedAt), actor: s.actorName, tone: s.approved ? "success" as const : "danger" as const })),
+    ...inspection.photos.map((p) => ({ id: p.id, title: "Evidence synced", detail: p.caption ?? "Evidence uploaded.", timeLabel: fmtLocal.format(p.createdAt), actor: p.uploadedBy, tone: "info" as const })),
   ];
-
-  return items.sort((left, right) => right.timeLabel.localeCompare(left.timeLabel)).slice(0, 80);
+  return items.sort((a, b) => b.timeLabel.localeCompare(a.timeLabel)).slice(0, 80);
 }
 
 function collectSectionQuestionBindings(
-  section: {
-    subsections: Array<{
-      questions: LiveChecklistQuestion[];
-    }>;
-  },
+  section: { subsections: Array<{ questions: LiveChecklistQuestion[] }> },
   byPrompt: Map<string, any>,
   byCode: Map<string, any>,
   answerMap: Map<string, any>
@@ -1632,196 +1450,7 @@ function collectSectionQuestionBindings(
     subsection.questions.map((question) => {
       const bindingQuestion = findBoundQuestion(question, byPrompt, byCode);
       const answer = bindingQuestion ? answerMap.get(bindingQuestion.id) : undefined;
-      return {
-        question,
-        bindingQuestion,
-        answer,
-        uploads: bindingQuestion ? getQuestionUploads(question, answer) : [],
-      };
+      return { question, bindingQuestion, answer, uploads: bindingQuestion ? getQuestionUploads(question, answer) : [] };
     })
-  );
-}
-
-function QuestionInput({
-  question,
-  answer,
-  selectedOptions,
-  disabled,
-}: {
-  question: {
-    id: string;
-    responseType: string;
-    options: Array<{ id: string; value: string; label: string }>;
-    answerLibraryType?: {
-      name: string;
-      items: Array<{ id: string; code: string | null; label: string }>;
-    } | null;
-  };
-  answer:
-    | {
-        answerText: string | null;
-        answerNumber: number | null;
-        answerDate: Date | null;
-        answerBoolean?: boolean | null;
-        surveyStatus?: string | null;
-        score?: number | null;
-      }
-    | undefined;
-  selectedOptions: string[];
-  disabled: boolean;
-}) {
-  // Library items take precedence over inline options when bound
-  const libraryOptions = question.answerLibraryType?.items.map((item) => ({
-    id: item.id,
-    value: item.code ?? item.label.toUpperCase().replace(/\s+/g, "_"),
-    label: item.label,
-  })) ?? [];
-  const resolvedOptions = libraryOptions.length > 0 ? libraryOptions : question.options;
-  const libraryLabel = question.answerLibraryType?.name;
-
-  let answerField: ReactNode;
-
-  switch (question.responseType) {
-    case "YES_NO_NA":
-      answerField = (
-        <div className="field">
-          <label htmlFor={`q:${question.id}`}>
-            Answer{libraryLabel ? <span className="chip chip-info" style={{ marginLeft: "0.5rem", fontSize: "0.7rem" }}>{libraryLabel}</span> : null}
-          </label>
-          <select defaultValue={answer?.answerText ?? ""} disabled={disabled} id={`q:${question.id}`} name={`q:${question.id}`}>
-            <option value="">Select</option>
-            {resolvedOptions.length > 0 ? (
-              resolvedOptions.map((opt) => (
-                <option key={opt.id} value={opt.value}>{opt.label}</option>
-              ))
-            ) : (
-              <>
-                <option value="YES">Yes</option>
-                <option value="NO">No</option>
-                <option value="NA">N/A</option>
-              </>
-            )}
-          </select>
-        </div>
-      );
-      break;
-    case "NUMBER":
-      answerField = (
-        <div className="field">
-          <label htmlFor={`q:${question.id}`}>Value</label>
-          <input
-            defaultValue={answer?.answerNumber ?? ""}
-            disabled={disabled}
-            id={`q:${question.id}`}
-            name={`q:${question.id}`}
-            type="number"
-          />
-        </div>
-      );
-      break;
-    case "SCORE":
-      answerField = (
-        <div className="field">
-          <label htmlFor={`q:${question.id}`}>Template value</label>
-          <input
-            defaultValue={answer?.answerNumber ?? ""}
-            disabled={disabled}
-            id={`q:${question.id}`}
-            name={`q:${question.id}`}
-            type="number"
-          />
-        </div>
-      );
-      break;
-    case "DATE":
-      answerField = (
-        <div className="field">
-          <label htmlFor={`q:${question.id}`}>Date</label>
-          <input
-            defaultValue={answer?.answerDate ? new Date(answer.answerDate).toISOString().slice(0, 10) : ""}
-            disabled={disabled}
-            id={`q:${question.id}`}
-            name={`q:${question.id}`}
-            type="date"
-          />
-        </div>
-      );
-      break;
-    case "SINGLE_SELECT":
-      answerField = (
-        <div className="field">
-          <label htmlFor={`q:${question.id}`}>
-            Selection{libraryLabel ? <span className="chip chip-info" style={{ marginLeft: "0.5rem", fontSize: "0.7rem" }}>{libraryLabel}</span> : null}
-          </label>
-          <select defaultValue={answer?.answerText ?? ""} disabled={disabled} id={`q:${question.id}`} name={`q:${question.id}`}>
-            <option value="">Select</option>
-            {resolvedOptions.map((option) => (
-              <option key={option.id} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      );
-      break;
-    case "MULTI_SELECT":
-      answerField = (
-        <div className="field">
-          <label htmlFor={`q:${question.id}`}>
-            Selections{libraryLabel ? <span className="chip chip-info" style={{ marginLeft: "0.5rem", fontSize: "0.7rem" }}>{libraryLabel}</span> : null}
-          </label>
-          <select defaultValue={selectedOptions} disabled={disabled} id={`q:${question.id}`} multiple name={`q:${question.id}`}>
-            {resolvedOptions.map((option) => (
-              <option key={option.id} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      );
-      break;
-    case "TEXT":
-    default:
-      answerField = (
-        <div className="field-wide">
-          <label htmlFor={`q:${question.id}`}>Answer</label>
-          <textarea defaultValue={answer?.answerText ?? ""} disabled={disabled} id={`q:${question.id}`} name={`q:${question.id}`} />
-        </div>
-      );
-      break;
-  }
-
-  return (
-    <div className="form-grid">
-      {answerField}
-      <div className="field">
-        <label htmlFor={`status:${question.id}`}>Inspection done</label>
-        <select
-          defaultValue={answer?.surveyStatus ?? ""}
-          disabled={disabled}
-          id={`status:${question.id}`}
-          name={`status:${question.id}`}
-        >
-          <option value="">Select</option>
-          <option value="T">Tested</option>
-          <option value="I">Inspected</option>
-          <option value="NS">Not sighted</option>
-          <option value="NA">Not applicable</option>
-        </select>
-      </div>
-      <div className="field">
-        <label htmlFor={`score:${question.id}`}>Manual score</label>
-        <input
-          defaultValue={answer?.score ?? ""}
-          disabled={disabled}
-          id={`score:${question.id}`}
-          max="5"
-          min="0"
-          name={`score:${question.id}`}
-          step="0.1"
-          type="number"
-        />
-      </div>
-    </div>
   );
 }

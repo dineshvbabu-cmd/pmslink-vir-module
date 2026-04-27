@@ -1502,6 +1502,36 @@ textarea {
   margin-top: 0.75rem;
 }
 
+.template-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.template-editor-toolbar form {
+  margin: 0;
+}
+
+.template-editor-divider {
+  height: 1px;
+  width: 100%;
+  background: rgba(12, 31, 56, 0.08);
+  margin: 1rem 0;
+}
+
+.template-editor-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem 1.25rem;
+}
+
+.template-option-hint {
+  display: block;
+  margin-top: 0.25rem;
+}
+
 .inline-evidence-capture {
   display: flex;
   flex-direction: column;
@@ -3160,5 +3190,820 @@ textarea {
   .vessel-card-image {
     width: 100%;
     height: 180px;
+  }
+}
+
+.action-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--color-ink);
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.action-icon-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(26, 116, 216, 0.35);
+  background: rgba(26, 116, 216, 0.08);
+}
+
+.action-icon-button-danger {
+  color: #b42318;
+  border-color: rgba(180, 35, 24, 0.24);
+  background: rgba(180, 35, 24, 0.08);
+}
+
+.action-icon-button-danger:hover {
+  border-color: rgba(180, 35, 24, 0.36);
+  background: rgba(180, 35, 24, 0.12);
+}
+
+.register-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.register-type-card {
+  display: grid;
+}
+
+.register-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.8rem;
+  align-items: end;
+}
+
+.register-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.92rem;
+  color: var(--color-ink-soft);
+}
+
+.register-form input,
+.register-form select,
+.register-form textarea,
+.register-item-row input {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.72rem 0.8rem;
+  border-radius: 0.85rem;
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--color-ink);
+}
+
+.register-form textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.register-form-span {
+  grid-column: 1 / -1;
+}
+
+.register-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.6rem;
+}
+
+.register-item-row {
+  display: grid;
+  grid-template-columns:
+    minmax(180px, 1.6fr)
+    minmax(120px, 0.85fr)
+    minmax(180px, 1.2fr)
+    86px
+    auto
+    minmax(180px, 1.3fr)
+    auto;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.register-item-row-new {
+  padding-top: 0.2rem;
+}
+
+.register-delete-form {
+  margin-top: 0.55rem;
+}
+
+.checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--color-ink);
+  font-size: 0.9rem;
+}
+
+.checkbox-row input {
+  width: auto;
+  min-height: auto;
+  margin: 0;
+}
+
+@media (max-width: 1280px) {
+  .register-item-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .register-form,
+  .register-item-row {
+    grid-template-columns: 1fr;
+  }
+
+  .register-form-actions {
+    justify-content: stretch;
+  }
+}
+
+/* ── VIR Report header bar ─────────────────────────────────── */
+.vir-report-topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.6rem 1rem;
+  background: var(--color-blue);
+  color: white;
+  border-radius: 1.25rem 1.25rem 0 0;
+  flex-wrap: wrap;
+  min-height: 2.8rem;
+}
+
+.vir-report-topbar-vessel {
+  font-weight: 800;
+  font-size: 0.92rem;
+  letter-spacing: -0.01em;
+}
+
+.vir-report-topbar-refno {
+  font-family: "Aptos Mono", "Consolas", monospace;
+  font-size: 0.85rem;
+  opacity: 0.92;
+}
+
+.vir-report-topbar-sep {
+  opacity: 0.38;
+  font-weight: 300;
+}
+
+.vir-report-topbar-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  opacity: 0.92;
+}
+
+.vir-progress-track {
+  width: 100px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+  overflow: hidden;
+}
+
+.vir-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.9);
+  transition: width 0.3s ease;
+}
+
+.vir-report-topbar-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+/* ── VIR Report pane tabs ──────────────────────────────────── */
+.vir-pane-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: white;
+  padding: 0 0.5rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.vir-pane-tab {
+  padding: 0.6rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--color-ink-soft);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.vir-pane-tab:hover {
+  color: var(--color-blue);
+}
+
+.vir-pane-tab-active {
+  color: var(--color-blue);
+  border-bottom-color: var(--color-blue);
+}
+
+/* ── VIR Inspection report detail panel ────────────────────── */
+.vir-report-section {
+  padding: 0.9rem 1.1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.vir-report-section:last-child {
+  border-bottom: none;
+}
+
+.vir-report-section-title {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--color-blue);
+  padding: 0.35rem 0.8rem;
+  background: var(--color-blue-soft);
+  border-left: 3px solid var(--color-blue);
+  margin-bottom: 0.8rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.vir-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.65rem 1.1rem;
+}
+
+.vir-detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.vir-detail-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-ink-soft);
+  font-weight: 700;
+}
+
+.vir-detail-value {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.vir-crew-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  margin-top: 0.5rem;
+}
+
+.vir-crew-table th {
+  background: var(--color-blue);
+  color: white;
+  padding: 0.35rem 0.65rem;
+  text-align: left;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.vir-crew-table td {
+  padding: 0.3rem 0.65rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.vir-crew-table tbody tr:nth-child(even) {
+  background: rgba(0, 0, 0, 0.018);
+}
+
+/* ── Checklist split pane ──────────────────────────────────── */
+.checklist-shell {
+  display: grid;
+  grid-template-columns: 330px minmax(0, 1fr);
+  border: 1px solid var(--color-border);
+  border-radius: 1.25rem;
+  overflow: hidden;
+  background: white;
+  min-height: 65vh;
+}
+
+.checklist-tree {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--color-border);
+  background: #f7f9fc;
+  overflow-y: auto;
+  max-height: 85vh;
+}
+
+.checklist-tree-header {
+  padding: 0.65rem 0.9rem;
+  background: var(--color-blue);
+  color: white;
+  font-size: 0.82rem;
+  font-weight: 700;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  flex-shrink: 0;
+}
+
+.checklist-tree-progress-bar {
+  margin-top: 0.3rem;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+  overflow: hidden;
+}
+
+.checklist-tree-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: white;
+}
+
+.checklist-tree-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+  background: white;
+}
+
+.checklist-tree-tab {
+  flex: 1;
+  padding: 0.45rem;
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--color-ink-soft);
+  border-bottom: 2px solid transparent;
+}
+
+.checklist-tree-tab-active {
+  color: var(--color-blue);
+  border-bottom-color: var(--color-blue);
+}
+
+.checklist-tree-chapter {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.checklist-tree-chapter-link {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: transparent;
+  width: 100%;
+  border: none;
+  text-align: left;
+  color: var(--color-ink);
+  transition: background 0.15s;
+  text-decoration: none;
+}
+
+.checklist-tree-chapter-link:hover {
+  background: rgba(26, 116, 216, 0.06);
+}
+
+.checklist-tree-chapter-link-active {
+  background: var(--color-blue-soft);
+  color: var(--color-blue);
+}
+
+.checklist-tree-chapter-count {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-ink-soft);
+  flex-shrink: 0;
+  margin-left: 0.35rem;
+}
+
+.checklist-tree-chapter-link-active .checklist-tree-chapter-count {
+  color: var(--color-blue);
+}
+
+.checklist-tree-sub {
+  background: rgba(0, 0, 0, 0.018);
+}
+
+.checklist-tree-sub-link {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.32rem 0.85rem 0.32rem 1.5rem;
+  font-size: 0.78rem;
+  color: var(--color-ink-soft);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  transition: background 0.12s, color 0.12s;
+  text-decoration: none;
+}
+
+.checklist-tree-sub-link:hover {
+  background: rgba(26, 116, 216, 0.05);
+  color: var(--color-ink);
+}
+
+.checklist-tree-sub-link-active {
+  background: rgba(26, 116, 216, 0.09);
+  color: var(--color-blue);
+  font-weight: 700;
+}
+
+.checklist-tree-check {
+  color: var(--color-green);
+  font-size: 0.75rem;
+  margin-left: 0.25rem;
+  flex-shrink: 0;
+}
+
+/* ── Checklist main pane ───────────────────────────────────── */
+.checklist-main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: 85vh;
+}
+
+.checklist-notes-bar {
+  padding: 0.4rem 0.9rem;
+  background: #f0f4f8;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.74rem;
+  color: var(--color-ink-soft);
+  font-style: italic;
+  flex-shrink: 0;
+}
+
+.checklist-section-label {
+  padding: 0.4rem 0.85rem;
+  background: var(--color-blue);
+  color: white;
+  font-size: 0.8rem;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.checklist-subsection-label-row td {
+  padding: 0.32rem 0.5rem;
+  background: #e8f0fd;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--color-blue);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.checklist-table-scroll {
+  overflow: auto;
+  flex: 1;
+}
+
+.checklist-mark-done {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0.85rem;
+  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+  background: white;
+}
+
+/* ── VIR question table ────────────────────────────────────── */
+.vir-q-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.vir-q-table thead th {
+  background: var(--color-blue);
+  color: white;
+  padding: 0.38rem 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.vir-q-table thead th.th-left {
+  text-align: left;
+  padding-left: 0.5rem;
+}
+
+.vir-q-table tbody tr:nth-child(even) {
+  background: rgba(0, 0, 0, 0.018);
+}
+
+.vir-q-table tbody tr:hover {
+  background: rgba(26, 116, 216, 0.04);
+}
+
+.vir-q-table td {
+  padding: 0.32rem 0.38rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.055);
+  vertical-align: middle;
+}
+
+.td-no {
+  text-align: center;
+  font-weight: 700;
+  color: var(--color-ink-soft);
+  font-size: 0.74rem;
+  min-width: 26px;
+  width: 26px;
+}
+
+.td-guidance {
+  text-align: center;
+  min-width: 26px;
+  width: 26px;
+}
+
+.td-question {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  min-width: 200px;
+  max-width: 360px;
+}
+
+.td-checkbox {
+  text-align: center;
+  min-width: 26px;
+  width: 26px;
+}
+
+.td-score {
+  min-width: 56px;
+  width: 56px;
+}
+
+.td-finding {
+  min-width: 72px;
+  width: 72px;
+  text-align: center;
+}
+
+.td-comments {
+  min-width: 110px;
+}
+
+.td-action {
+  text-align: center;
+  min-width: 28px;
+  width: 28px;
+}
+
+.survey-radio input[type="radio"] {
+  width: 0.95rem;
+  height: 0.95rem;
+  accent-color: var(--color-blue);
+  cursor: pointer;
+}
+
+.finding-radio-group {
+  display: flex;
+  gap: 2px;
+  justify-content: center;
+}
+
+.finding-radio-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.finding-radio-label input[type="radio"] {
+  width: 0.78rem;
+  height: 0.78rem;
+}
+
+.score-select {
+  width: 50px;
+  padding: 1px 2px;
+  font-size: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: white;
+  accent-color: var(--color-blue);
+}
+
+.comment-input {
+  width: 100%;
+  min-width: 90px;
+  padding: 2px 5px;
+  font-size: 0.76rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: white;
+}
+
+.cic-row {
+  background: rgba(200, 138, 23, 0.06) !important;
+}
+
+.cic-row:hover {
+  background: rgba(200, 138, 23, 0.1) !important;
+}
+
+.guidance-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: var(--color-blue-soft);
+  color: var(--color-blue);
+  font-size: 0.7rem;
+  font-weight: 800;
+  cursor: default;
+  flex-shrink: 0;
+  title: attr(title);
+}
+
+/* ── Finding details panel ─────────────────────────────────── */
+.finding-panel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(9, 21, 36, 0.24);
+  display: block;
+}
+
+.finding-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 45;
+  width: min(480px, 100vw);
+  background: white;
+  border-left: 1px solid var(--color-border);
+  box-shadow: -12px 0 36px rgba(16, 32, 51, 0.18);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.finding-panel-header {
+  padding: 1rem 1.1rem 0.8rem;
+  background: var(--color-blue);
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-shrink: 0;
+}
+
+.finding-panel-title {
+  font-weight: 800;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+
+.finding-panel-ref {
+  font-size: 0.78rem;
+  opacity: 0.82;
+  margin-top: 0.2rem;
+  max-width: 340px;
+  line-height: 1.4;
+}
+
+.finding-panel-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  font-size: 0.95rem;
+  font-weight: 800;
+  text-decoration: none;
+  flex-shrink: 0;
+  margin-left: 0.5rem;
+  margin-top: -0.1rem;
+}
+
+.finding-panel-body {
+  padding: 1.1rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.finding-panel-attach {
+  border: 2px dashed var(--color-border);
+  border-radius: 0.75rem;
+  padding: 1.1rem;
+  text-align: center;
+  color: var(--color-ink-soft);
+  font-size: 0.82rem;
+  background: #f8fafc;
+}
+
+.finding-panel-attach input[type="file"] {
+  display: block;
+  margin: 0.5rem auto 0;
+  font-size: 0.78rem;
+}
+
+/* ── History grid status checks ────────────────────────────── */
+.audit-status-checks {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.audit-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  font-size: 0.6rem;
+  font-weight: 800;
+}
+
+.audit-check-ok {
+  background: var(--color-green-soft);
+  color: var(--color-green);
+  border: 1px solid rgba(15, 156, 106, 0.3);
+}
+
+.audit-check-pending {
+  background: var(--color-amber-soft);
+  color: var(--color-amber);
+  border: 1px solid rgba(200, 138, 23, 0.28);
+}
+
+.audit-check-missing {
+  background: #f0f3f7;
+  color: #b0bec8;
+  border: 1px solid var(--color-border);
+}
+
+/* ── VIR details pane (vessel particulars, audit header) ──── */
+.vir-details-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 0 0 1.25rem 1.25rem;
+  border-top: none;
+  background: white;
+  overflow: hidden;
+}
+
+@media (max-width: 1100px) {
+  .checklist-shell {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 820px) {
+  .checklist-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .checklist-tree {
+    max-height: 280px;
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
   }
 }

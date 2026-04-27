@@ -34,6 +34,7 @@ type InspectionRow = {
   status: keyof typeof inspectionStatusLabel;
   shoreReviewedBy: string | null;
   shoreReviewDate: Date | null;
+  metadata: unknown;
   vessel: {
     id: string;
     code: string;
@@ -81,6 +82,8 @@ type InspectionRow = {
   syncLabel: "Synced" | "Not Synced";
   placeOfInspection: string;
   conditionScore: number | null;
+  auditFromDate: string | null;
+  auditEndDate: string | null;
 };
 
 export default async function InspectionsPage({
@@ -189,6 +192,11 @@ export default async function InspectionsPage({
     const approvedSignOff = inspection.signOffs.find((item) => item.approved) ?? null;
     const reportType = inspection.inspectionType.name.includes("VIR") ? inspection.inspectionType.name : "VIR";
 
+    const meta =
+      inspection.metadata && typeof inspection.metadata === "object" && !Array.isArray(inspection.metadata)
+        ? (inspection.metadata as Record<string, unknown>)
+        : {};
+
     return {
       ...inspection,
       progress,
@@ -199,6 +207,8 @@ export default async function InspectionsPage({
       inspectionMode: inferInspectionMode(inspection.title, inspection.inspectionType.name),
       syncLabel: syncLabelForInspection(inspection.status),
       placeOfInspection: [inspection.port, inspection.country].filter(Boolean).join(", ") || "Not set",
+      auditFromDate: fmt.format(inspection.inspectionDate),
+      auditEndDate: typeof meta.auditEndDate === "string" ? meta.auditEndDate : null,
     };
   });
 
@@ -492,69 +502,94 @@ function InspectionHistoryGrid({
       <table className="table data-table vir-data-table">
         <thead>
           <tr>
-            <th>Progress</th>
             {isOffice ? <th>Vessel</th> : null}
             <th>Ref no</th>
+            <th>Audit from</th>
+            <th>Audit to</th>
             <th>Status</th>
-            <th>Place of inspection</th>
+            <th style={{ textAlign: "center" }}>Submitted</th>
+            <th style={{ textAlign: "center" }}>Reviewed</th>
+            <th style={{ textAlign: "center" }}>Acknowledged</th>
+            <th>Place</th>
             <th>Inspected by</th>
             <th>Report Type</th>
-            <th>Insp.Mode</th>
             <th>Action</th>
           </tr>
         </thead>
         <tbody>
-          {inspections.map((inspection) => (
-            <tr key={inspection.id}>
-              <td style={{ minWidth: "150px" }}>
-                <div className="table-progress">
-                  <div className="table-progress-track">
-                    <div className="table-progress-fill" style={{ width: `${inspection.progress.completionPct}%` }} />
-                  </div>
-                  <div className="small-text">{inspection.progress.completionPct}%</div>
-                </div>
-              </td>
-              {isOffice ? (
+          {inspections.map((inspection) => {
+            const hasVesselSubmit = inspection.signOffs.some(
+              (s) => s.stage === "VESSEL_SUBMISSION" && s.approved
+            );
+            const hasShoreReview = inspection.signOffs.some(
+              (s) => s.stage === "SHORE_REVIEW" && s.approved
+            );
+            const hasFinalAck = inspection.signOffs.some(
+              (s) => s.stage === "FINAL_ACKNOWLEDGEMENT" && s.approved
+            );
+
+            return (
+              <tr key={inspection.id}>
+                {isOffice ? (
+                  <td>
+                    <Link className="table-link" href={`/vessels/${inspection.vessel.id}`}>
+                      {inspection.vessel.name}
+                    </Link>
+                  </td>
+                ) : null}
                 <td>
-                  <Link className="table-link" href={`/vessels/${inspection.vessel.id}`}>
-                    {inspection.vessel.name}
+                  <Link className="table-link" href={`/inspections/${inspection.id}`}>
+                    {inspection.refNo}
                   </Link>
+                  <div className="small-text">{inspection.inspectionMode}</div>
                 </td>
-              ) : null}
-              <td>
-                <Link className="table-link" href={`/reports/inspection/${inspection.id}?variant=detailed`}>
-                  {inspection.refNo}
-                </Link>
-                <div className="small-text">{inspection.title}</div>
-              </td>
-              <td>
-                <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>{inspectionStatusLabel[inspection.status]}</span>
-              </td>
-              <td>{inspection.placeOfInspection}</td>
-              <td>{inspection.inspectorName ?? "Not set"}</td>
-              <td>{inspection.reportType}</td>
-              <td>{inspection.inspectionMode}</td>
-              <td>
-                <div className="table-actions table-actions-icons">
-                  <ActionIconLink href={`/inspections/${inspection.id}`} icon={Eye} label="Inspection workflow" tone="primary" />
-                  <ActionIconLink
-                    href={`/reports/inspection/${inspection.id}?variant=detailed`}
-                    icon={FileText}
-                    label="Detailed report"
-                    tone="success"
-                  />
-                  {inspection.findings.length > 0 ? (
+                <td>{inspection.auditFromDate}</td>
+                <td>{inspection.auditEndDate ?? "—"}</td>
+                <td>
+                  <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>
+                    {inspectionStatusLabel[inspection.status]}
+                  </span>
+                </td>
+                <td style={{ textAlign: "center" }}>
+                  <span title="Vessel submitted" style={{ fontSize: "1.1rem" }}>
+                    {hasVesselSubmit ? "✅" : "⬜"}
+                  </span>
+                </td>
+                <td style={{ textAlign: "center" }}>
+                  <span title="Shore reviewed" style={{ fontSize: "1.1rem" }}>
+                    {hasShoreReview ? "✅" : "⬜"}
+                  </span>
+                </td>
+                <td style={{ textAlign: "center" }}>
+                  <span title="Final acknowledgement" style={{ fontSize: "1.1rem" }}>
+                    {hasFinalAck ? "✅" : "⬜"}
+                  </span>
+                </td>
+                <td>{inspection.placeOfInspection}</td>
+                <td>{inspection.inspectorName ?? "Not set"}</td>
+                <td>{inspection.reportType}</td>
+                <td>
+                  <div className="table-actions table-actions-icons">
+                    <ActionIconLink href={`/inspections/${inspection.id}`} icon={Eye} label="Inspection workflow" tone="primary" />
                     <ActionIconLink
-                      href={`/deviations/${inspection.id}${selectedVesselId ? `?vesselId=${encodeURIComponent(selectedVesselId)}` : ""}`}
-                      icon={TriangleAlert}
-                      label="Pending deviations"
-                      tone="warning"
+                      href={`/reports/inspection/${inspection.id}?variant=detailed`}
+                      icon={FileText}
+                      label="Detailed report"
+                      tone="success"
                     />
-                  ) : null}
-                </div>
-              </td>
-            </tr>
-          ))}
+                    {inspection.findings.length > 0 ? (
+                      <ActionIconLink
+                        href={`/deviations/${inspection.id}${selectedVesselId ? `?vesselId=${encodeURIComponent(selectedVesselId)}` : ""}`}
+                        icon={TriangleAlert}
+                        label="Pending deviations"
+                        tone="warning"
+                      />
+                    ) : null}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

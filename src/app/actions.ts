@@ -1254,6 +1254,54 @@ export async function saveInspectionAnswersAction(inspectionId: string, formData
   revalidateVirPaths(inspectionId);
 }
 
+export async function saveInspectionHeaderAction(inspectionId: string, formData: FormData) {
+  const { inspection } = await getInspectionAccess(inspectionId);
+
+  const existing = await prisma.virInspection.findUnique({
+    where: { id: inspection.id },
+    select: { metadata: true },
+  });
+
+  const existingMetadata =
+    existing?.metadata && typeof existing.metadata === "object" && !Array.isArray(existing.metadata)
+      ? (existing.metadata as Record<string, unknown>)
+      : {};
+
+  const headerMetadata: Record<string, unknown> = {
+    auditFromTime: toStringOrNull(formData.get("auditFromTime")),
+    auditEndDate: toStringOrNull(formData.get("auditEndDate")),
+    auditToTime: toStringOrNull(formData.get("auditToTime")),
+    portOfDisembarkation: toStringOrNull(formData.get("portOfDisembarkation")),
+    auditBasedOnIncidents: toBooleanFlag(formData.get("auditBasedOnIncidents")),
+    auditBasedOnExternal: toBooleanFlag(formData.get("auditBasedOnExternal")),
+    operationsAtTime: toStringOrNull(formData.get("operationsAtTime")),
+    auditAuthority: toStringOrNull(formData.get("auditAuthority")),
+    auditorQualification: toStringOrNull(formData.get("auditorQualification")),
+    commandExperience: toStringOrNull(formData.get("commandExperience")),
+    auditExperience: toStringOrNull(formData.get("auditExperience")),
+    auditees: toStringOrNull(formData.get("auditees")),
+    openingMeetingAttendees: toStringOrNull(formData.get("openingMeetingAttendees")),
+    closingMeetingAttendees: toStringOrNull(formData.get("closingMeetingAttendees")),
+  };
+
+  const summary = toStringOrNull(formData.get("summary"));
+
+  const mergedMetadata: Prisma.JsonObject = {};
+  for (const [key, value] of Object.entries({ ...existingMetadata, ...headerMetadata })) {
+    mergedMetadata[key] = value as Prisma.JsonValue;
+  }
+
+  await prisma.virInspection.update({
+    where: { id: inspectionId },
+    data: {
+      summary,
+      metadata: mergedMetadata,
+    },
+  });
+
+  revalidateVirPaths(inspectionId);
+}
+
 export async function addFindingAction(inspectionId: string, formData: FormData) {
   const { session, inspection } = await getInspectionAccess(inspectionId);
   const questionId = toStringOrNull(formData.get("questionId"));
