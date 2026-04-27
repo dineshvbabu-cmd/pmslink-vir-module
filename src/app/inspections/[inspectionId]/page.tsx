@@ -231,10 +231,18 @@ export default async function InspectionDetailPage({
   const approvedSignOffs = inspection.signOffs.filter((item) => item.approved);
   const refNo = inspection.externalReference ?? inspection.title;
 
-  // Finding question panel data
+  // Finding question panel data — support both DB question IDs and live-* IDs
   const findingQuestion = findingQ
     ? questions.find((q) => q.id === findingQ) ?? null
     : null;
+  const allLiveQuestions = liveChecklist
+    ? liveSections.flatMap((s: any) => s.subsections.flatMap((ss: any) => ss.questions))
+    : [];
+  const findingLiveQuestion = findingQ && !findingQuestion
+    ? (allLiveQuestions.find((q: any) => `live-${q.id}` === findingQ) ?? null)
+    : null;
+  const findingPanelPrompt = findingQuestion?.prompt ?? (findingLiveQuestion as any)?.prompt ?? "";
+  const findingPanelCode = findingQuestion?.code ?? (findingLiveQuestion as any)?.code ?? "";
 
   return (
     <div className="page-stack">
@@ -257,12 +265,18 @@ export default async function InspectionDetailPage({
               ({approvedSignOffs.map((s) => s.actorName).filter(Boolean).join(", ")})
             </span>
           ) : null}
-          <div className="vir-report-topbar-progress">
+          <Link
+            className="vir-report-topbar-progress"
+            href={`/inspections/${inspection.id}?pane=questionnaire${selectedSectionQuery}`}
+            scroll={false}
+            style={{ textDecoration: "none" }}
+            title="Open checklist"
+          >
             <div className="vir-progress-track">
               <div className="vir-progress-fill" style={{ width: `${progress.completionPct}%` }} />
             </div>
             <span style={{ fontSize: "0.78rem" }}>{progress.completionPct}%</span>
-          </div>
+          </Link>
           <div className="vir-report-topbar-actions">
             {isVesselSession(session) ? (
               <form action={updateInspectionStatusAction.bind(null, inspection.id, "SUBMITTED")}>
@@ -757,6 +771,10 @@ export default async function InspectionDetailPage({
                               ? stripInlineHtml(question.guidanceNotes).slice(0, 120)
                               : bindingQuestion?.helpText?.slice(0, 120) ?? null;
 
+                            const liveWorkflow = questionWorkflow[questionKey];
+                            const effectiveSurveyStatus = surveyStatus ?? liveWorkflow?.surveyStatus ?? null;
+                            const effectiveScore = manualScore ?? liveWorkflow?.score ?? null;
+
                             return (
                               <tr className={isCic ? "cic-row" : ""} key={questionKey}>
                                 <td className="td-no">{qi + 1}</td>
@@ -772,90 +790,64 @@ export default async function InspectionDetailPage({
                                 </td>
                                 {(["T", "I", "NS", "NA"] as const).map((status) => (
                                   <td className="td-checkbox survey-radio" key={status}>
-                                    {bindingQuestion ? (
-                                      <input
-                                        defaultChecked={surveyStatus === status}
-                                        disabled={!canEditInspection}
-                                        name={`status:${bindingQuestion.id}`}
-                                        type="radio"
-                                        value={status}
-                                      />
-                                    ) : <span style={{ color: "var(--color-ink-soft)", fontSize: "0.7rem" }}>—</span>}
+                                    <input
+                                      defaultChecked={effectiveSurveyStatus === status}
+                                      name={`status:${questionKey}`}
+                                      type="radio"
+                                      value={status}
+                                    />
                                   </td>
                                 ))}
                                 <td className="td-score">
-                                  {bindingQuestion ? (
-                                    <select
-                                      className="score-select"
-                                      defaultValue={manualScore !== null ? String(manualScore) : ""}
-                                      disabled={!canEditInspection}
-                                      name={`score:${bindingQuestion.id}`}
-                                    >
-                                      <option value="">—</option>
-                                      <option value="1">1</option>
-                                      <option value="2">2</option>
-                                      <option value="3">3</option>
-                                      <option value="4">4</option>
-                                      <option value="5">5</option>
-                                    </select>
-                                  ) : null}
+                                  <select
+                                    className="score-select"
+                                    defaultValue={effectiveScore !== null ? String(effectiveScore) : ""}
+                                    name={`score:${questionKey}`}
+                                  >
+                                    <option value="">—</option>
+                                    <option value="1">1</option>
+                                    <option value="2">2</option>
+                                    <option value="3">3</option>
+                                    <option value="4">4</option>
+                                    <option value="5">5</option>
+                                  </select>
                                 </td>
                                 <td className="td-finding">
-                                  <div className="finding-radio-group">
-                                    <label className="finding-radio-label" style={{ color: hasFinding ? "var(--color-green)" : "var(--color-ink-soft)" }}>
-                                      <input
-                                        defaultChecked={hasFinding}
-                                        disabled
-                                        name={`finding:${questionKey}`}
-                                        type="radio"
-                                        value="Y"
-                                      />
-                                      Y
-                                    </label>
-                                    <label className="finding-radio-label" style={{ color: "var(--color-amber)" }}>
-                                      <input
-                                        disabled
-                                        name={`finding:${questionKey}`}
-                                        type="radio"
-                                        value="O"
-                                      />
-                                      O
-                                    </label>
-                                    <label className="finding-radio-label" style={{ color: "var(--color-ink-soft)" }}>
-                                      <input
-                                        defaultChecked={!hasFinding}
-                                        disabled
-                                        name={`finding:${questionKey}`}
-                                        type="radio"
-                                        value="N"
-                                      />
-                                      N
-                                    </label>
-                                  </div>
+                                  <Link
+                                    href={`/inspections/${inspection.id}?pane=questionnaire&section=${selectedSectionId}&findingQ=${questionKey}`}
+                                    scroll={false}
+                                    style={{ textDecoration: "none" }}
+                                    title="Add finding"
+                                  >
+                                    <div className="finding-radio-group">
+                                      <span className="finding-radio-label" style={{ color: hasFinding ? "var(--color-green)" : "var(--color-ink-soft)" }}>
+                                        {hasFinding ? "●" : "○"} Y
+                                      </span>
+                                      <span className="finding-radio-label" style={{ color: "var(--color-amber)" }}>○ O</span>
+                                      <span className="finding-radio-label" style={{ color: hasFinding ? "var(--color-ink-soft)" : "var(--color-ink-soft)" }}>
+                                        {hasFinding ? "○" : "●"} N
+                                      </span>
+                                    </div>
+                                  </Link>
                                 </td>
                                 <td className="td-comments">
-                                  {bindingQuestion ? (
-                                    <input
-                                      className="comment-input"
-                                      defaultValue={answer?.comment ?? ""}
-                                      disabled={!canEditInspection}
-                                      name={`comment:${bindingQuestion.id}`}
-                                      placeholder="Comment..."
-                                      type="text"
-                                    />
-                                  ) : null}
+                                  <input
+                                    className="comment-input"
+                                    defaultValue={answer?.comment ?? ""}
+                                    name={`comment:${questionKey}`}
+                                    placeholder="Comment..."
+                                    type="text"
+                                  />
                                 </td>
                                 <td className="td-action">
-                                  {bindingQuestion ? (
-                                    <Link
-                                      href={`/inspections/${inspection.id}?pane=questionnaire&section=${selectedSectionId}&findingQ=${bindingQuestion.id}`}
-                                      scroll={false}
-                                      style={{ color: "var(--color-blue)", fontSize: "0.85rem" }}
-                                      title="Add / view finding"
-                                    >
-                                      ✏
-                                    </Link>
-                                  ) : null}
+                                  <Link
+                                    href={`/inspections/${inspection.id}?pane=questionnaire&section=${selectedSectionId}&findingQ=${questionKey}`}
+                                    scroll={false}
+                                    style={{ color: "var(--color-blue)", fontSize: "0.85rem" }}
+                                    title="Add / view finding"
+                                  >
+                                    ✏
+                                  </Link>
                                 </td>
                               </tr>
                             );
@@ -1219,7 +1211,7 @@ export default async function InspectionDetailPage({
       ) : null}
 
       {/* ── Finding details panel (slide-in) ── */}
-      {findingQ && findingQ !== "__show" && findingQuestion ? (
+      {findingQ && findingQ !== "__show" && (findingQuestion || findingLiveQuestion) ? (
         <>
           <Link className="finding-panel-overlay" href={closeHref} scroll={false} aria-label="Close finding panel" />
           <div className="finding-panel">
@@ -1227,7 +1219,7 @@ export default async function InspectionDetailPage({
               <div>
                 <div className="finding-panel-title">FINDING DETAILS</div>
                 <div className="finding-panel-ref">
-                  {findingQuestion.code} — {findingQuestion.prompt.slice(0, 80)}
+                  {findingPanelCode ? `${findingPanelCode} — ` : ""}{findingPanelPrompt.slice(0, 100)}
                 </div>
               </div>
               <Link className="finding-panel-close" href={closeHref} scroll={false}>✕</Link>

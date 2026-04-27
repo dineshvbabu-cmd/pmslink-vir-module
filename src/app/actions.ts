@@ -1140,12 +1140,11 @@ export async function saveInspectionAnswersAction(inspectionId: string, formData
     },
   });
 
-  if (!inspectionTemplate?.template) {
-    throw new Error("This inspection does not yet have a questionnaire template.");
-  }
+  // Allow saving for live-checklist inspections that have no formal template
+  const hasTemplate = Boolean(inspectionTemplate?.template);
 
   const existingMetadata =
-    inspectionTemplate.metadata && typeof inspectionTemplate.metadata === "object" && !Array.isArray(inspectionTemplate.metadata)
+    inspectionTemplate?.metadata && typeof inspectionTemplate.metadata === "object" && !Array.isArray(inspectionTemplate.metadata)
       ? (inspectionTemplate.metadata as Record<string, unknown>)
       : {};
   const existingQuestionWorkflow =
@@ -1167,7 +1166,7 @@ export async function saveInspectionAnswersAction(inspectionId: string, formData
     })
   );
 
-  for (const section of inspectionTemplate.template.sections) {
+  for (const section of (hasTemplate ? inspectionTemplate!.template!.sections : [])) {
     for (const question of section.questions) {
       const fieldName = `q:${question.id}`;
       const commentName = `comment:${question.id}`;
@@ -1221,6 +1220,24 @@ export async function saveInspectionAnswersAction(inspectionId: string, formData
           answeredBy: session.actorName,
         },
       });
+    }
+  }
+
+  // Also persist T/I/NS/NA + score for live checklist questions not bound to a DB template question
+  const processedLiveKeys = new Set<string>();
+  for (const rawKey of formData.keys()) {
+    const match = /^status:(live-.+)$/.exec(rawKey);
+    if (!match) continue;
+    const liveId = match[1];
+    if (processedLiveKeys.has(liveId)) continue;
+    processedLiveKeys.add(liveId);
+    const surveyStatus = toStringOrNull(formData.get(`status:${liveId}`));
+    const scoreRaw = toStringOrNull(formData.get(`score:${liveId}`));
+    const manualScore = scoreRaw ? Number(scoreRaw) : null;
+    const normalizedStatus = surveyStatus && ["T", "I", "NS", "NA"].includes(surveyStatus.toUpperCase()) ? surveyStatus.toUpperCase() : null;
+    const normalizedScore = typeof manualScore === "number" && Number.isFinite(manualScore) ? manualScore : null;
+    if (normalizedStatus !== null || normalizedScore !== null) {
+      questionWorkflow[liveId] = { surveyStatus: normalizedStatus, score: normalizedScore };
     }
   }
 
