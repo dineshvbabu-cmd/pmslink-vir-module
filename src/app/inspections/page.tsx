@@ -320,40 +320,75 @@ export default async function InspectionsPage({
           </div>
         </div>
 
-        <div className="filter-toolbar">
+        <div className="filter-toolbar" style={{ flexDirection: "column", alignItems: "stretch", gap: "0.5rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+            <div className="filter-chips">
+              <Link
+                className={`filter-chip ${pageMode === "register" ? "filter-chip-active" : ""}`}
+                href={modeHref("register", { vesselId: selectedVesselId, view: viewMode, q })}
+              >
+                Inspection Register
+              </Link>
+              <Link
+                className={`filter-chip ${pageMode === "approved" ? "filter-chip-active" : ""}`}
+                href={modeHref("approved", { vesselId: selectedVesselId, view: viewMode, q })}
+              >
+                Approved inspections
+              </Link>
+              <Link
+                className={`filter-chip ${pageMode === "history" ? "filter-chip-active" : ""}`}
+                href={modeHref("history", { vesselId: selectedVesselId, view: viewMode, q })}
+              >
+                Inspection history
+              </Link>
+              <Link
+                className={`filter-chip ${viewMode === "grid" ? "filter-chip-active" : ""}`}
+                href={modeHref(pageMode, { vesselId: selectedVesselId, status, view: "grid", scope, q })}
+              >
+                <TableProperties size={16} />
+                <span>Grid</span>
+              </Link>
+              <Link
+                className={`filter-chip ${viewMode === "summary" ? "filter-chip-active" : ""}`}
+                href={modeHref(pageMode, { vesselId: selectedVesselId, status, view: "summary", scope, q })}
+              >
+                <LayoutGrid size={16} />
+                <span>Summary</span>
+              </Link>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.78rem", color: "var(--muted)", fontWeight: 600 }}>
+              <span>{enriched.length} records</span>
+              <span>·</span>
+              <span>{filtered.length} shown</span>
+              <span>·</span>
+              <span>{filtered.filter((i) => ["SHORE_REVIEWED", "CLOSED"].includes(i.status)).length} approved</span>
+              <span>·</span>
+              <span>{filtered.reduce((sum, i) => sum + i.findings.length, 0)} open findings</span>
+            </div>
+          </div>
+
           <div className="filter-chips">
-            <Link
-              className={`filter-chip ${pageMode === "register" ? "filter-chip-active" : ""}`}
-              href={modeHref("register", { vesselId: selectedVesselId, view: viewMode, q })}
-            >
-              Inspection Register
-            </Link>
-            <Link
-              className={`filter-chip ${pageMode === "approved" ? "filter-chip-active" : ""}`}
-              href={modeHref("approved", { vesselId: selectedVesselId, view: viewMode, q })}
-            >
-              Approved inspections
-            </Link>
-            <Link
-              className={`filter-chip ${pageMode === "history" ? "filter-chip-active" : ""}`}
-              href={modeHref("history", { vesselId: selectedVesselId, view: viewMode, q })}
-            >
-              Inspection history
-            </Link>
-            <Link
-              className={`filter-chip ${viewMode === "grid" ? "filter-chip-active" : ""}`}
-              href={modeHref(pageMode, { vesselId: selectedVesselId, status, view: "grid", scope, q })}
-            >
-              <TableProperties size={16} />
-              <span>Table/Grid View</span>
-            </Link>
-            <Link
-              className={`filter-chip ${viewMode === "summary" ? "filter-chip-active" : ""}`}
-              href={modeHref(pageMode, { vesselId: selectedVesselId, status, view: "summary", scope, q })}
-            >
-              <LayoutGrid size={16} />
-              <span>Summary View</span>
-            </Link>
+            {[
+              { value: "", label: "All statuses" },
+              { value: "DRAFT", label: "Draft" },
+              { value: "SUBMITTED", label: "Submitted" },
+              { value: "RETURNED", label: "Returned" },
+              { value: "SHORE_REVIEWED", label: "Approved" },
+              { value: "CLOSED", label: "Closed" },
+            ].map((item) => (
+              <Link
+                key={item.value}
+                className={`filter-chip ${(status ?? "") === item.value ? "filter-chip-active" : ""}`}
+                href={modeHref(pageMode, { vesselId: selectedVesselId, status: item.value || undefined, view: viewMode, q })}
+              >
+                {item.label}
+                {item.value ? (
+                  <span style={{ marginLeft: "3px", opacity: 0.7 }}>
+                    ({enriched.filter((i) => i.status === item.value).length})
+                  </span>
+                ) : null}
+              </Link>
+            ))}
           </div>
 
           <form className="inline-form inline-form-wide" method="get">
@@ -394,27 +429,6 @@ export default async function InspectionsPage({
           <InspectionRegisterGrid inspections={filtered} isOffice={isOfficeSession(session)} />
         )}
       </section>
-
-      <section className="erp-metrics-grid">
-        <MetricStat label="Visible inspections" note="Current filtered set" value={filtered.length} />
-        <MetricStat
-          label="Approved"
-          note="Shore reviewed or closed"
-          value={filtered.filter((item) => ["SHORE_REVIEWED", "CLOSED"].includes(item.status)).length}
-        />
-        <MetricStat
-          label="Pending approval"
-          note="Submitted or returned"
-          value={filtered.filter((item) => ["SUBMITTED", "RETURNED"].includes(item.status)).length}
-        />
-        <MetricStat label="Open findings" note="Across filtered set" value={filtered.reduce((sum, item) => sum + item.findings.length, 0)} />
-        <MetricStat label="Overdue CAR" note="Past target date" value={filtered.reduce((sum, item) => sum + item.overdueActions, 0)} />
-        <MetricStat
-          label="Not Synced"
-          note="Derived from draft or returned records"
-          value={filtered.filter((item) => item.syncLabel === "Not Synced").length}
-        />
-      </section>
     </div>
   );
 }
@@ -425,7 +439,7 @@ function ApprovedInspectionGrid({
   inspections: InspectionRow[];
 }) {
   return (
-    <div className="table-shell table-shell-compact">
+    <div className="table-shell table-shell-page">
       <table className="table data-table vir-data-table">
         <thead>
           <tr>
@@ -498,7 +512,7 @@ function InspectionHistoryGrid({
   selectedVesselId: string;
 }) {
   return (
-    <div className="table-shell table-shell-tall">
+    <div className="table-shell table-shell-page">
       <table className="table data-table vir-data-table">
         <thead>
           <tr>
@@ -603,7 +617,7 @@ function InspectionRegisterGrid({
   isOffice: boolean;
 }) {
   return (
-    <div className="table-shell table-shell-tall">
+    <div className="table-shell table-shell-page">
       <table className="table data-table vir-data-table">
         <thead>
           <tr>
@@ -829,14 +843,4 @@ function inferInspectionMode(title: string, inspectionTypeName: string) {
 
 function syncLabelForInspection(status: string): "Synced" | "Not Synced" {
   return ["DRAFT", "RETURNED", "IMPORT_REVIEW"].includes(status) ? "Not Synced" : "Synced";
-}
-
-function MetricStat({ label, note, value }: { label: string; note: string; value: number }) {
-  return (
-    <div className="metric-tile metric-tile-static">
-      <div className="metric-tile-label">{label}</div>
-      <div className="metric-tile-value">{value}</div>
-      <div className="metric-tile-note">{note}</div>
-    </div>
-  );
 }

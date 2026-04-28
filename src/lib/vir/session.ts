@@ -42,7 +42,6 @@ const officeNavigation: WorkspaceNavItem[] = [
   { href: "/templates", label: "Template Library", note: "Questionnaires" },
   { href: "/register", label: "Library Register", note: "Office template masters" },
   { href: "/imports", label: "Import Engine", note: "Checklist normalization" },
-  { href: "/instruction", label: "Instruction", note: "User guide and help" },
 ];
 
 const vesselNavigation: WorkspaceNavItem[] = [

@@ -1021,6 +1021,10 @@ textarea {
   max-height: min(36rem, calc(100vh - 16rem));
 }
 
+.table-shell-page {
+  max-height: calc(100vh - 22rem);
+}
+
 .table-shell .table th {
   position: sticky;
   top: 0;
@@ -2682,6 +2686,23 @@ textarea {
 .inline-form-wide input,
 .inline-form-wide select {
   min-width: 220px;
+}
+
+.filter-select {
+  height: 2rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--color-border);
+  padding: 0 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: white;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.filter-select:focus {
+  outline: 2px solid rgba(26, 116, 216, 0.4);
+  border-color: var(--color-blue);
 }
 
 .filter-chip {

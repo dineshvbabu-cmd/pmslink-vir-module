@@ -48,6 +48,14 @@ export default async function SchedulePage({
       : session.vesselId ?? "";
   const windowStart = addDays(startOfDay(new Date()), -180);
 
+  const allVessels = isOffice
+    ? await prisma.vessel.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, fleet: true },
+        orderBy: { name: "asc" },
+      })
+    : [];
+
   const inspections = await prisma.virInspection.findMany({
     where: {
       status: { not: "ARCHIVED" },
@@ -206,6 +214,38 @@ export default async function SchedulePage({
             </Link>
           </div>
         </div>
+
+        {isOffice && allVessels.length > 0 ? (
+          <form method="get" action="/schedule" style={{ marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <label style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--muted)", whiteSpace: "nowrap" }}>Filter vessel</label>
+            <select
+              name="vesselId"
+              defaultValue={selectedVesselId}
+              className="filter-select"
+              style={{ minWidth: "200px" }}
+            >
+              <option value="">All vessels</option>
+              {allVessels.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}{v.fleet ? ` (${v.fleet})` : ""}
+                </option>
+              ))}
+            </select>
+            {selectedPlannerStatus !== "ALL" ? <input type="hidden" name="plannerStatus" value={selectedPlannerStatus} /> : null}
+            {selectedCompliance !== "ALL" ? <input type="hidden" name="compliance" value={selectedCompliance} /> : null}
+            {selectedView !== "table" ? <input type="hidden" name="view" value={selectedView} /> : null}
+            <button type="submit" className="btn btn-compact" style={{ fontSize: "0.75rem" }}>Apply</button>
+            {selectedVesselId ? (
+              <Link
+                href={buildScheduleHref({ view: selectedView, plannerStatus: selectedPlannerStatus, compliance: selectedCompliance })}
+                className="btn-secondary btn-compact"
+                style={{ fontSize: "0.75rem" }}
+              >
+                Clear
+              </Link>
+            ) : null}
+          </form>
+        ) : null}
 
         <div className="filter-chips" style={{ marginBottom: "1rem" }}>
           {["ALL", "In Window", "Due Range", "Overdue"].map((plannerStatus) => (
