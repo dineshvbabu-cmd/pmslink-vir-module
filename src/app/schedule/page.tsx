@@ -1,8 +1,9 @@
 import type { VirInspectionTypeCategory } from "@prisma/client";
 import Link from "next/link";
+import { AutoSubmitSelect } from "@/components/auto-submit-select";
 import { ScheduleBoard } from "@/components/schedule-board";
 import { prisma } from "@/lib/prisma";
-import { getVirWorkspaceFilter, isOfficeSession, requireVirSession } from "@/lib/vir/session";
+import { getVirWorkspaceFilter, isOfficeSession, isTsiSession, requireVirSession } from "@/lib/vir/session";
 import { inspectionStatusLabel, toneForInspectionStatus } from "@/lib/vir/workflow";
 
 export const dynamic = "force-dynamic";
@@ -51,16 +52,27 @@ export default async function SchedulePage({
   const allVessels = isOffice
     ? await prisma.vessel.findMany({
         where: { isActive: true },
-        select: { id: true, name: true, fleet: true },
+        select: { id: true, code: true, name: true, fleet: true },
         orderBy: { name: "asc" },
       })
     : [];
+
+  const isTsi = isOffice && isTsiSession(session);
+  const scopedCodes = isTsi ? (session.dashboardVesselCodes ?? []) : [];
 
   const inspections = await prisma.virInspection.findMany({
     where: {
       status: { not: "ARCHIVED" },
       inspectionType: { is: { category: { in: visibleInspectionCategories } } },
-      ...(isOffice ? (selectedVesselId ? { vesselId: selectedVesselId } : {}) : { vesselId: session.vesselId ?? "" }),
+      ...(isOffice
+        ? selectedVesselId === "__all__"
+          ? {}
+          : selectedVesselId
+            ? { vesselId: selectedVesselId }
+            : scopedCodes.length > 0
+              ? { vessel: { code: { in: scopedCodes } } }
+              : {}
+        : { vesselId: session.vesselId ?? "" }),
     },
     orderBy: [{ inspectionDate: "desc" }, { createdAt: "desc" }],
     include: {
@@ -218,32 +230,33 @@ export default async function SchedulePage({
         {isOffice && allVessels.length > 0 ? (
           <form method="get" action="/schedule" style={{ marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <label style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--muted)", whiteSpace: "nowrap" }}>Filter vessel</label>
-            <select
-              name="vesselId"
-              defaultValue={selectedVesselId}
-              className="filter-select"
-              style={{ minWidth: "200px" }}
-            >
-              <option value="">All vessels</option>
-              {allVessels.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}{v.fleet ? ` (${v.fleet})` : ""}
-                </option>
-              ))}
-            </select>
+            <AutoSubmitSelect name="vesselId" defaultValue={selectedVesselId} className="filter-select" style={{ minWidth: "200px" }}>
+              {isTsi ? (
+                <>
+                  <option value="">My vessels</option>
+                  <option value="__all__">All fleet vessels</option>
+                  {allVessels
+                    .filter((v) => scopedCodes.includes(v.code))
+                    .map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name}{v.fleet ? ` (${v.fleet})` : ""}
+                      </option>
+                    ))}
+                </>
+              ) : (
+                <>
+                  <option value="">All vessels</option>
+                  {allVessels.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}{v.fleet ? ` (${v.fleet})` : ""}
+                    </option>
+                  ))}
+                </>
+              )}
+            </AutoSubmitSelect>
             {selectedPlannerStatus !== "ALL" ? <input type="hidden" name="plannerStatus" value={selectedPlannerStatus} /> : null}
             {selectedCompliance !== "ALL" ? <input type="hidden" name="compliance" value={selectedCompliance} /> : null}
             {selectedView !== "table" ? <input type="hidden" name="view" value={selectedView} /> : null}
-            <button type="submit" className="btn btn-compact" style={{ fontSize: "0.75rem" }}>Apply</button>
-            {selectedVesselId ? (
-              <Link
-                href={buildScheduleHref({ view: selectedView, plannerStatus: selectedPlannerStatus, compliance: selectedCompliance })}
-                className="btn-secondary btn-compact"
-                style={{ fontSize: "0.75rem" }}
-              >
-                Clear
-              </Link>
-            ) : null}
           </form>
         ) : null}
 

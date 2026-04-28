@@ -3,9 +3,10 @@ import Link from "next/link";
 import { Eye, FileText, LayoutGrid, TableProperties, Trash2, TriangleAlert } from "lucide-react";
 import { deleteDraftInspectionAction } from "@/app/actions";
 import { ActionIconLink } from "@/components/action-icon-link";
+import { AutoSubmitSelect } from "@/components/auto-submit-select";
 import { prisma } from "@/lib/prisma";
 import { summarizeProgress } from "@/lib/vir/analytics";
-import { getVirWorkspaceFilter, isOfficeSession, requireVirSession } from "@/lib/vir/session";
+import { getVirWorkspaceFilter, isOfficeSession, isTsiSession, requireVirSession } from "@/lib/vir/session";
 import { inspectionStatusLabel, toneForInspectionStatus } from "@/lib/vir/workflow";
 
 export const dynamic = "force-dynamic";
@@ -105,13 +106,22 @@ export default async function InspectionsPage({
         : workspaceFilter?.vesselId ?? ""
       : session.vesselId ?? "";
 
+  const isTsi = isOfficeSession(session) && isTsiSession(session);
+  const scopedCodes = isTsi ? (session.dashboardVesselCodes ?? []) : [];
+
   const where =
     session.workspace === "OFFICE"
     ? {
         isDeleted: false,
         status: { not: "ARCHIVED" as const },
         inspectionType: { is: { category: { in: visibleInspectionCategories } } },
-        ...(selectedVesselId ? { vesselId: selectedVesselId } : {}),
+        ...(selectedVesselId === "__all__"
+          ? {}
+          : selectedVesselId
+            ? { vesselId: selectedVesselId }
+            : scopedCodes.length > 0
+              ? { vessel: { code: { in: scopedCodes } } }
+              : {}),
       }
     : {
         vesselId: session.vesselId ?? "",
@@ -178,7 +188,7 @@ export default async function InspectionsPage({
       ? prisma.vessel.findMany({
           where: { isActive: true },
           orderBy: { name: "asc" },
-          select: { id: true, name: true },
+          select: { id: true, code: true, name: true },
         })
       : Promise.resolve([]),
   ]);
@@ -403,19 +413,28 @@ export default async function InspectionsPage({
                 <label className="inline-form-label" htmlFor="vesselId">
                   Vessel
                 </label>
-                <select defaultValue={selectedVesselId} id="vesselId" name="vesselId">
-                  <option value="">All vessels</option>
-                  {vessels.map((vessel) => (
-                    <option key={vessel.id} value={vessel.id}>
-                      {vessel.name}
-                    </option>
-                  ))}
-                </select>
+                <AutoSubmitSelect defaultValue={selectedVesselId} className="filter-select" name="vesselId">
+                  {isTsi ? (
+                    <>
+                      <option value="">My vessels</option>
+                      <option value="__all__">All fleet vessels</option>
+                      {vessels
+                        .filter((v) => scopedCodes.includes(v.code))
+                        .map((v) => (
+                          <option key={v.id} value={v.id}>{v.name}</option>
+                        ))}
+                    </>
+                  ) : (
+                    <>
+                      <option value="">All vessels</option>
+                      {vessels.map((v) => (
+                        <option key={v.id} value={v.id}>{v.name}</option>
+                      ))}
+                    </>
+                  )}
+                </AutoSubmitSelect>
               </>
             ) : null}
-            <button className="btn-secondary" type="submit">
-              Apply
-            </button>
           </form>
         </div>
 

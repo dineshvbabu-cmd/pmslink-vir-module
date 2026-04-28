@@ -192,7 +192,15 @@ export function isVesselSession(session: VirSession | null): session is VirSessi
 }
 
 export function isTsiSession(session: VirSession | null) {
-  return Boolean(session && session.workspace === "OFFICE" && session.actorRole.toUpperCase().includes("TSI"));
+  if (!session || session.workspace !== "OFFICE") return false;
+  const role = session.actorRole.toUpperCase();
+  return (
+    role.includes("TSI") ||
+    role.includes("TECHNICAL SUPERINTENDENT") ||
+    role.includes("TECHNICAL SUPT") ||
+    role.includes("MARINE SUPERINTENDENT") ||
+    role.includes("MARINE SUPT")
+  );
 }
 
 export function canAccessVessel(session: VirSession, vesselId: string) {

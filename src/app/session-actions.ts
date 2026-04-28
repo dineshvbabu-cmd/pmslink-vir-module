@@ -16,16 +16,35 @@ type OfficeUser = {
 };
 
 const OFFICE_USERS: OfficeUser[] = [
-  { username: "office.qhse", password: "PMSLink@2026", actorName: "Office QHSE Desk", actorRole: "QHSE Superintendent" },
-  { username: "office.marine", password: "PMSLink@2026", actorName: "Office Marine Desk", actorRole: "Marine Superintendent" },
-  { username: "office.tech", password: "PMSLink@2026", actorName: "Office Technical Desk", actorRole: "Technical Superintendent" },
+  {
+    username: "office.qhse",
+    password: "PMSLink@2026",
+    actorName: "Office QHSE Desk",
+    actorRole: "QHSE Superintendent",
+  },
+  {
+    username: "office.marine",
+    password: "PMSLink@2026",
+    actorName: "Gopikrishna Alamanda",
+    actorRole: "Marine Superintendent",
+    dashboardVesselCodes: ["ATLATL005", "ATLBDP002", "ATLBDP003", "ATLATL006", "ATLATL007"],
+    dashboardScopeLabel: "Marine — assigned vessels",
+  },
+  {
+    username: "office.tech",
+    password: "PMSLink@2026",
+    actorName: "Pankaj Kumar",
+    actorRole: "Technical Superintendent",
+    dashboardVesselCodes: ["ATLATL001", "ATLBDP001", "ATLATL002", "ATLATL003", "ATLATL004"],
+    dashboardScopeLabel: "Technical — assigned vessels",
+  },
   {
     username: "office.tsi",
     password: "PMSLink@2026",
-    actorName: "TSI Control Desk",
+    actorName: "Capt. Mukhtar Singh",
     actorRole: "TSI Superintendent",
-    dashboardVesselCodes: ["UM-DMO-001", "UM-DMO-002"],
-    dashboardScopeLabel: "TSI assigned vessels",
+    dashboardVesselCodes: ["ATLATL001", "ATLBDP001", "ATLATL002", "ATLATL003", "ATLATL004", "ATLATL005", "ATLBDP002", "ATLBDP003", "ATLATL006", "ATLATL007"],
+    dashboardScopeLabel: "TSI — all assigned vessels",
   },
 ];
 
