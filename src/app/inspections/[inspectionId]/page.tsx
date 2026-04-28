@@ -49,6 +49,26 @@ const signOffStageLabels: Record<string, string> = {
   FINAL_ACKNOWLEDGEMENT: "Final Acknowledgement",
 };
 
+const VESSEL_CERTIFICATES: Array<{ key: string; name: string }> = [
+  { key: "smc", name: "Safety Management Certificate (SMC)" },
+  { key: "doc", name: "Document of Compliance (DOC)" },
+  { key: "issc", name: "International Ship Security Certificate (ISSC)" },
+  { key: "ll", name: "International Load Line Certificate" },
+  { key: "safcon", name: "Safety Construction Certificate" },
+  { key: "safeq", name: "Safety Equipment Certificate" },
+  { key: "safrad", name: "Safety Radio Certificate" },
+  { key: "iopp", name: "International Oil Pollution Prevention Certificate (IOPP)" },
+  { key: "iapp", name: "International Air Pollution Prevention Certificate (IAPP)" },
+  { key: "iwm", name: "International Sewage Pollution Prevention Certificate (ISPP)" },
+  { key: "inert", name: "International Noxious Liquid Substances Certificate (NLS)" },
+  { key: "tonnage", name: "International Tonnage Certificate" },
+  { key: "clc", name: "Civil Liability Certificate (CLC)" },
+  { key: "mlc", name: "Maritime Labour Convention Certificate (MLC)" },
+  { key: "class", name: "Class Certificate" },
+  { key: "bow", name: "Continuous Synopsis Record (CSR)" },
+  { key: "iwwp", name: "Garbage Management Plan" },
+];
+
 export default async function InspectionDetailPage({
   params,
   searchParams,
