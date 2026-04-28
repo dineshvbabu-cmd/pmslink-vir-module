@@ -1015,18 +1015,10 @@ export async function updateInspectionStatusAction(inspectionId: string, nextSta
   ensureInspectionAccess(session, inspection.vesselId);
 
   if (nextStatus === "SUBMITTED") {
-    if (!isVesselSession(session)) {
-      throw new Error("Only vessel workspaces can submit an inspection to shore.");
-    }
-
     const questions = inspection.template?.sections.flatMap((section) => section.questions) ?? [];
     const progress = summarizeProgress(questions, inspection.answers);
 
-    if (questions.length === 0) {
-      throw new Error("Attach a questionnaire template before submitting this VIR.");
-    }
-
-    if (progress.answeredMandatory < progress.mandatoryQuestions) {
+    if (questions.length > 0 && progress.answeredMandatory < progress.mandatoryQuestions) {
       throw new Error("All mandatory questionnaire items must be answered before submission.");
     }
 
@@ -1042,7 +1034,9 @@ export async function updateInspectionStatusAction(inspectionId: string, nextSta
         approved: true,
         actorName: session.actorName,
         actorRole: session.actorRole,
-        comment: "Submitted from vessel workspace for office review.",
+        comment: isVesselSession(session)
+          ? "Submitted from vessel workspace for office review."
+          : "Submitted from office control tower for review.",
       },
     });
   } else if (nextStatus === "RETURNED") {
@@ -1153,7 +1147,7 @@ export async function saveInspectionAnswersAction(inspectionId: string, formData
     !Array.isArray(existingMetadata.questionWorkflow)
       ? (existingMetadata.questionWorkflow as Record<string, unknown>)
       : {};
-  const questionWorkflow: Record<string, { surveyStatus: string | null; score: number | null }> = Object.fromEntries(
+  const questionWorkflow: Record<string, { surveyStatus: string | null; score: number | null; comment?: string | null }> = Object.fromEntries(
     Object.entries(existingQuestionWorkflow).map(([key, value]) => {
       const record = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
       return [
@@ -1161,6 +1155,7 @@ export async function saveInspectionAnswersAction(inspectionId: string, formData
         {
           surveyStatus: typeof record.surveyStatus === "string" ? record.surveyStatus : null,
           score: typeof record.score === "number" ? record.score : null,
+          comment: typeof record.comment === "string" ? record.comment : null,
         },
       ];
     })
@@ -1223,21 +1218,24 @@ export async function saveInspectionAnswersAction(inspectionId: string, formData
     }
   }
 
-  // Also persist T/I/NS/NA + score for live checklist questions not bound to a DB template question
+  // Also persist T/I/NS/NA + score + comment for live checklist questions not bound to a DB template question
   const processedLiveKeys = new Set<string>();
   for (const rawKey of formData.keys()) {
-    const match = /^status:(live-.+)$/.exec(rawKey);
-    if (!match) continue;
-    const liveId = match[1];
+    const statusMatch = /^status:(live-.+)$/.exec(rawKey);
+    const commentMatch = /^comment:(live-.+)$/.exec(rawKey);
+    const scoreMatch = /^score:(live-.+)$/.exec(rawKey);
+    const liveId = statusMatch?.[1] ?? commentMatch?.[1] ?? scoreMatch?.[1];
+    if (!liveId) continue;
     if (processedLiveKeys.has(liveId)) continue;
     processedLiveKeys.add(liveId);
     const surveyStatus = toStringOrNull(formData.get(`status:${liveId}`));
     const scoreRaw = toStringOrNull(formData.get(`score:${liveId}`));
+    const comment = toStringOrNull(formData.get(`comment:${liveId}`));
     const manualScore = scoreRaw ? Number(scoreRaw) : null;
     const normalizedStatus = surveyStatus && ["T", "I", "NS", "NA"].includes(surveyStatus.toUpperCase()) ? surveyStatus.toUpperCase() : null;
     const normalizedScore = typeof manualScore === "number" && Number.isFinite(manualScore) ? manualScore : null;
-    if (normalizedStatus !== null || normalizedScore !== null) {
-      questionWorkflow[liveId] = { surveyStatus: normalizedStatus, score: normalizedScore };
+    if (normalizedStatus !== null || normalizedScore !== null || comment !== null) {
+      questionWorkflow[liveId] = { surveyStatus: normalizedStatus, score: normalizedScore, comment };
     }
   }
 
@@ -1268,6 +1266,7 @@ export async function saveInspectionAnswersAction(inspectionId: string, formData
     },
   });
 
+  await syncInspectionCounters(inspectionId);
   revalidateVirPaths(inspectionId);
 }
 

@@ -43,6 +43,12 @@ export const dynamic = "force-dynamic";
 const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 const fmtDate = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
 
+const signOffStageLabels: Record<string, string> = {
+  VESSEL_SUBMISSION: "Vessel Submission",
+  SHORE_REVIEW: "Office Review",
+  FINAL_ACKNOWLEDGEMENT: "Final Acknowledgement",
+};
+
 export default async function InspectionDetailPage({
   params,
   searchParams,
@@ -248,7 +254,7 @@ export default async function InspectionDetailPage({
 
   return (
     <div className="page-stack">
-      {/* ── Synergy VIR topbar ── */}
+      {/* ── Inspection topbar ── */}
       <div className="panel panel-elevated" style={{ padding: 0, overflow: "hidden" }}>
         <div className="vir-topbar">
           <div className="vir-topbar-left">
@@ -277,10 +283,27 @@ export default async function InspectionDetailPage({
               </div>
               <span className="vir-topbar-pct">{progress.completionPct}%</span>
             </div>
-            {isVesselSession(session) && inspection.status !== "SUBMITTED" && inspection.status !== "SHORE_REVIEWED" && inspection.status !== "CLOSED" ? (
+            {isVesselSession(session) && (inspection.status === "DRAFT" || inspection.status === "RETURNED") ? (
               <form action={updateInspectionStatusAction.bind(null, inspection.id, "SUBMITTED")}>
                 <SubmitButton className="btn btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
                   Send for approval
+                </SubmitButton>
+              </form>
+            ) : null}
+            {isOfficeSession(session) && (inspection.status === "DRAFT" || inspection.status === "RETURNED") ? (
+              <form action={updateInspectionStatusAction.bind(null, inspection.id, "SUBMITTED")}>
+                <SubmitButton className="btn btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
+                  Submit for review
+                </SubmitButton>
+              </form>
+            ) : null}
+            {isVesselSession(session) && inspection.status === "SHORE_REVIEWED" ? (
+              <form action={addSignOff}>
+                <input name="stage" type="hidden" value="FINAL_ACKNOWLEDGEMENT" />
+                <input name="approved" type="hidden" value="YES" />
+                <input name="comment" type="hidden" value="Acknowledged by vessel." />
+                <SubmitButton className="btn btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
+                  Acknowledge
                 </SubmitButton>
               </form>
             ) : null}
@@ -302,10 +325,10 @@ export default async function InspectionDetailPage({
               <form action={updateInspectionStatusAction.bind(null, inspection.id, "CLOSED")}>
                 <SubmitButton
                   className="btn btn-compact"
-                  confirmMessage="Close VIR after all reviews and sign-offs are complete. Continue?"
+                  confirmMessage="Close Inspection after all reviews and sign-offs are complete. Continue?"
                   style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}
                 >
-                  Close VIR
+                  Close Inspection
                 </SubmitButton>
               </form>
             ) : null}
@@ -342,6 +365,7 @@ export default async function InspectionDetailPage({
             { id: "findings", label: `Findings (${inspection.findings.length})` },
             { id: "evidence", label: `Evidence (${inspection.photos.length})` },
             { id: "signoff", label: `Sign-off (${inspection.signOffs.length})` },
+            ...(isInternalAudit ? [{ id: "certificates", label: "Certificates" }] : []),
             ...(isInternalAudit ? [{ id: "narrative", label: "Narrative" }] : []),
           ].map((item) => (
             <Link
@@ -1032,7 +1056,7 @@ export default async function InspectionDetailPage({
 
           <div className="stack-list">
             {inspection.findings.length === 0 ? (
-              <div className="empty-state">No findings have been raised on this VIR yet.</div>
+              <div className="empty-state">No findings have been raised on this inspection yet.</div>
             ) : (
               inspection.findings.map((finding) => (
                 <div className="list-card" key={finding.id}>
@@ -1203,7 +1227,7 @@ export default async function InspectionDetailPage({
                     <span className={`chip ${signOff.approved ? "chip-success" : "chip-danger"}`}>
                       {signOff.approved ? "Approved" : "Returned"}
                     </span>
-                    <span className="chip chip-info">{signOff.stage.replaceAll("_", " ")}</span>
+                    <span className="chip chip-info">{signOffStageLabels[signOff.stage] ?? signOff.stage.replaceAll("_", " ")}</span>
                   </div>
                   <div className="list-card-title">{signOff.actorName ?? "Unnamed actor"}</div>
                   {signOff.comment ? <p className="small-text">{signOff.comment}</p> : null}
@@ -1239,8 +1263,15 @@ export default async function InspectionDetailPage({
                       const sectionQuestionIds = !liveChecklist
                         ? (inspection.template?.sections.find((s) => s.id === sectionItem.sectionId)?.questions.map((q) => q.id) ?? [])
                         : [];
-                      const sectionFindingCount = sectionQuestionIds.length > 0
-                        ? inspection.findings.filter((f) => f.questionId && sectionQuestionIds.includes(f.questionId)).length
+                      const liveSection = liveChecklist ? liveSections.find((s) => s.id === sectionItem.sectionId) : null;
+                      const sectionFindingCount = liveChecklist
+                        ? (liveSection?.summary.totalFindings ?? 0)
+                        : inspection.findings.filter((f) => f.questionId && sectionQuestionIds.includes(f.questionId)).length;
+                      const sectionAnsweredCount = liveChecklist
+                        ? (liveSection?.summary.answered ?? 0)
+                        : sectionQuestionIds.filter((id) => answerMap.has(id)).length;
+                      const completionPct = sectionItem.questionCount > 0
+                        ? Math.round((sectionAnsweredCount / sectionItem.questionCount) * 100)
                         : 0;
                       const ratingLabel = sectionFindingCount === 0 ? "Good" : sectionFindingCount <= 2 ? "Medium" : "Poor";
                       const ratingClass = sectionFindingCount === 0 ? "rating-chip-good" : sectionFindingCount <= 2 ? "rating-chip-medium" : "rating-chip-poor";
@@ -1253,8 +1284,9 @@ export default async function InspectionDetailPage({
                           <td style={{ textAlign: "center" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", justifyContent: "center" }}>
                               <div className="hist-progress-bar-track" style={{ width: "50px" }}>
-                                <div className="hist-progress-bar-fill" style={{ width: `${Math.round((sectionItem.questionCount > 0 ? 50 : 0))}%` }} />
+                                <div className="hist-progress-bar-fill" style={{ width: `${completionPct}%` }} />
                               </div>
+                              <span style={{ fontSize: "0.7rem", color: "var(--color-ink-soft)" }}>{completionPct}%</span>
                             </div>
                           </td>
                           <td>
@@ -1333,6 +1365,106 @@ export default async function InspectionDetailPage({
             ) : (
               <div className="empty-state">No findings raised on this inspection.</div>
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── PANE: Certificates (Internal audits only) ── */}
+      {activePane === "certificates" && isInternalAudit ? (
+        <div className="panel panel-elevated" style={{ padding: 0, overflow: "hidden" }}>
+          <div className="vir-narrative-pane">
+            <form action={saveHeader}>
+              <div className="vir-narrative-card">
+                <div className="vir-narrative-card-header">
+                  <div className="vir-narrative-card-title">Vessel Certificates — Status Register</div>
+                </div>
+                <div className="vir-narrative-card-body">
+                  <p className="small-text" style={{ marginBottom: "1rem", color: "var(--color-ink-soft)" }}>
+                    Record the current status and expiry dates of statutory and class certificates reviewed during this inspection.
+                  </p>
+                  <div className="table-shell" style={{ maxHeight: "none" }}>
+                    <table className="table data-table">
+                      <thead>
+                        <tr>
+                          <th>Certificate</th>
+                          <th>Issue Date</th>
+                          <th>Expiry Date</th>
+                          <th>Status</th>
+                          <th>Remarks</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {VESSEL_CERTIFICATES.map((cert) => {
+                          const key = cert.key;
+                          const issueVal = typeof narrativeMetadata[`cert_${key}_issue`] === "string" ? narrativeMetadata[`cert_${key}_issue`] as string : "";
+                          const expiryVal = typeof narrativeMetadata[`cert_${key}_expiry`] === "string" ? narrativeMetadata[`cert_${key}_expiry`] as string : "";
+                          const statusVal = typeof narrativeMetadata[`cert_${key}_status`] === "string" ? narrativeMetadata[`cert_${key}_status`] as string : "Valid";
+                          const remarksVal = typeof narrativeMetadata[`cert_${key}_remarks`] === "string" ? narrativeMetadata[`cert_${key}_remarks`] as string : "";
+                          const isExpired = expiryVal && new Date(expiryVal) < new Date();
+                          const isDueSoon = expiryVal && !isExpired && new Date(expiryVal) < new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+                          const autoStatus = isExpired ? "Expired" : isDueSoon ? "Due Soon" : statusVal || "Valid";
+                          return (
+                            <tr key={key}>
+                              <td style={{ fontWeight: 600, fontSize: "0.82rem", whiteSpace: "nowrap" }}>{cert.name}</td>
+                              <td>
+                                <input
+                                  className="field-input"
+                                  defaultValue={issueVal}
+                                  disabled={!canEditInspection}
+                                  name={`cert_${key}_issue`}
+                                  style={{ padding: "0.2rem 0.4rem", fontSize: "0.8rem", width: "110px" }}
+                                  type="date"
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  className="field-input"
+                                  defaultValue={expiryVal}
+                                  disabled={!canEditInspection}
+                                  name={`cert_${key}_expiry`}
+                                  style={{ padding: "0.2rem 0.4rem", fontSize: "0.8rem", width: "110px" }}
+                                  type="date"
+                                />
+                              </td>
+                              <td>
+                                <select
+                                  className="field-input"
+                                  defaultValue={autoStatus}
+                                  disabled={!canEditInspection}
+                                  name={`cert_${key}_status`}
+                                  style={{ padding: "0.2rem 0.4rem", fontSize: "0.8rem" }}
+                                >
+                                  <option value="Valid">Valid</option>
+                                  <option value="Due Soon">Due Soon</option>
+                                  <option value="Expired">Expired</option>
+                                  <option value="Not Applicable">Not Applicable</option>
+                                </select>
+                              </td>
+                              <td>
+                                <input
+                                  className="field-input"
+                                  defaultValue={remarksVal}
+                                  disabled={!canEditInspection}
+                                  name={`cert_${key}_remarks`}
+                                  placeholder="Remarks..."
+                                  style={{ padding: "0.2rem 0.4rem", fontSize: "0.8rem", width: "100%" }}
+                                  type="text"
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  {canEditInspection ? (
+                    <div style={{ display: "flex", justifyContent: "flex-end", padding: "0.75rem 0 0" }}>
+                      <SubmitButton className="btn">Save certificates</SubmitButton>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       ) : null}
@@ -1670,8 +1802,8 @@ function slugify(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
-function normalizeInspectionPane(value: string | undefined): "questionnaire" | "findings" | "evidence" | "signoff" | "details" | "report" | "narrative" {
-  if (value === "findings" || value === "evidence" || value === "signoff" || value === "details" || value === "report" || value === "narrative") {
+function normalizeInspectionPane(value: string | undefined): "questionnaire" | "findings" | "evidence" | "signoff" | "details" | "report" | "certificates" | "narrative" {
+  if (value === "findings" || value === "evidence" || value === "signoff" || value === "details" || value === "report" || value === "certificates" || value === "narrative") {
     return value;
   }
   return "questionnaire";

@@ -4,7 +4,8 @@ import { FileDown } from "lucide-react";
 import { CompactBarChart, DonutChart, DualMetricBarChart } from "@/components/erp-charts";
 import { prisma } from "@/lib/prisma";
 import { findingStatusLabel, inspectionStatusLabel, toneForFindingStatus, toneForInspectionStatus } from "@/lib/vir/workflow";
-import { getVirWorkspaceFilter, isOfficeSession, requireVirSession } from "@/lib/vir/session";
+import { AutoSubmitSelect } from "@/components/auto-submit-select";
+import { defaultDashboardScopedVesselCodes, getVirWorkspaceFilter, isOfficeSession, requireVirSession } from "@/lib/vir/session";
 
 export const dynamic = "force-dynamic";
 
@@ -107,6 +108,7 @@ async function OfficeDashboard({
 }: {
   searchParams: DashboardSearchParams;
 }) {
+  const session = await requireVirSession();
   const workspaceFilter = await getVirWorkspaceFilter();
   const now = new Date();
   const requestedRange = typeof searchParams.range === "string" ? searchParams.range : undefined;
@@ -117,11 +119,13 @@ async function OfficeDashboard({
   const selectedFleet = requestedFleet !== undefined ? requestedFleet : workspaceFilter?.fleet ?? "";
   const selectedVesselId = requestedVesselId !== undefined ? requestedVesselId : workspaceFilter?.vesselId ?? "";
   const selectedFocus = normalizeDashboardFocus(searchParams.focus);
+  const scopedVesselCodes = defaultDashboardScopedVesselCodes(session);
 
   const [vessels, inspections] = await Promise.all([
     prisma.vessel.findMany({
       where: {
         isActive: true,
+        ...(scopedVesselCodes.length > 0 ? { code: { in: scopedVesselCodes } } : {}),
         ...(selectedFleet ? { fleet: selectedFleet } : {}),
         ...(selectedVesselId ? { id: selectedVesselId } : {}),
       },
@@ -141,6 +145,7 @@ async function OfficeDashboard({
         inspectionType: { is: { category: { in: visibleInspectionCategories } } },
         vessel: {
           isActive: true,
+          ...(scopedVesselCodes.length > 0 ? { code: { in: scopedVesselCodes } } : {}),
           ...(selectedFleet ? { fleet: selectedFleet } : {}),
           ...(selectedVesselId ? { id: selectedVesselId } : {}),
         },
@@ -328,37 +333,34 @@ async function OfficeDashboard({
           <label className="inline-form-label" htmlFor="range">
             Timeline
           </label>
-          <select defaultValue={`${rangeDays}`} id="range" name="range">
+          <AutoSubmitSelect defaultValue={`${rangeDays}`} name="range">
             <option value="90">3 months to today</option>
             <option value="180">6 months to today</option>
             <option value="365">1 year to today</option>
-          </select>
+          </AutoSubmitSelect>
           <label className="inline-form-label" htmlFor="fleet">
             Fleet
           </label>
-          <select defaultValue={selectedFleet} id="fleet" name="fleet">
+          <AutoSubmitSelect defaultValue={selectedFleet} name="fleet">
             <option value="">All fleets</option>
             {fleetOptions.map((fleet) => (
               <option key={fleet} value={fleet}>
                 {fleet}
               </option>
             ))}
-          </select>
+          </AutoSubmitSelect>
           <label className="inline-form-label" htmlFor="vesselId">
             Vessel
           </label>
-          <select defaultValue={selectedVesselId} id="vesselId" name="vesselId">
+          <AutoSubmitSelect defaultValue={selectedVesselId} name="vesselId">
             <option value="">All vessels</option>
             {vessels.map((vessel) => (
               <option key={vessel.id} value={vessel.id}>
                 {vessel.name}
               </option>
             ))}
-          </select>
+          </AutoSubmitSelect>
           {selectedFocus ? <input name="focus" type="hidden" value={selectedFocus} /> : null}
-          <button className="btn-secondary" type="submit">
-            Apply
-          </button>
         </form>
       </section>
 
