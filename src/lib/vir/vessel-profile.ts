@@ -115,7 +115,11 @@ export function buildVesselProfile(vessel: VesselProfileInput): VesselProfile {
   const boilerMaker = normalizeWhitespace(liveRecord?.BoilerManufacturer) || pick(["GESAB", "Aalborg", "Miura"], seed, 8);
   const iggMaker = normalizeWhitespace(liveRecord?.GGManufacturer) || (isGasCarrier ? "N/A" : pick(["Marflex", "Coldharbour", "Qingdao"], seed, 9));
   const nitrogenMaker = normalizeWhitespace(liveRecord?.NGManufacturer) || (isGasCarrier ? pick(["Air Liquide", "Atlas Copco", "Nikkiso"], seed, 10) : "N/A");
-  const manager = normalizeWhitespace(liveRecord?.Management) || vessel.manager || "Not recorded";
+  const manager = (normalizeWhitespace(liveRecord?.Management) || vessel.manager || "Not recorded")
+    .replace(/SMPL\s*[-–]\s*/gi, "")
+    .replace(/Synergy Maritime Private Limited/gi, "Union Maritime Limited")
+    .replace(/^,\s*|,\s*$/g, "")
+    .trim() || "Not recorded";
   const registeredOwner = normalizeWhitespace(liveRecord?.RegisteredOwner) || owner;
 
   return {

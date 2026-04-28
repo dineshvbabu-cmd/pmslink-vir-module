@@ -812,22 +812,24 @@ export default async function InspectionDetailPage({
                                   </select>
                                 </td>
                                 <td className="td-finding">
-                                  <Link
-                                    href={`/inspections/${inspection.id}?pane=questionnaire&section=${selectedSectionId}&findingQ=${questionKey}`}
-                                    scroll={false}
-                                    style={{ textDecoration: "none" }}
-                                    title="Add finding"
-                                  >
-                                    <div className="finding-radio-group">
-                                      <span className="finding-radio-label" style={{ color: hasFinding ? "var(--color-green)" : "var(--color-ink-soft)" }}>
-                                        {hasFinding ? "●" : "○"} Y
-                                      </span>
-                                      <span className="finding-radio-label" style={{ color: "var(--color-amber)" }}>○ O</span>
-                                      <span className="finding-radio-label" style={{ color: hasFinding ? "var(--color-ink-soft)" : "var(--color-ink-soft)" }}>
-                                        {hasFinding ? "○" : "●"} N
-                                      </span>
-                                    </div>
-                                  </Link>
+                                  <div className="finding-radio-group">
+                                    <Link
+                                      className={`finding-yn-btn${hasFinding ? " finding-yn-btn-y-active" : ""}`}
+                                      href={`/inspections/${inspection.id}?pane=questionnaire&section=${selectedSectionId}&findingQ=${questionKey}`}
+                                      scroll={false}
+                                      title="Yes — raise a finding"
+                                    >
+                                      Y
+                                    </Link>
+                                    <Link
+                                      className={`finding-yn-btn${!hasFinding ? " finding-yn-btn-n-active" : ""}`}
+                                      href={`/inspections/${inspection.id}?pane=questionnaire&section=${selectedSectionId}`}
+                                      scroll={false}
+                                      title="No finding"
+                                    >
+                                      N
+                                    </Link>
+                                  </div>
                                 </td>
                                 <td className="td-comments">
                                   <input
@@ -902,18 +904,22 @@ export default async function InspectionDetailPage({
                               </td>
                               <td className="td-finding">
                                 <div className="finding-radio-group">
-                                  <label className="finding-radio-label" style={{ color: hasFinding ? "var(--color-green)" : "var(--color-ink-soft)" }}>
-                                    <input defaultChecked={hasFinding} disabled name={`finding:${question.id}`} type="radio" value="Y" />
+                                  <Link
+                                    className={`finding-yn-btn${hasFinding ? " finding-yn-btn-y-active" : ""}`}
+                                    href={`/inspections/${inspection.id}?pane=questionnaire&section=${selectedSectionId}&findingQ=${question.id}`}
+                                    scroll={false}
+                                    title="Yes — raise a finding"
+                                  >
                                     Y
-                                  </label>
-                                  <label className="finding-radio-label" style={{ color: "var(--color-amber)" }}>
-                                    <input disabled name={`finding:${question.id}`} type="radio" value="O" />
-                                    O
-                                  </label>
-                                  <label className="finding-radio-label" style={{ color: "var(--color-ink-soft)" }}>
-                                    <input defaultChecked={!hasFinding} disabled name={`finding:${question.id}`} type="radio" value="N" />
+                                  </Link>
+                                  <Link
+                                    className={`finding-yn-btn${!hasFinding ? " finding-yn-btn-n-active" : ""}`}
+                                    href={`/inspections/${inspection.id}?pane=questionnaire&section=${selectedSectionId}`}
+                                    scroll={false}
+                                    title="No finding"
+                                  >
                                     N
-                                  </label>
+                                  </Link>
                                 </div>
                               </td>
                               <td className="td-comments">

@@ -4295,6 +4295,40 @@ textarea {
   margin-bottom: 0.4rem;
 }
 
+/* ── Finding Y/N toggle buttons ────────────────────────────── */
+.finding-yn-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-decoration: none;
+  border: 1px solid transparent;
+  color: #b0bec8;
+  background: transparent;
+  transition: background 100ms, color 100ms, border-color 100ms;
+}
+
+.finding-yn-btn:hover {
+  background: #f0f3f7;
+  color: var(--color-ink);
+}
+
+.finding-yn-btn-y-active {
+  background: var(--color-green-soft);
+  color: var(--color-green);
+  border-color: rgba(15, 156, 106, 0.3);
+}
+
+.finding-yn-btn-n-active {
+  background: #f0f3f7;
+  color: #5a6b7c;
+  border-color: var(--color-border);
+}
+
 /* ── History grid progress bar ─────────────────────────────── */
 .hist-progress-wrap {
   display: flex;

@@ -1,6 +1,5 @@
 import type { Prisma, VirInspectionStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
-import liveUserVessels from "@/data/live-user-vessels.json";
 import liveVirBlueprint from "@/data/live-vir-blueprint.json";
 import { prisma } from "@/lib/prisma";
 import { VIR_INSPECTION_TYPES } from "@/lib/vir/catalog";
@@ -23,14 +22,6 @@ type DemoVesselSeed = {
   manager: string;
 };
 
-type LiveUserVesselRecord = {
-  VesselCode?: string;
-  VesselName?: string;
-  ImoNo?: string | number;
-  VesselType?: string;
-  Management?: string;
-  Flag?: string;
-};
 
 type LiveChecklistBlueprint = typeof liveVirBlueprint;
 
@@ -74,7 +65,20 @@ type ConcernQuestion = {
   finding: boolean;
 };
 
-const DEMO_VESSELS = buildDemoVessels();
+const ATLANTAS_VESSELS: DemoVesselSeed[] = [
+  { code: "ATLATL001", name: "Alkebulan",         imoNumber: "9769101", vesselType: "CHEM / PROD TANKER", fleet: "Atlantas MR Fleet", flag: "MARSHALL ISLANDS", manager: "Union Maritime Limited" },
+  { code: "ATLBDP001", name: "BDP Spirit",         imoNumber: "9769102", vesselType: "CHEM / PROD TANKER", fleet: "Atlantas MR Fleet", flag: "MARSHALL ISLANDS", manager: "Union Maritime Limited" },
+  { code: "ATLATL002", name: "Atlantas Horizon",   imoNumber: "9769103", vesselType: "MR TANKER",          fleet: "Atlantas MR Fleet", flag: "PANAMA",           manager: "Union Maritime Limited" },
+  { code: "ATLATL003", name: "Atlantas Pioneer",   imoNumber: "9769104", vesselType: "PRODUCT TANKER",     fleet: "Atlantas MR Fleet", flag: "LIBERIA",          manager: "Union Maritime Limited" },
+  { code: "ATLATL004", name: "Atlantas Ranger",    imoNumber: "9769105", vesselType: "CHEM / PROD TANKER", fleet: "Atlantas MR Fleet", flag: "MARSHALL ISLANDS", manager: "Union Maritime Limited" },
+  { code: "ATLATL005", name: "Atlantas Star",      imoNumber: "9769106", vesselType: "MR TANKER",          fleet: "Atlantas MR Fleet", flag: "PANAMA",           manager: "Union Maritime Limited" },
+  { code: "ATLBDP002", name: "BDP Resolve",        imoNumber: "9769107", vesselType: "CHEM / PROD TANKER", fleet: "Atlantas MR Fleet", flag: "MARSHALL ISLANDS", manager: "Union Maritime Limited" },
+  { code: "ATLBDP003", name: "BDP Endeavour",      imoNumber: "9769108", vesselType: "PRODUCT TANKER",     fleet: "Atlantas MR Fleet", flag: "LIBERIA",          manager: "Union Maritime Limited" },
+  { code: "ATLATL006", name: "Atlantas Venture",   imoNumber: "9769109", vesselType: "MR TANKER",          fleet: "Atlantas MR Fleet", flag: "MARSHALL ISLANDS", manager: "Union Maritime Limited" },
+  { code: "ATLATL007", name: "Atlantas Global",    imoNumber: "9769110", vesselType: "CHEM / PROD TANKER", fleet: "Atlantas MR Fleet", flag: "PANAMA",           manager: "Union Maritime Limited" },
+];
+
+const DEMO_VESSELS = ATLANTAS_VESSELS;
 
 const DEMO_PORTS = [
   { port: "Long Beach", country: "USA" },
@@ -90,21 +94,19 @@ const DEMO_PORTS = [
 ];
 
 const DEMO_INSPECTORS = [
-  "Arun Mehra",
-  "Nikhil Raman",
-  "Sara Iqbal",
-  "Daniel Mercer",
-  "Asha Devi",
-  "Milan D'Souza",
-  "Owen Parker",
-  "Ritika Sen",
+  "Capt. Mukhtar Singh",
+  "Capt. Kulbir Singh",
+  "Gopikrishna Alamanda",
+  "Pankaj Kumar",
+  "Gaurav Chaturvedi",
+  "Bhuvanesh Dogra",
 ];
 
 const DEMO_REVIEWERS = [
-  "Harinath Rao",
-  "Elaine Carter",
-  "Vivek Anand",
-  "Pravin Joseph",
+  "Gopikrishna Alamanda",
+  "Pankaj Kumar",
+  "Gaurav Chaturvedi",
+  "Bhuvanesh Dogra",
 ];
 
 const TEMPLATE_SEEDS: DemoTemplateSeed[] = [
@@ -1121,7 +1123,7 @@ async function clearSeededDemoData(vesselIds: string[]) {
   await prisma.virInspection.updateMany({
     where: {
       vesselId: { in: vesselIds },
-      inspectorCompany: "PMSLink Marine Assurance",
+      inspectorCompany: "Union Maritime Limited",
     },
     data: {
       previousInspectionId: null,
@@ -1132,7 +1134,7 @@ async function clearSeededDemoData(vesselIds: string[]) {
   await prisma.virInspection.deleteMany({
     where: {
       vesselId: { in: vesselIds },
-      inspectorCompany: "PMSLink Marine Assurance",
+      inspectorCompany: "Union Maritime Limited",
     },
   });
 }
@@ -1155,7 +1157,7 @@ function buildPreviousScenario(index: number): DemoScenario {
     port: port.port,
     country: port.country,
     inspectorName,
-    inspectorCompany: "PMSLink Marine Assurance",
+    inspectorCompany: "Union Maritime Limited",
     shoreReviewedBy: reviewer,
     shoreReviewDate: addDays(date, 2),
     closedAt: addDays(date, 5),
@@ -1181,7 +1183,7 @@ function buildCurrentScenario(index: number): DemoScenario {
     port: port.port,
     country: port.country,
     inspectorName,
-    inspectorCompany: "PMSLink Marine Assurance",
+    inspectorCompany: "Union Maritime Limited",
     shoreReviewedBy: ["RETURNED", "SHORE_REVIEWED", "CLOSED"].includes(status) ? reviewer : null,
     shoreReviewDate: ["RETURNED", "SHORE_REVIEWED", "CLOSED"].includes(status) ? addDays(date, 2) : null,
     closedAt: status === "CLOSED" ? addDays(date, 4) : null,
@@ -1437,20 +1439,6 @@ function buildReferenceNumber(vesselName: string, inspectionDate: Date, sequence
   return `VIR/${prefix}/${inspectionDate.getUTCFullYear()}/${String(sequence).padStart(4, "0")}${suffix}`;
 }
 
-function buildDemoVessels() {
-  return (liveUserVessels as LiveUserVesselRecord[])
-    .filter((record) => record.VesselCode && record.VesselName && record.ImoNo)
-    .slice(0, 50)
-    .map((record) => ({
-      code: record.VesselCode!.trim(),
-      name: record.VesselName!.trim(),
-      imoNumber: String(record.ImoNo).trim(),
-      vesselType: normalizeWhitespace(record.VesselType) || "CHEM / PROD TANKER",
-      fleet: deriveFleetFromManagement(record.Management),
-      flag: normalizeWhitespace(record.Flag) || "PANAMA",
-      manager: normalizeWhitespace(record.Management) || "PMSLink Fleet Operations",
-    }));
-}
 
 function buildInspectionMetadata(
   vessel: { code: string; name: string; vesselType?: string | null },
@@ -1689,18 +1677,6 @@ function normalizeWhitespace(value: string | undefined | null) {
   return value?.replace(/\s+/g, " ").trim() ?? "";
 }
 
-function deriveFleetFromManagement(management: string | undefined) {
-  const value = normalizeWhitespace(management);
-  if (!value) {
-    return "BU - Chennai";
-  }
-  if (value.includes("Chennai")) return "BU - Chennai";
-  if (value.includes("Dubai")) return "BU - Dubai";
-  if (value.includes("Singapore")) return "BU - Singapore";
-  if (value.includes("Athens")) return "BU - Athens";
-  if (value.includes("London")) return "BU - London";
-  return value;
-}
 
 function pickTemplateKey(index: number) {
   const keys = ["SAILING_VIR", "PORT_VIR", "ENGINEERING_VIR", "REMOTE_VIR", "TAKEOVER_VIR"];
