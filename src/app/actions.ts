@@ -453,14 +453,32 @@ export async function createVirTemplateAction(formData: FormData) {
   const session = await requireVirSession();
   ensureOffice(session);
 
-  const inspectionTypeId = toStringOrNull(formData.get("inspectionTypeId"));
+  let inspectionTypeId = toStringOrNull(formData.get("inspectionTypeId"));
+  const newTypeName = toStringOrNull(formData.get("newTypeName"));
   const name = toStringOrNull(formData.get("name"));
   const description = toStringOrNull(formData.get("description"));
   const version = toStringOrNull(formData.get("version")) ?? "1";
   const questionnaireLibraryId = toStringOrNull(formData.get("questionnaireLibraryId"));
 
-  if (!inspectionTypeId || !name) {
-    throw new Error("Inspection type and template name are required.");
+  if (!name) {
+    throw new Error("Template name is required.");
+  }
+
+  // Create new inspection type if requested
+  if (inspectionTypeId === "NEW" || (!inspectionTypeId && newTypeName)) {
+    if (!newTypeName) throw new Error("New inspection type name is required.");
+    const code = newTypeName.toUpperCase().replace(/[^A-Z0-9]+/g, "_").slice(0, 40);
+    const created = await prisma.virInspectionType.upsert({
+      where: { code },
+      update: {},
+      create: { code, name: newTypeName, category: "INTERNAL", isActive: true },
+      select: { id: true },
+    });
+    inspectionTypeId = created.id;
+  }
+
+  if (!inspectionTypeId) {
+    throw new Error("Inspection type is required.");
   }
 
   const existing = await prisma.virTemplate.findUnique({

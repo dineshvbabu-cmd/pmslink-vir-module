@@ -763,6 +763,7 @@ export default async function InspectionDetailPage({
                       <th style={{ width: "26px" }}>S.No</th>
                       <th style={{ width: "26px" }}>⊕</th>
                       <th className="th-left">QUESTION</th>
+                      <th className="th-left" style={{ minWidth: "100px" }}>RESPONSE</th>
                       <th style={{ width: "28px" }}>T</th>
                       <th style={{ width: "28px" }}>I</th>
                       <th style={{ width: "28px" }}>NS</th>
@@ -775,12 +776,12 @@ export default async function InspectionDetailPage({
                   </thead>
                   <tbody>
                     {!selectedSection ? (
-                      <tr><td colSpan={11} style={{ textAlign: "center", padding: "2rem", color: "var(--color-ink-soft)" }}>No section selected</td></tr>
+                      <tr><td colSpan={12} style={{ textAlign: "center", padding: "2rem", color: "var(--color-ink-soft)" }}>No section selected</td></tr>
                     ) : liveChecklist && liveSelectedSection ? (
                       liveSelectedSection.subsections.map((subsection: any) => (
                         <>
                           <tr className="checklist-subsection-label-row" key={`sub-${subsection.id}`}>
-                            <td colSpan={11}>{subsection.title}{subsection.location ? ` — ${subsection.location}` : ""}</td>
+                            <td colSpan={12}>{subsection.title}{subsection.location ? ` — ${subsection.location}` : ""}</td>
                           </tr>
                           {subsection.questions.map((question: LiveChecklistQuestion, qi: number) => {
                             const bindingQuestion = findBoundQuestion(question, dbQuestionByPrompt, dbQuestionByCode);
@@ -811,6 +812,7 @@ export default async function InspectionDetailPage({
                                   {question.prompt}
                                   {isCic ? <span className="chip chip-warning" style={{ marginLeft: "0.3rem", fontSize: "0.62rem", padding: "1px 5px" }}>CIC</span> : null}
                                 </td>
+                                <td className="td-response" style={{ minWidth: "80px" }}>—</td>
                                 {(["T", "I", "NS", "NA"] as const).map((status) => (
                                   <td className="td-checkbox survey-radio" key={status}>
                                     <input
@@ -899,6 +901,44 @@ export default async function InspectionDetailPage({
                                 <span style={{ fontWeight: 700, color: "var(--color-blue)", fontSize: "0.72rem", marginRight: "0.3rem" }}>{question.code}</span>
                                 {question.prompt}
                                 {question.isCicCandidate ? <span className="chip chip-warning" style={{ marginLeft: "0.3rem", fontSize: "0.62rem", padding: "1px 5px" }}>CIC</span> : null}
+                              </td>
+                              <td className="td-response" style={{ minWidth: "100px" }}>
+                                {question.responseType === "YES_NO_NA" ? (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                    {(["YES", "NO", "NA"] as const).map((v) => (
+                                      <label key={v} style={{ display: "flex", alignItems: "center", gap: "3px", fontSize: "0.72rem" }}>
+                                        <input defaultChecked={answer?.answerText === v} disabled={!canEditInspection} name={`q:${question.id}`} type="radio" value={v} />
+                                        {v}
+                                      </label>
+                                    ))}
+                                  </div>
+                                ) : question.responseType === "TEXT" ? (
+                                  <input className="comment-input" defaultValue={answer?.answerText ?? ""} disabled={!canEditInspection} name={`q:${question.id}`} placeholder="Enter text" style={{ width: "100%" }} type="text" />
+                                ) : question.responseType === "NUMBER" || question.responseType === "SCORE" ? (
+                                  <input defaultValue={answer?.answerNumber !== null && answer?.answerNumber !== undefined ? String(answer.answerNumber) : ""} disabled={!canEditInspection} name={`q:${question.id}`} style={{ width: "70px" }} type="number" />
+                                ) : question.responseType === "DATE" ? (
+                                  <input defaultValue={answer?.answerDate instanceof Date ? answer.answerDate.toISOString().slice(0, 10) : ""} disabled={!canEditInspection} name={`q:${question.id}`} type="date" />
+                                ) : question.responseType === "SINGLE_SELECT" ? (
+                                  <select className="score-select" defaultValue={answer?.answerText ?? ""} disabled={!canEditInspection} name={`q:${question.id}`} style={{ minWidth: "90px" }}>
+                                    <option value="">—</option>
+                                    {question.options.map((o: any) => (
+                                      <option key={o.value} value={o.value}>{o.label}</option>
+                                    ))}
+                                  </select>
+                                ) : question.responseType === "MULTI_SELECT" ? (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                    {question.options.map((o: any) => {
+                                      const selected = answer?.selectedOptions;
+                                      const isChecked = Array.isArray(selected) && (selected as string[]).includes(o.value);
+                                      return (
+                                        <label key={o.value} style={{ display: "flex", alignItems: "center", gap: "3px", fontSize: "0.72rem" }}>
+                                          <input defaultChecked={isChecked} disabled={!canEditInspection} name={`q:${question.id}`} type="checkbox" value={o.value} />
+                                          {o.label}
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                ) : null}
                               </td>
                               {(["T", "I", "NS", "NA"] as const).map((status) => (
                                 <td className="td-checkbox survey-radio" key={status}>

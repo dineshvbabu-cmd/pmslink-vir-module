@@ -53,7 +53,7 @@ export function TemplateImportConsole() {
   function loadSample() {
     setContent(activeSample);
     setResult(null);
-    setEditorStatus(`Loaded ${sourceStandard.replaceAll("_", " ")} / ${inputFormat.replaceAll("_", " ")} sample content.`);
+    setEditorStatus("Sample loaded. Edit if needed, then click Commit template.");
   }
 
   function runImport(commit: boolean) {
@@ -93,18 +93,15 @@ export function TemplateImportConsole() {
           <h3 className="panel-title">Questionnaire Import Engine</h3>
           <p className="panel-subtitle">
             Import checklist and questionnaire definitions in the seeded VIR format, normalize them into the standard
-            inspection template model, and review the cross-reference output before committing a live template.
+            inspection template model, and commit directly as a live template.
           </p>
         </div>
         <div className="actions-row">
           <button className="btn-secondary" onClick={loadSample} type="button">
             Load sample
           </button>
-          <button className="btn-secondary" disabled={isPending} onClick={() => runImport(false)} type="button">
-            {isPending ? "Running..." : "Dry run"}
-          </button>
           <button className="btn" disabled={isPending} onClick={() => runImport(true)} type="button">
-            {isPending ? "Running..." : "Commit template"}
+            {isPending ? "Importing..." : "Commit template"}
           </button>
         </div>
       </div>
@@ -156,13 +153,43 @@ export function TemplateImportConsole() {
         </div>
       </div>
 
+      <div className="field-wide" style={{ marginTop: "0.75rem" }}>
+        <label htmlFor="fileUpload">Upload checklist file (.json, .csv, .txt, .tsv)</label>
+        <input
+          accept=".json,.csv,.txt,.tsv"
+          id="fileUpload"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+            if (ext === "csv" || ext === "tsv") {
+              setInputFormat("ROW_TABLE");
+            } else if (ext === "json") {
+              setInputFormat("CANONICAL_JSON");
+            } else {
+              setInputFormat("PLAIN_TEXT");
+            }
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+              const text = ev.target?.result as string ?? "";
+              setContent(text);
+              setResult(null);
+              setEditorStatus(`Loaded from file: ${file.name} (${text.length} chars). Format auto-detected. Click Commit template to save.`);
+            };
+            reader.readAsText(file);
+          }}
+          style={{ marginTop: "0.35rem" }}
+          type="file"
+        />
+      </div>
+
       <div className="field-wide" style={{ marginTop: "1rem" }}>
         <label htmlFor="content">Imported checklist / questionnaire content</label>
         <textarea
           id="content"
           onChange={(event) => {
             setContent(event.target.value);
-            setEditorStatus("Editor updated. Run Dry run to generate the review workspace or Commit template to register it.");
+            setEditorStatus("Editor updated. Click Commit template to register it.");
           }}
           style={{ minHeight: "380px", fontFamily: "Consolas, monospace" }}
           value={content}
@@ -177,8 +204,8 @@ export function TemplateImportConsole() {
                 <h4 className="panel-title">Import review output</h4>
                 <p className="panel-subtitle">
                   {result.mode === "commit"
-                    ? "Template committed successfully and available for inspection launch."
-                    : "Dry-run review generated. Open the review session below for structured validation."}
+                    ? "Template committed successfully and is now available for inspection launch."
+                    : "Review generated. Open the review session below for structured validation."}
                 </p>
               </div>
               <div className="meta-row">

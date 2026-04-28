@@ -25,6 +25,16 @@ const responseTypes = [
   "SCORE",
 ] as const;
 
+const responseTypeLabels: Record<string, string> = {
+  YES_NO_NA: "Yes / No / N/A",
+  TEXT: "Free Text",
+  NUMBER: "Number",
+  DATE: "Date",
+  SINGLE_SELECT: "Single Select",
+  MULTI_SELECT: "Multi Select",
+  SCORE: "Score (1-5)",
+};
+
 export default async function TemplatesPage({
   searchParams,
 }: {
@@ -412,6 +422,13 @@ export default async function TemplatesPage({
                         Section {selectedTemplate.sections.indexOf(selectedSection) + 1} of{" "}
                         {selectedTemplate.sections.length}
                       </span>
+                      {!templateLocked ? (
+                        <form action={deleteVirTemplateSectionAction.bind(null, selectedSection.id)}>
+                          <button className="button button-ghost-danger" style={{ fontSize: "0.72rem", padding: "0.2rem 0.5rem" }} type="submit">
+                            Delete section
+                          </button>
+                        </form>
+                      ) : null}
                     </div>
                   </div>
 
@@ -478,19 +495,6 @@ export default async function TemplatesPage({
                           </button>
                         </div>
                       </form>
-                      <form
-                        action={deleteVirTemplateSectionAction.bind(
-                          null,
-                          selectedSection.id
-                        )}
-                      >
-                        <button
-                          className="button button-ghost-danger"
-                          type="submit"
-                        >
-                          Delete section
-                        </button>
-                      </form>
                     </details>
                   ) : null}
 
@@ -510,7 +514,7 @@ export default async function TemplatesPage({
                             </div>
                             <div className="meta-row">
                               <span className="chip chip-info">
-                                {question.responseType}
+                                {responseTypeLabels[question.responseType] ?? question.responseType}
                               </span>
                               {question.isMandatory ? (
                                 <span className="chip chip-warning">
@@ -582,7 +586,7 @@ export default async function TemplatesPage({
                               <select defaultValue="YES_NO_NA" name="responseType">
                                 {responseTypes.map((rt) => (
                                   <option key={rt} value={rt}>
-                                    {rt}
+                                    {responseTypeLabels[rt] ?? rt}
                                   </option>
                                 ))}
                               </select>
@@ -782,7 +786,8 @@ function QuestionEditForm({
     .join("\n");
 
   return (
-    <details>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginTop: "0.5rem", gap: "0.5rem" }}>
+    <details style={{ flex: 1 }}>
       <summary style={{ cursor: "pointer", fontWeight: 500, padding: "0.35rem 0" }}>
         Edit question
       </summary>
@@ -800,19 +805,9 @@ function QuestionEditForm({
         <label>
           Response type
           <select defaultValue={question.responseType} name="responseType">
-            {(
-              [
-                "YES_NO_NA",
-                "TEXT",
-                "NUMBER",
-                "DATE",
-                "SINGLE_SELECT",
-                "MULTI_SELECT",
-                "SCORE",
-              ] as const
-            ).map((rt) => (
+            {responseTypes.map((rt) => (
               <option key={rt} value={rt}>
-                {rt}
+                {responseTypeLabels[rt] ?? rt}
               </option>
             ))}
           </select>
@@ -915,12 +910,13 @@ function QuestionEditForm({
           </button>
         </div>
       </form>
-      <form action={deleteVirTemplateQuestionAction.bind(null, question.id)}>
-        <button className="button button-ghost-danger" type="submit">
-          Delete question
-        </button>
-      </form>
     </details>
+    <form action={deleteVirTemplateQuestionAction.bind(null, question.id)}>
+      <button className="button button-ghost-danger" style={{ fontSize: "0.72rem", padding: "0.2rem 0.5rem" }} type="submit">
+        Delete
+      </button>
+    </form>
+    </div>
   );
 }
 
@@ -937,12 +933,17 @@ function NewTemplateForm({
         Inspection type
         <select name="inspectionTypeId" required>
           <option value="">Select inspection type</option>
+          <option value="NEW">— Create new inspection type —</option>
           {inspectionTypes.map((t) => (
             <option key={t.id} value={t.id}>
               {t.name} ({t.category})
             </option>
           ))}
         </select>
+      </label>
+      <label>
+        New inspection type name <span className="small-text">(fill only if creating new above)</span>
+        <input name="newTypeName" placeholder="e.g. Vetting Inspection" type="text" />
       </label>
       <label>
         Template name

@@ -87,21 +87,22 @@ export async function POST(request: NextRequest) {
       select: { id: true },
     });
 
-    if (existingTemplate) {
-      return NextResponse.json(
-        {
-          error: "A VIR template with this inspection type and version already exists.",
-          existingTemplateId: existingTemplate.id,
-        },
-        { status: 409 }
-      );
+    let version = normalized.version;
+    let existingTemplateCheck = existingTemplate;
+    while (existingTemplateCheck) {
+      const parts = version.match(/^(.*?)(\d+)$/);
+      version = parts ? `${parts[1]}${parseInt(parts[2]) + 1}` : `${version}.1`;
+      existingTemplateCheck = await prisma.virTemplate.findFirst({
+        where: { inspectionTypeId: inspectionType.id, version },
+        select: { id: true },
+      });
     }
 
     const template = await prisma.virTemplate.create({
       data: {
         inspectionTypeId: inspectionType.id,
         name: normalized.templateName,
-        version: normalized.version,
+        version,
         description: normalized.description,
         sections: {
           create: normalized.sections.map((section) => ({
@@ -152,7 +153,7 @@ export async function POST(request: NextRequest) {
         status: "COMMITTED",
         payload: {
           request: importRequest,
-          normalized,
+          normalized: { ...normalized, version },
           summary,
           warnings,
         },
