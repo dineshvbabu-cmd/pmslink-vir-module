@@ -502,17 +502,16 @@ function InspectionHistoryGrid({
       <table className="table data-table vir-data-table">
         <thead>
           <tr>
+            <th>Progress</th>
             {isOffice ? <th>Vessel</th> : null}
-            <th>Ref no</th>
-            <th>Audit from</th>
-            <th>Audit to</th>
+            <th>VIR No</th>
             <th>Status</th>
-            <th style={{ textAlign: "center" }}>Submitted</th>
-            <th style={{ textAlign: "center" }}>Reviewed</th>
-            <th style={{ textAlign: "center" }}>Acknowledged</th>
             <th>Place</th>
+            <th>Insp. From</th>
+            <th>Insp. To</th>
             <th>Inspected by</th>
             <th>Report Type</th>
+            <th>Insp. Mode</th>
             <th>Action</th>
           </tr>
         </thead>
@@ -530,6 +529,16 @@ function InspectionHistoryGrid({
 
             return (
               <tr key={inspection.id}>
+                <td>
+                  <div className="hist-progress-wrap">
+                    <div className="hist-progress-bar-track">
+                      <div className="hist-progress-bar-fill" style={{ width: `${inspection.progress.completionPct}%` }} />
+                    </div>
+                    <span style={{ fontSize: "0.75rem", fontWeight: 700, whiteSpace: "nowrap" }}>
+                      {inspection.progress.completionPct}%
+                    </span>
+                  </div>
+                </td>
                 {isOffice ? (
                   <td>
                     <Link className="table-link" href={`/vessels/${inspection.vessel.id}`}>
@@ -541,33 +550,23 @@ function InspectionHistoryGrid({
                   <Link className="table-link" href={`/inspections/${inspection.id}`}>
                     {inspection.refNo}
                   </Link>
-                  <div className="small-text">{inspection.inspectionMode}</div>
                 </td>
-                <td>{inspection.auditFromDate}</td>
-                <td>{inspection.auditEndDate ?? "—"}</td>
                 <td>
                   <span className={`chip ${toneForInspectionStatus(inspection.status)}`}>
                     {inspectionStatusLabel[inspection.status]}
                   </span>
-                </td>
-                <td style={{ textAlign: "center" }}>
-                  <span title="Vessel submitted" style={{ fontSize: "1.1rem" }}>
-                    {hasVesselSubmit ? "✅" : "⬜"}
-                  </span>
-                </td>
-                <td style={{ textAlign: "center" }}>
-                  <span title="Shore reviewed" style={{ fontSize: "1.1rem" }}>
-                    {hasShoreReview ? "✅" : "⬜"}
-                  </span>
-                </td>
-                <td style={{ textAlign: "center" }}>
-                  <span title="Final acknowledgement" style={{ fontSize: "1.1rem" }}>
-                    {hasFinalAck ? "✅" : "⬜"}
-                  </span>
+                  <div className="audit-status-checks" style={{ marginTop: "4px" }}>
+                    <span className={`audit-check ${hasVesselSubmit ? "audit-check-ok" : "audit-check-missing"}`} title="Submitted">S</span>
+                    <span className={`audit-check ${hasShoreReview ? "audit-check-ok" : "audit-check-missing"}`} title="Reviewed">R</span>
+                    <span className={`audit-check ${hasFinalAck ? "audit-check-ok" : "audit-check-missing"}`} title="Acknowledged">A</span>
+                  </div>
                 </td>
                 <td>{inspection.placeOfInspection}</td>
-                <td>{inspection.inspectorName ?? "Not set"}</td>
+                <td style={{ whiteSpace: "nowrap" }}>{inspection.auditFromDate}</td>
+                <td style={{ whiteSpace: "nowrap" }}>{inspection.auditEndDate ?? "—"}</td>
+                <td>{inspection.inspectorName ?? "—"}</td>
                 <td>{inspection.reportType}</td>
+                <td style={{ fontSize: "0.78rem" }}>{inspection.inspectionMode}</td>
                 <td>
                   <div className="table-actions table-actions-icons">
                     <ActionIconLink href={`/inspections/${inspection.id}`} icon={Eye} label="Inspection workflow" tone="primary" />

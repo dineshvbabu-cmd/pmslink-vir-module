@@ -4015,3 +4015,294 @@ textarea {
     border-bottom: 1px solid var(--color-border);
   }
 }
+
+/* ── Synergy VIR topbar ────────────────────────────────────── */
+.vir-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.55rem 1rem;
+  background: #0c1f37;
+  color: white;
+  border-radius: 1.25rem 1.25rem 0 0;
+  flex-wrap: wrap;
+  min-height: 3rem;
+}
+
+.vir-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.38rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.vir-topbar-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.18rem 0.42rem;
+  border-radius: 0.4rem;
+  text-decoration: none;
+  transition: background 120ms, color 120ms;
+  white-space: nowrap;
+}
+
+.vir-topbar-back:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: white;
+}
+
+.vir-topbar-divider {
+  color: rgba(255, 255, 255, 0.26);
+  font-weight: 300;
+  font-size: 1.05rem;
+}
+
+.vir-topbar-vessel {
+  font-weight: 800;
+  font-size: 0.88rem;
+  letter-spacing: -0.01em;
+  color: white;
+}
+
+.vir-topbar-refno {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.82);
+  font-family: "Aptos Mono", "Consolas", monospace;
+}
+
+.vir-topbar-approver {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.58);
+  font-style: italic;
+}
+
+.vir-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.38rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.vir-topbar-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.38rem;
+  margin-right: 0.25rem;
+}
+
+.vir-topbar-pct {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: white;
+  white-space: nowrap;
+}
+
+.vir-topbar-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.45rem;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  text-decoration: none;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  transition: background 120ms, color 120ms;
+  flex-shrink: 0;
+}
+
+.vir-topbar-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.vir-topbar-icon-btn-active {
+  background: rgba(26, 116, 216, 0.52);
+  border-color: rgba(26, 116, 216, 0.68);
+  color: white;
+}
+
+/* ── VIR Report view pane ──────────────────────────────────── */
+.vir-report-view {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.vir-report-section-heading {
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: var(--color-blue);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin-bottom: 0.65rem;
+}
+
+.vir-report-chapter-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  font-size: 0.82rem;
+}
+
+.vir-report-chapter-table th {
+  background: #f0f5fa;
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-ink-soft);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.vir-report-chapter-table td {
+  padding: 0.55rem 0.65rem;
+  border-bottom: 1px solid #f0f4f8;
+  vertical-align: middle;
+}
+
+.vir-report-chapter-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.vir-report-chapter-table tbody tr:hover {
+  background: rgba(26, 116, 216, 0.03);
+}
+
+.rating-chip-good {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: #d9f0e6;
+  color: #0f7a50;
+}
+
+.rating-chip-medium {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: #fff1d2;
+  color: #c88a17;
+}
+
+.rating-chip-poor {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: #ffe0de;
+  color: #d04b49;
+}
+
+/* ── VIR Narrative pane (internal audit) ───────────────────── */
+.vir-narrative-pane {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.vir-narrative-card {
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-blue);
+  border-radius: 0 0.9rem 0.9rem 0;
+  background: white;
+  overflow: hidden;
+}
+
+.vir-narrative-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem;
+  background: #f4f8fe;
+  border-bottom: 1px solid #dce8f5;
+}
+
+.vir-narrative-card-title {
+  font-size: 0.84rem;
+  font-weight: 800;
+  color: var(--color-ink);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.vir-narrative-card-body {
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.vir-narrative-upload-zone {
+  border: 2px dashed var(--color-border);
+  border-radius: 0.55rem;
+  padding: 0.85rem;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--color-ink-soft);
+  background: #f8fafc;
+}
+
+.vir-narrative-meeting-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
+  gap: 0.7rem;
+  margin-bottom: 0.4rem;
+}
+
+/* ── History grid progress bar ─────────────────────────────── */
+.hist-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 80px;
+}
+
+.hist-progress-bar-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: #dfe7f0;
+  overflow: hidden;
+  min-width: 45px;
+}
+
+.hist-progress-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #4ba1ff, #1a74d8);
+}
+
+@media (max-width: 900px) {
+  .vir-topbar {
+    border-radius: 1rem 1rem 0 0;
+  }
+
+  .vir-narrative-meeting-grid {
+    grid-template-columns: 1fr;
+  }
+}

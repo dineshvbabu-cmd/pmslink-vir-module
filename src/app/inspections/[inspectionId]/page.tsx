@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Edit, Eye, FileText, TriangleAlert } from "lucide-react";
+import { AlignJustify, Edit, Eye, FileText, Grid2x2, TriangleAlert } from "lucide-react";
 import {
   addCorrectiveActionAction,
   addFindingAction,
@@ -48,7 +48,7 @@ export default async function InspectionDetailPage({
   searchParams,
 }: {
   params: Promise<{ inspectionId: string }>;
-  searchParams: Promise<{ pane?: string; section?: string; findingQ?: string }>;
+  searchParams: Promise<{ pane?: string; section?: string; findingQ?: string; view?: string }>;
 }) {
   const session = await requireVirSession();
   const { inspectionId } = await params;
@@ -244,43 +244,42 @@ export default async function InspectionDetailPage({
   const findingPanelPrompt = findingQuestion?.prompt ?? (findingLiveQuestion as any)?.prompt ?? "";
   const findingPanelCode = findingQuestion?.code ?? (findingLiveQuestion as any)?.code ?? "";
 
+  const isInternalAudit = inspection.inspectionType.category === "INTERNAL";
+
   return (
     <div className="page-stack">
-      <Link className="back-link" href={historyHref} scroll={false}>
-        ← Back to inspection history
-      </Link>
-
-      {/* ── Synergy-style report header bar ── */}
+      {/* ── Synergy VIR topbar ── */}
       <div className="panel panel-elevated" style={{ padding: 0, overflow: "hidden" }}>
-        <div className="vir-report-topbar">
-          <span className="vir-report-topbar-vessel">{inspection.vessel.name}</span>
-          <span className="vir-report-topbar-sep">|</span>
-          <span className="vir-report-topbar-refno">{refNo}</span>
-          <span className="vir-report-topbar-sep">|</span>
-          <span className={`chip ${toneForInspectionStatus(inspection.status)}`} style={{ fontSize: "0.76rem" }}>
-            {inspectionStatusLabel[inspection.status]}
-          </span>
-          {approvedSignOffs.length > 0 ? (
-            <span style={{ fontSize: "0.78rem", opacity: 0.9 }}>
-              ({approvedSignOffs.map((s) => s.actorName).filter(Boolean).join(", ")})
+        <div className="vir-topbar">
+          <div className="vir-topbar-left">
+            <Link className="vir-topbar-back" href={historyHref}>← New Report</Link>
+            <span className="vir-topbar-divider">|</span>
+            <span className="vir-topbar-vessel">{inspection.vessel.name}</span>
+            <span className="vir-topbar-divider">|</span>
+            <span className="vir-topbar-refno">{refNo}</span>
+            <span className="vir-topbar-divider">|</span>
+            <span
+              className={`chip ${toneForInspectionStatus(inspection.status)}`}
+              style={{ fontSize: "0.68rem", padding: "2px 7px", borderRadius: "4px" }}
+            >
+              {inspectionStatusLabel[inspection.status]}
             </span>
-          ) : null}
-          <Link
-            className="vir-report-topbar-progress"
-            href={`/inspections/${inspection.id}?pane=questionnaire${selectedSectionQuery}`}
-            scroll={false}
-            style={{ textDecoration: "none" }}
-            title="Open checklist"
-          >
-            <div className="vir-progress-track">
-              <div className="vir-progress-fill" style={{ width: `${progress.completionPct}%` }} />
+            {approvedSignOffs.length > 0 ? (
+              <span className="vir-topbar-approver">
+                ({approvedSignOffs.map((s) => s.actorName).filter(Boolean).join(", ")})
+              </span>
+            ) : null}
+          </div>
+          <div className="vir-topbar-right">
+            <div className="vir-topbar-progress-wrap">
+              <div className="vir-progress-track">
+                <div className="vir-progress-fill" style={{ width: `${progress.completionPct}%` }} />
+              </div>
+              <span className="vir-topbar-pct">{progress.completionPct}%</span>
             </div>
-            <span style={{ fontSize: "0.78rem" }}>{progress.completionPct}%</span>
-          </Link>
-          <div className="vir-report-topbar-actions">
-            {isVesselSession(session) ? (
+            {isVesselSession(session) && inspection.status !== "SUBMITTED" && inspection.status !== "SHORE_REVIEWED" && inspection.status !== "CLOSED" ? (
               <form action={updateInspectionStatusAction.bind(null, inspection.id, "SUBMITTED")}>
-                <SubmitButton className="btn btn-compact" style={{ fontSize: "0.78rem", padding: "0.3rem 0.7rem" }}>
+                <SubmitButton className="btn btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
                   Send for approval
                 </SubmitButton>
               </form>
@@ -288,62 +287,62 @@ export default async function InspectionDetailPage({
             {isOfficeSession(session) && inspection.status === "SUBMITTED" ? (
               <>
                 <form action={updateInspectionStatusAction.bind(null, inspection.id, "RETURNED")}>
-                  <SubmitButton className="btn-danger btn-compact" style={{ fontSize: "0.78rem", padding: "0.3rem 0.7rem" }}>
+                  <SubmitButton className="btn-danger btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
                     Return
                   </SubmitButton>
                 </form>
                 <form action={updateInspectionStatusAction.bind(null, inspection.id, "SHORE_REVIEWED")}>
-                  <SubmitButton className="btn-secondary btn-compact" style={{ fontSize: "0.78rem", padding: "0.3rem 0.7rem" }}>
+                  <SubmitButton className="btn-secondary btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
                     Approve
                   </SubmitButton>
                 </form>
               </>
             ) : null}
-            {isOfficeSession(session) && ["SHORE_REVIEWED"].includes(inspection.status) ? (
+            {isOfficeSession(session) && inspection.status === "SHORE_REVIEWED" ? (
               <form action={updateInspectionStatusAction.bind(null, inspection.id, "CLOSED")}>
                 <SubmitButton
                   className="btn btn-compact"
                   confirmMessage="Close VIR after all reviews and sign-offs are complete. Continue?"
-                  style={{ fontSize: "0.78rem", padding: "0.3rem 0.7rem" }}
+                  style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}
                 >
                   Close VIR
                 </SubmitButton>
               </form>
             ) : null}
             <Link
-              className="btn-secondary btn-compact"
-              href={`/inspections/${inspection.id}?pane=questionnaire&section=${selectedSectionId}&findingQ=__show`}
+              className={`vir-topbar-icon-btn${activePane === "questionnaire" ? " vir-topbar-icon-btn-active" : ""}`}
+              href={`/inspections/${inspection.id}?pane=questionnaire${selectedSectionQuery}`}
               scroll={false}
-              style={{ fontSize: "0.78rem", padding: "0.3rem 0.7rem" }}
+              title="Checklist"
             >
-              Show defects only
+              <Grid2x2 size={15} />
+            </Link>
+            <Link
+              className={`vir-topbar-icon-btn${activePane === "report" ? " vir-topbar-icon-btn-active" : ""}`}
+              href={`/inspections/${inspection.id}?pane=report`}
+              scroll={false}
+              title="Report view"
+            >
+              <AlignJustify size={15} />
             </Link>
             <a
-              className="btn-secondary btn-compact"
+              className="vir-topbar-icon-btn"
               href={`/api/reports/inspection/${inspection.id}/pdf?variant=detailed`}
-              style={{ fontSize: "0.78rem", padding: "0.3rem 0.7rem" }}
+              title="Download PDF"
             >
-              PDF
+              <FileText size={15} />
             </a>
-            <Link
-              className="btn-secondary btn-compact"
-              href={`/reports/inspection/${inspection.id}?variant=detailed`}
-              scroll={false}
-              style={{ fontSize: "0.78rem", padding: "0.3rem 0.7rem" }}
-            >
-              Full report
-            </Link>
           </div>
         </div>
 
-        {/* Pane navigation tabs */}
+        {/* Secondary navigation tabs */}
         <div className="vir-pane-tabs">
           {[
-            { id: "details", label: "Report Details", note: `Vessel & audit header` },
-            { id: "questionnaire", label: "Checklist", note: `${templateQuestionCount} questions` },
-            { id: "findings", label: "Findings", note: `${inspection.findings.length} active` },
-            { id: "evidence", label: "Evidence", note: `${inspection.photos.length} synced` },
-            { id: "signoff", label: "Sign-off", note: `${inspection.signOffs.length} records` },
+            { id: "details", label: "Report Details" },
+            { id: "findings", label: `Findings (${inspection.findings.length})` },
+            { id: "evidence", label: `Evidence (${inspection.photos.length})` },
+            { id: "signoff", label: `Sign-off (${inspection.signOffs.length})` },
+            ...(isInternalAudit ? [{ id: "narrative", label: "Narrative" }] : []),
           ].map((item) => (
             <Link
               className={`vir-pane-tab ${activePane === item.id ? "vir-pane-tab-active" : ""}`}
@@ -1210,6 +1209,350 @@ export default async function InspectionDetailPage({
         </section>
       ) : null}
 
+      {/* ── PANE: Report view ── */}
+      {activePane === "report" ? (
+        <div className="panel panel-elevated" style={{ padding: 0, overflow: "hidden" }}>
+          <div className="vir-report-view">
+            {/* Chapter Summary Table */}
+            <div>
+              <div className="vir-report-section-heading">Chapter Summary</div>
+              <div className="table-shell" style={{ maxHeight: "none" }}>
+                <table className="vir-report-chapter-table">
+                  <thead>
+                    <tr>
+                      <th>Chapter Name</th>
+                      <th>Rating</th>
+                      <th style={{ textAlign: "center" }}>Findings</th>
+                      <th style={{ textAlign: "center" }}>Questions</th>
+                      <th style={{ textAlign: "center" }}>Completion</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sectionNavigation.map((sectionItem) => {
+                      const sectionQuestionIds = !liveChecklist
+                        ? (inspection.template?.sections.find((s) => s.id === sectionItem.sectionId)?.questions.map((q) => q.id) ?? [])
+                        : [];
+                      const sectionFindingCount = sectionQuestionIds.length > 0
+                        ? inspection.findings.filter((f) => f.questionId && sectionQuestionIds.includes(f.questionId)).length
+                        : 0;
+                      const ratingLabel = sectionFindingCount === 0 ? "Good" : sectionFindingCount <= 2 ? "Medium" : "Poor";
+                      const ratingClass = sectionFindingCount === 0 ? "rating-chip-good" : sectionFindingCount <= 2 ? "rating-chip-medium" : "rating-chip-poor";
+                      return (
+                        <tr key={sectionItem.sectionId}>
+                          <td style={{ fontWeight: 600 }}>{sectionItem.title}</td>
+                          <td><span className={ratingClass}>{ratingLabel}</span></td>
+                          <td style={{ textAlign: "center" }}>{sectionFindingCount > 0 ? sectionFindingCount : "—"}</td>
+                          <td style={{ textAlign: "center" }}>{sectionItem.questionCount}</td>
+                          <td style={{ textAlign: "center" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", justifyContent: "center" }}>
+                              <div className="hist-progress-bar-track" style={{ width: "50px" }}>
+                                <div className="hist-progress-bar-fill" style={{ width: `${Math.round((sectionItem.questionCount > 0 ? 50 : 0))}%` }} />
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <Link
+                              className="inline-link"
+                              href={`/inspections/${inspection.id}?pane=questionnaire&section=${sectionItem.sectionId}`}
+                              scroll={false}
+                              style={{ fontSize: "0.76rem" }}
+                            >
+                              View checklist
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Findings Table */}
+            {inspection.findings.length > 0 ? (
+              <div>
+                <div className="vir-report-section-heading">Findings ({inspection.findings.length})</div>
+                <div className="table-shell" style={{ maxHeight: "none" }}>
+                  <table className="vir-report-chapter-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: "36px" }}>No.</th>
+                        <th>Question / Finding</th>
+                        <th>Type</th>
+                        <th>Severity</th>
+                        <th>Status</th>
+                        <th>Due Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inspection.findings.map((finding, index) => (
+                        <tr key={finding.id}>
+                          <td style={{ textAlign: "center", fontWeight: 700, color: "var(--color-ink-soft)" }}>{index + 1}</td>
+                          <td>
+                            {finding.question?.code ? (
+                              <div style={{ fontSize: "0.7rem", color: "var(--color-blue)", fontWeight: 700, marginBottom: "2px" }}>
+                                {finding.question.code}
+                              </div>
+                            ) : null}
+                            <div style={{ fontWeight: 600 }}>{finding.title}</div>
+                            {finding.description ? (
+                              <div style={{ fontSize: "0.75rem", color: "var(--color-ink-soft)" }}>{finding.description.slice(0, 90)}{finding.description.length > 90 ? "…" : ""}</div>
+                            ) : null}
+                          </td>
+                          <td>
+                            <span className="chip chip-info" style={{ fontSize: "0.68rem" }}>
+                              {finding.findingType?.replace(/_/g, " ") ?? "Observation"}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`chip ${toneForRisk(finding.severity)}`} style={{ fontSize: "0.68rem" }}>
+                              {riskLabel[finding.severity]}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`chip ${toneForFindingStatus(finding.status)}`} style={{ fontSize: "0.68rem" }}>
+                              {findingStatusLabel[finding.status]}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: "0.78rem", whiteSpace: "nowrap" }}>
+                            {finding.dueDate ? fmt.format(finding.dueDate) : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="empty-state">No findings raised on this inspection.</div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── PANE: Narrative (Internal audits only) ── */}
+      {activePane === "narrative" && isInternalAudit ? (
+        <div className="panel panel-elevated" style={{ padding: 0, overflow: "hidden" }}>
+          <div className="vir-narrative-pane">
+            <form action={saveHeader}>
+              {/* Items of Concern */}
+              <div className="vir-narrative-card">
+                <div className="vir-narrative-card-header">
+                  <div className="vir-narrative-card-title">Items of Concern</div>
+                </div>
+                <div className="vir-narrative-card-body">
+                  <textarea
+                    defaultValue={typeof narrativeMetadata.itemsOfConcern === "string" ? narrativeMetadata.itemsOfConcern : ""}
+                    disabled={!canEditInspection}
+                    name="itemsOfConcern"
+                    placeholder="List items of concern observed during the audit..."
+                    rows={4}
+                    style={{ width: "100%", border: "1px solid var(--color-border)", borderRadius: "0.65rem", padding: "0.65rem", resize: "vertical" }}
+                  />
+                </div>
+              </div>
+
+              {/* Best Practice */}
+              <div className="vir-narrative-card">
+                <div className="vir-narrative-card-header">
+                  <div className="vir-narrative-card-title">Best Practice</div>
+                </div>
+                <div className="vir-narrative-card-body">
+                  <textarea
+                    defaultValue={typeof narrativeMetadata.bestPractice === "string" ? narrativeMetadata.bestPractice : ""}
+                    disabled={!canEditInspection}
+                    name="bestPractice"
+                    placeholder="Describe best practices observed during the audit..."
+                    rows={4}
+                    style={{ width: "100%", border: "1px solid var(--color-border)", borderRadius: "0.65rem", padding: "0.65rem", resize: "vertical" }}
+                  />
+                  <div className="vir-narrative-upload-zone">
+                    📎 Upload supporting documents
+                    <input accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" multiple name="bestPracticeFiles" type="file" style={{ display: "block", margin: "0.4rem auto 0", fontSize: "0.76rem" }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Equipment Not Working */}
+              <div className="vir-narrative-card">
+                <div className="vir-narrative-card-header">
+                  <div className="vir-narrative-card-title">Equipment Not Working / Never Tried Out</div>
+                </div>
+                <div className="vir-narrative-card-body">
+                  <textarea
+                    defaultValue={typeof narrativeMetadata.equipmentNotWorking === "string" ? narrativeMetadata.equipmentNotWorking : ""}
+                    disabled={!canEditInspection}
+                    name="equipmentNotWorking"
+                    placeholder="List equipment that was not working or never tried out..."
+                    rows={4}
+                    style={{ width: "100%", border: "1px solid var(--color-border)", borderRadius: "0.65rem", padding: "0.65rem", resize: "vertical" }}
+                  />
+                  <div className="vir-narrative-upload-zone">
+                    📎 Upload supporting documents
+                    <input accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" multiple name="equipmentFiles" type="file" style={{ display: "block", margin: "0.4rem auto 0", fontSize: "0.76rem" }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Safety Meeting */}
+              <div className="vir-narrative-card">
+                <div className="vir-narrative-card-header">
+                  <div className="vir-narrative-card-title">Safety Meeting</div>
+                </div>
+                <div className="vir-narrative-card-body">
+                  <textarea
+                    defaultValue={typeof narrativeMetadata.safetyMeeting === "string" ? narrativeMetadata.safetyMeeting : ""}
+                    disabled={!canEditInspection}
+                    name="safetyMeeting"
+                    placeholder="Safety meeting notes and discussion points..."
+                    rows={4}
+                    style={{ width: "100%", border: "1px solid var(--color-border)", borderRadius: "0.65rem", padding: "0.65rem", resize: "vertical" }}
+                  />
+                  <div className="vir-narrative-upload-zone">
+                    📎 Upload safety meeting records
+                    <input accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" multiple name="safetyMeetingFiles" type="file" style={{ display: "block", margin: "0.4rem auto 0", fontSize: "0.76rem" }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Other Documents */}
+              <div className="vir-narrative-card">
+                <div className="vir-narrative-card-header">
+                  <div className="vir-narrative-card-title">Other Documents</div>
+                </div>
+                <div className="vir-narrative-card-body">
+                  <div className="vir-narrative-upload-zone">
+                    📎 Upload other audit-related documents
+                    <input accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" multiple name="otherDocuments" type="file" style={{ display: "block", margin: "0.4rem auto 0", fontSize: "0.76rem" }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Opening Meeting */}
+              <div className="vir-narrative-card">
+                <div className="vir-narrative-card-header">
+                  <div className="vir-narrative-card-title">Opening Meeting</div>
+                </div>
+                <div className="vir-narrative-card-body">
+                  <div className="vir-narrative-meeting-grid">
+                    <div className="vir-detail-field">
+                      <span className="vir-detail-label">Date</span>
+                      <input
+                        className="field-input"
+                        defaultValue={typeof narrativeMetadata.openingMeetingDate === "string" ? narrativeMetadata.openingMeetingDate : ""}
+                        disabled={!canEditInspection}
+                        name="openingMeetingDate"
+                        style={{ padding: "0.25rem 0.4rem", fontSize: "0.85rem" }}
+                        type="date"
+                      />
+                    </div>
+                    <div className="vir-detail-field">
+                      <span className="vir-detail-label">From Time</span>
+                      <input
+                        className="field-input"
+                        defaultValue={typeof narrativeMetadata.openingMeetingFromTime === "string" ? narrativeMetadata.openingMeetingFromTime : ""}
+                        disabled={!canEditInspection}
+                        name="openingMeetingFromTime"
+                        placeholder="09:00 AM"
+                        style={{ padding: "0.25rem 0.4rem", fontSize: "0.85rem" }}
+                        type="text"
+                      />
+                    </div>
+                    <div className="vir-detail-field">
+                      <span className="vir-detail-label">To Time</span>
+                      <input
+                        className="field-input"
+                        defaultValue={typeof narrativeMetadata.openingMeetingToTime === "string" ? narrativeMetadata.openingMeetingToTime : ""}
+                        disabled={!canEditInspection}
+                        name="openingMeetingToTime"
+                        placeholder="10:00 AM"
+                        style={{ padding: "0.25rem 0.4rem", fontSize: "0.85rem" }}
+                        type="text"
+                      />
+                    </div>
+                  </div>
+                  <div className="vir-detail-field">
+                    <span className="vir-detail-label">Meeting Notes</span>
+                    <textarea
+                      defaultValue={typeof narrativeMetadata.openingMeetingNotes === "string" ? narrativeMetadata.openingMeetingNotes : ""}
+                      disabled={!canEditInspection}
+                      name="openingMeetingNotes"
+                      placeholder="Opening meeting discussion notes and attendees..."
+                      rows={4}
+                      style={{ width: "100%", border: "1px solid var(--color-border)", borderRadius: "0.65rem", padding: "0.65rem", resize: "vertical", marginTop: "0.25rem" }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Closing Meeting */}
+              <div className="vir-narrative-card">
+                <div className="vir-narrative-card-header">
+                  <div className="vir-narrative-card-title">Closing Meeting</div>
+                </div>
+                <div className="vir-narrative-card-body">
+                  <div className="vir-narrative-meeting-grid">
+                    <div className="vir-detail-field">
+                      <span className="vir-detail-label">Date</span>
+                      <input
+                        className="field-input"
+                        defaultValue={typeof narrativeMetadata.closingMeetingDate === "string" ? narrativeMetadata.closingMeetingDate : ""}
+                        disabled={!canEditInspection}
+                        name="closingMeetingDate"
+                        style={{ padding: "0.25rem 0.4rem", fontSize: "0.85rem" }}
+                        type="date"
+                      />
+                    </div>
+                    <div className="vir-detail-field">
+                      <span className="vir-detail-label">From Time</span>
+                      <input
+                        className="field-input"
+                        defaultValue={typeof narrativeMetadata.closingMeetingFromTime === "string" ? narrativeMetadata.closingMeetingFromTime : ""}
+                        disabled={!canEditInspection}
+                        name="closingMeetingFromTime"
+                        placeholder="04:00 PM"
+                        style={{ padding: "0.25rem 0.4rem", fontSize: "0.85rem" }}
+                        type="text"
+                      />
+                    </div>
+                    <div className="vir-detail-field">
+                      <span className="vir-detail-label">To Time</span>
+                      <input
+                        className="field-input"
+                        defaultValue={typeof narrativeMetadata.closingMeetingToTime === "string" ? narrativeMetadata.closingMeetingToTime : ""}
+                        disabled={!canEditInspection}
+                        name="closingMeetingToTime"
+                        placeholder="05:00 PM"
+                        style={{ padding: "0.25rem 0.4rem", fontSize: "0.85rem" }}
+                        type="text"
+                      />
+                    </div>
+                  </div>
+                  <div className="vir-detail-field">
+                    <span className="vir-detail-label">Meeting Notes</span>
+                    <textarea
+                      defaultValue={typeof narrativeMetadata.closingMeetingNotes === "string" ? narrativeMetadata.closingMeetingNotes : ""}
+                      disabled={!canEditInspection}
+                      name="closingMeetingNotes"
+                      placeholder="Closing meeting discussion notes and action items..."
+                      rows={4}
+                      style={{ width: "100%", border: "1px solid var(--color-border)", borderRadius: "0.65rem", padding: "0.65rem", resize: "vertical", marginTop: "0.25rem" }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {canEditInspection ? (
+                <div style={{ display: "flex", justifyContent: "flex-end", paddingTop: "0.5rem" }}>
+                  <SubmitButton className="btn">Save narrative</SubmitButton>
+                </div>
+              ) : null}
+            </form>
+          </div>
+        </div>
+      ) : null}
+
       {/* ── Finding details panel (slide-in) ── */}
       {findingQ && findingQ !== "__show" && (findingQuestion || findingLiveQuestion) ? (
         <>
@@ -1228,8 +1571,9 @@ export default async function InspectionDetailPage({
               <input name="questionId" type="hidden" value={findingQ} />
 
               <div className="field">
-                <label htmlFor="fp-findingType">Type of Finding</label>
+                <label htmlFor="fp-findingType">Type of Finding *</label>
                 <select id="fp-findingType" name="findingType" required>
+                  <option value="">Select type...</option>
                   <option value="OBSERVATION">Observation</option>
                   <option value="NON_CONFORMITY">Non-Conformity</option>
                   <option value="RECOMMENDATION">Recommendation</option>
@@ -1248,40 +1592,31 @@ export default async function InspectionDetailPage({
               </div>
 
               <div className="field-wide">
-                <label htmlFor="fp-title">Title</label>
-                <input id="fp-title" name="title" placeholder="Finding title" required />
-              </div>
-
-              <div className="field-wide">
                 <label htmlFor="fp-description">Description of Finding</label>
-                <textarea id="fp-description" name="description" placeholder="Describe the defect, evidence observed, and impact." required rows={4} />
+                <textarea id="fp-description" name="description" placeholder="Describe the defect, evidence observed, and impact." rows={5} />
               </div>
 
-              <div className="checkbox-row">
-                <input id="fp-drydock" name="isDrydockRelated" type="checkbox" value="yes" />
-                <label htmlFor="fp-drydock">Is the Defect Associated to Drydock?</label>
-              </div>
-
-              <div className="field">
-                <label htmlFor="fp-dueDate">Due date</label>
-                <input id="fp-dueDate" name="dueDate" type="date" />
-              </div>
-
-              <div className="field">
-                <label htmlFor="fp-owner">Action owner</label>
-                <input id="fp-owner" name="ownerName" placeholder="Chief Officer / CE" />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem" }}>
+                <div className="checkbox-row">
+                  <input id="fp-drydock" name="isDrydockRelated" type="checkbox" value="yes" />
+                  <label htmlFor="fp-drydock">Is the Defect Associated to Drydock?</label>
+                </div>
+                <div className="checkbox-row">
+                  <label htmlFor="fp-ioc">Item Of Concern</label>
+                  <input id="fp-ioc" name="isItemOfConcern" type="checkbox" value="yes" />
+                </div>
               </div>
 
               <div className="finding-panel-attach">
-                <div>📎 ATTACHMENTS</div>
+                <div style={{ fontWeight: 700, fontSize: "0.82rem" }}>📎 ATTACHMENTS</div>
                 <div style={{ fontSize: "0.75rem", marginTop: "0.3rem", color: "var(--color-ink-soft)" }}>
-                  You can upload a max of 10 images. Allowed: .png, .jpeg, .gif, .tif, .webp, .heic
+                  Max 10 images. Allowed: .png .jpeg .gif .tif .webp .heic
                 </div>
                 <input
                   accept=".png,.jpg,.jpeg,.gif,.tif,.tiff,.webp,.heic"
                   multiple
                   name="attachments"
-                  style={{ marginTop: "0.5rem" }}
+                  style={{ display: "block", marginTop: "0.5rem", fontSize: "0.76rem" }}
                   type="file"
                 />
               </div>
@@ -1329,8 +1664,8 @@ function slugify(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
-function normalizeInspectionPane(value: string | undefined) {
-  if (value === "findings" || value === "evidence" || value === "signoff" || value === "details") {
+function normalizeInspectionPane(value: string | undefined): "questionnaire" | "findings" | "evidence" | "signoff" | "details" | "report" | "narrative" {
+  if (value === "findings" || value === "evidence" || value === "signoff" || value === "details" || value === "report" || value === "narrative") {
     return value;
   }
   return "questionnaire";

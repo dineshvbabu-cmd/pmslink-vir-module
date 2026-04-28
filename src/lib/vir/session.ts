@@ -40,7 +40,9 @@ const officeNavigation: WorkspaceNavItem[] = [
   { href: "/inspections", label: "Inspection Register", note: "Draft, review, sync, and closure" },
   { href: "/inspections/new", label: "Create VIR", note: "Draft planning and manager approval" },
   { href: "/templates", label: "Template Library", note: "Questionnaires" },
+  { href: "/register", label: "Library Register", note: "Office template masters" },
   { href: "/imports", label: "Import Engine", note: "Checklist normalization" },
+  { href: "/instruction", label: "Instruction", note: "User guide and help" },
 ];
 
 const vesselNavigation: WorkspaceNavItem[] = [

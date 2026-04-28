@@ -1299,6 +1299,18 @@ export async function saveInspectionHeaderAction(inspectionId: string, formData:
     auditees: toStringOrNull(formData.get("auditees")),
     openingMeetingAttendees: toStringOrNull(formData.get("openingMeetingAttendees")),
     closingMeetingAttendees: toStringOrNull(formData.get("closingMeetingAttendees")),
+    itemsOfConcern: toStringOrNull(formData.get("itemsOfConcern")),
+    bestPractice: toStringOrNull(formData.get("bestPractice")),
+    equipmentNotWorking: toStringOrNull(formData.get("equipmentNotWorking")),
+    safetyMeeting: toStringOrNull(formData.get("safetyMeeting")),
+    openingMeetingDate: toStringOrNull(formData.get("openingMeetingDate")),
+    openingMeetingFromTime: toStringOrNull(formData.get("openingMeetingFromTime")),
+    openingMeetingToTime: toStringOrNull(formData.get("openingMeetingToTime")),
+    openingMeetingNotes: toStringOrNull(formData.get("openingMeetingNotes")),
+    closingMeetingDate: toStringOrNull(formData.get("closingMeetingDate")),
+    closingMeetingFromTime: toStringOrNull(formData.get("closingMeetingFromTime")),
+    closingMeetingToTime: toStringOrNull(formData.get("closingMeetingToTime")),
+    closingMeetingNotes: toStringOrNull(formData.get("closingMeetingNotes")),
   };
 
   const summary = toStringOrNull(formData.get("summary"));
