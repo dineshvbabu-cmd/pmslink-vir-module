@@ -19,7 +19,7 @@ import { LiveSectionProgress } from "@/components/live-section-progress";
 import { QuestionEvidenceInline } from "@/components/question-evidence-inline";
 import { SubmitButton } from "@/components/submit-button";
 import { prisma } from "@/lib/prisma";
-import { calculateInspectionScore, summarizeProgress } from "@/lib/vir/analytics";
+import { calculateInspectionScore, calculateVesselCondition, summarizeProgress } from "@/lib/vir/analytics";
 import {
   buildLiveChecklist,
   getQuestionUploads,
@@ -180,6 +180,8 @@ export default async function InspectionDetailPage({
   const answerMap = new Map(enrichedAnswers.map((answer) => [answer.questionId, answer]));
   const progressBase = summarizeProgress(questions, enrichedAnswers);
   const score = calculateInspectionScore(questions, enrichedAnswers, inspection.findings);
+  const vesselCondition = calculateVesselCondition(questions, enrichedAnswers);
+  const conditionPct = vesselCondition.score !== null ? Math.round((vesselCondition.score / 5) * 100) : null;
   const liveChecklist = buildLiveChecklist(inspection);
   const liveSections = liveChecklist?.sections ?? [];
   const templateQuestionCount = liveChecklist
@@ -428,8 +430,8 @@ export default async function InspectionDetailPage({
         <MetricBox label="Mandatory" value={`${progress.answeredMandatory}/${progress.mandatoryQuestions}`} note={`${progress.mandatoryPct}% coverage`} />
         <MetricBox
           label="Condition"
-          value={inspection.conditionScore !== null && inspection.conditionScore !== undefined ? `${inspection.conditionScore}%` : score.rawAverage !== null ? `${Math.round(score.rawAverage)}%` : "n/a"}
-          note="Derived from scored answers"
+          value={conditionPct !== null ? `${conditionPct}%` : "n/a"}
+          note={vesselCondition.score !== null ? `Score ${vesselCondition.score}/5 · ${vesselCondition.scoredResponses} scored` : "Derived from scored answers"}
         />
         <MetricBox label="Readiness" value={score.finalScore !== null ? `${score.finalScore}` : "n/a"} note={`Avg ${score.rawAverage ?? "—"} / penalty ${score.penaltyPoints}`} />
         <MetricBox label="Open findings" value={`${inspection.findings.filter((f) => f.status !== "CLOSED").length}`} note={`${inspection.ncCount} NC / ${inspection.obsCount} Obs`} />

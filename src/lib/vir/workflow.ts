@@ -105,7 +105,7 @@ export function toneForRisk(level: VirRiskLevel) {
 }
 
 export async function syncInspectionCounters(inspectionId: string) {
-  const [grouped, answers] = await Promise.all([
+  const [grouped, answers, inspectionMeta] = await Promise.all([
     prisma.virFinding.groupBy({
       by: ["findingType"],
       where: { inspectionId },
@@ -121,6 +121,10 @@ export async function syncInspectionCounters(inspectionId: string) {
           },
         },
       },
+    }),
+    prisma.virInspection.findUnique({
+      where: { id: inspectionId },
+      select: { metadata: true },
     }),
   ]);
 
@@ -145,7 +149,16 @@ export async function syncInspectionCounters(inspectionId: string) {
     { posCount: 0, obsCount: 0, ncCount: 0, recCount: 0 }
   );
 
-  const conditionScore = computeConditionScore(answers);
+  const rawMeta =
+    inspectionMeta?.metadata && typeof inspectionMeta.metadata === "object" && !Array.isArray(inspectionMeta.metadata)
+      ? (inspectionMeta.metadata as Record<string, unknown>)
+      : {};
+  const questionWorkflow =
+    rawMeta.questionWorkflow && typeof rawMeta.questionWorkflow === "object" && !Array.isArray(rawMeta.questionWorkflow)
+      ? (rawMeta.questionWorkflow as Record<string, { score?: number | null } | undefined>)
+      : {};
+
+  const conditionScore = computeConditionScore(answers, questionWorkflow);
 
   await prisma.virInspection.update({
     where: { id: inspectionId },
@@ -155,6 +168,7 @@ export async function syncInspectionCounters(inspectionId: string) {
 
 function computeConditionScore(
   answers: Array<{
+    questionId: string;
     answerText: string | null;
     answerBoolean: boolean | null;
     selectedOptions: unknown;
@@ -163,12 +177,20 @@ function computeConditionScore(
       options: Array<{ value: string; score: number | null }>;
       answerLibraryType: { items: Array<{ code: string | null; label: string; metadata: unknown }> } | null;
     };
-  }>
+  }>,
+  questionWorkflow: Record<string, { score?: number | null } | undefined> = {}
 ): number | null {
   const scoredValues: number[] = [];
 
   for (const answer of answers) {
     const q = answer.question;
+
+    // Manual 1–5 score from the questionnaire dropdown takes priority (normalized to 0–100 scale)
+    const manualScore = questionWorkflow[answer.questionId]?.score;
+    if (typeof manualScore === "number" && Number.isFinite(manualScore)) {
+      scoredValues.push(Math.min(100, Math.max(0, manualScore <= 5 ? manualScore * 20 : manualScore)));
+      continue;
+    }
 
     // Resolve scored options from library items or inline options
     const libraryItems = q.answerLibraryType?.items ?? [];
