@@ -1,4 +1,3 @@
-import liveVirBlueprint from "@/data/live-vir-blueprint.json";
 
 export type LiveQuestionFile = {
   id: string;
@@ -98,7 +97,7 @@ export function buildLiveChecklist(inspection: { metadata: unknown }) {
   if (candidate && typeof candidate === "object") {
     return candidate as unknown as LiveChecklistBlueprint;
   }
-  return liveVirBlueprint as unknown as LiveChecklistBlueprint;
+  return null;
 }
 
 export function buildLiveVesselRating(liveChecklist: LiveChecklistBlueprint, inspectionMode: string) {
