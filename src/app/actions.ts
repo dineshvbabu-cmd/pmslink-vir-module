@@ -1435,6 +1435,35 @@ export async function addFindingAction(inspectionId: string, formData: FormData)
     });
   }
 
+  // Upload any attached images to R2 and link them to the finding
+  const attachmentFiles = formData.getAll("attachments") as File[];
+  for (const file of attachmentFiles) {
+    if (!file || file.size === 0) continue;
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const uploaded = await uploadToR2({
+      body: buffer,
+      contentType: file.type || "image/jpeg",
+      fileName: file.name || "finding-attachment.jpg",
+      prefix: `evidence/${inspectionId}`,
+    });
+    if (uploaded) {
+      await prisma.virPhoto.create({
+        data: {
+          inspectionId,
+          findingId: finding.id,
+          url: uploaded.url,
+          storageKey: uploaded.storageKey,
+          caption: null,
+          fileName: file.name,
+          contentType: file.type || "image/jpeg",
+          fileSizeKb: Math.max(1, Math.round(file.size / 1024)),
+          takenAt: new Date(),
+          uploadedBy: session.actorName,
+        },
+      });
+    }
+  }
+
   await syncInspectionCounters(inspection.id);
   revalidateVirPaths(inspection.id);
 }
