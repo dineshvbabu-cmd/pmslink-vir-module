@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CalendarPlus, Eye, Mail, Phone, UserPlus } from "lucide-react";
+import { CalendarPlus, Eye, Mail, Pencil, Phone, UserPlus } from "lucide-react";
 import { ActionIconLink } from "@/components/action-icon-link";
 import { prisma } from "@/lib/prisma";
 import { buildVesselProfile } from "@/lib/vir/vessel-profile";
+import { updateVesselAction } from "@/app/actions";
 import { requireVirSession } from "@/lib/vir/session";
 
 export const dynamic = "force-dynamic";
@@ -100,7 +101,10 @@ export default async function VesselListPage({
           {vessels.length ? (
             vessels.map((vessel) => {
               const latestInspection = vessel.inspections[0] ?? null;
-              const latestPhoto = latestInspection?.photos[0]?.url ?? fallbackVesselImage(vessel.vesselType);
+              const latestPhoto =
+                vessel.imageUrl ??
+                latestInspection?.photos[0]?.url ??
+                fallbackVesselImage(vessel.vesselType);
               const profile = buildVesselProfile(vessel);
               const contact = buildVesselContact(vessel);
 
@@ -140,7 +144,7 @@ export default async function VesselListPage({
 
                     <div className="vessel-card-stats">
                       <span className="chip chip-muted">{vessel.fleet ?? "Unassigned fleet"}</span>
-                      <span className="chip chip-info">{vessel._count.inspections} VIR</span>
+                      <span className="chip chip-info">{vessel._count.inspections} Inspection{vessel._count.inspections !== 1 ? "s" : ""}</span>
                       {latestInspection ? (
                         <span className="chip chip-success">
                           Latest {fmt.format(latestInspection.inspectionDate)}
@@ -157,12 +161,20 @@ export default async function VesselListPage({
                         tone="success"
                       />
                       {session.workspace === "OFFICE" ? (
-                        <ActionIconLink
-                          href={buildDialogHref(query, vessel.id)}
-                          icon={UserPlus}
-                          label="Create vessel user"
-                          tone="warning"
-                        />
+                        <>
+                          <ActionIconLink
+                            href={buildEditVesselHref(query, vessel.id)}
+                            icon={Pencil}
+                            label="Edit vessel details"
+                            tone="neutral"
+                          />
+                          <ActionIconLink
+                            href={buildDialogHref(query, vessel.id)}
+                            icon={UserPlus}
+                            label="Create vessel user"
+                            tone="warning"
+                          />
+                        </>
                       ) : null}
                     </div>
                   </div>
@@ -175,6 +187,95 @@ export default async function VesselListPage({
         </div>
       </section>
 
+      {/* ── Edit Vessel Dialog ── */}
+      {activeDialog === "edit-vessel" && dialogVessel ? (
+        <div className="dialog-backdrop">
+          <section className="dialog-shell" style={{ maxWidth: "600px" }}>
+            <div className="section-header">
+              <div>
+                <h3 className="panel-title">Edit Vessel</h3>
+                <p className="panel-subtitle">Update details and vessel image for {dialogVessel.name}.</p>
+              </div>
+              <Link className="btn-secondary btn-compact" href={closeDialogHref(query)}>
+                Close
+              </Link>
+            </div>
+
+            <form
+              action={updateVesselAction.bind(null, dialogVessel.id)}
+              className="form-grid"
+              encType="multipart/form-data"
+            >
+              <input name="returnTo" type="hidden" value={query ? `/vessels?q=${encodeURIComponent(query)}` : "/vessels"} />
+
+              <div className="field">
+                <label htmlFor="ev-name">Vessel name</label>
+                <input defaultValue={dialogVessel.name} id="ev-name" name="name" required />
+              </div>
+              <div className="field">
+                <label htmlFor="ev-imo">IMO number</label>
+                <input defaultValue={dialogVessel.imoNumber ?? ""} id="ev-imo" name="imoNumber" placeholder="e.g. 9876543" />
+              </div>
+              <div className="field">
+                <label htmlFor="ev-type">Vessel type</label>
+                <input defaultValue={dialogVessel.vesselType ?? ""} id="ev-type" name="vesselType" placeholder="e.g. Chemical Tanker" />
+              </div>
+              <div className="field">
+                <label htmlFor="ev-fleet">Fleet</label>
+                <input defaultValue={dialogVessel.fleet ?? ""} id="ev-fleet" name="fleet" placeholder="e.g. Atlantic Fleet" />
+              </div>
+              <div className="field">
+                <label htmlFor="ev-flag">Flag state</label>
+                <input defaultValue={dialogVessel.flag ?? ""} id="ev-flag" name="flag" placeholder="e.g. Marshall Islands" />
+              </div>
+              <div className="field">
+                <label htmlFor="ev-manager">Manager / Owner</label>
+                <input defaultValue={dialogVessel.manager ?? ""} id="ev-manager" name="manager" placeholder="e.g. Union Maritime Limited" />
+              </div>
+
+              <div className="field field-wide" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "1rem", marginTop: "0.5rem" }}>
+                <label style={{ fontWeight: 600, fontSize: "0.85rem", marginBottom: "0.5rem", display: "block" }}>
+                  Vessel image
+                </label>
+                {dialogVessel.imageUrl ? (
+                  <div style={{ marginBottom: "0.75rem" }}>
+                    <img
+                      alt="Current vessel image"
+                      src={dialogVessel.imageUrl}
+                      style={{ width: "100%", maxHeight: "160px", objectFit: "cover", borderRadius: "6px", border: "1px solid var(--color-border)" }}
+                    />
+                  </div>
+                ) : null}
+                <div className="field">
+                  <label htmlFor="ev-image-file" style={{ fontSize: "0.8rem" }}>Upload new image (JPG, PNG, WEBP)</label>
+                  <input accept="image/*" id="ev-image-file" name="imageFile" type="file" />
+                </div>
+                <div className="field">
+                  <label htmlFor="ev-image-url" style={{ fontSize: "0.8rem" }}>Or paste image URL</label>
+                  <input
+                    defaultValue={dialogVessel.imageUrl ?? ""}
+                    id="ev-image-url"
+                    name="imageUrl"
+                    placeholder="https://..."
+                    type="url"
+                  />
+                </div>
+              </div>
+
+              <div className="field-wide actions-row">
+                <button className="btn" type="submit">
+                  Save changes
+                </button>
+                <Link className="btn-secondary" href={closeDialogHref(query)}>
+                  Cancel
+                </Link>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
+
+      {/* ── Create User Dialog ── */}
       {activeDialog === "create-user" && dialogVessel ? (
         <div className="dialog-backdrop">
           <section className="dialog-shell">
@@ -239,24 +340,24 @@ async function createVesselUserAction(formData: FormData) {
   redirect(`${returnTo}${separator}createdUserFor=${encodeURIComponent(vesselId)}`);
 }
 
+function buildEditVesselHref(query: string, vesselId: string) {
+  const params = new URLSearchParams();
+  if (query) params.set("q", query);
+  params.set("dialog", "edit-vessel");
+  params.set("vesselId", vesselId);
+  return `/vessels?${params.toString()}`;
+}
+
 function buildDialogHref(query: string, vesselId: string) {
   const params = new URLSearchParams();
-
-  if (query) {
-    params.set("q", query);
-  }
-
+  if (query) params.set("q", query);
   params.set("dialog", "create-user");
   params.set("vesselId", vesselId);
-
   return `/vessels?${params.toString()}`;
 }
 
 function closeDialogHref(query: string) {
-  if (!query) {
-    return "/vessels";
-  }
-
+  if (!query) return "/vessels";
   return `/vessels?q=${encodeURIComponent(query)}`;
 }
 

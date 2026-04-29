@@ -96,6 +96,8 @@ model Vessel {
   fleet       String?
   flag        String?
   manager     String?
+  imageUrl    String?  @db.Text
+  metadata    Json?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

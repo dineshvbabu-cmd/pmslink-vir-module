@@ -26,6 +26,8 @@ export async function GET(_: Request, context: { params: Promise<{ objectKey: st
     if (!inspection || !canAccessVessel(session, inspection.vesselId)) {
       return NextResponse.json({ error: "Evidence file is not available in this workspace." }, { status: 403 });
     }
+  } else if (storageKey.startsWith("vessels/")) {
+    // Vessel images are accessible to any authenticated user
   } else if (storageKey.startsWith("imports/")) {
     if (!isOfficeSession(session)) {
       return NextResponse.json({ error: "Office workspace required for imported files." }, { status: 403 });

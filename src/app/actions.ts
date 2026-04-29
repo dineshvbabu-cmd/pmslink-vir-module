@@ -14,6 +14,7 @@ import { prisma } from "@/lib/prisma";
 import { summarizeProgress } from "@/lib/vir/analytics";
 import { carryForwardOpenItems, findCarryForwardSourceInspection } from "@/lib/vir/carryover";
 import { normalizeVirTemplateImport } from "@/lib/vir/import";
+import { uploadToR2 } from "@/lib/r2";
 import { canAccessVessel, isOfficeSession, isVesselSession, requireVirSession, type VirSession } from "@/lib/vir/session";
 import {
   answerPayloadForQuestion,
@@ -239,6 +240,49 @@ async function getInspectionAccess(inspectionId: string) {
 
   ensureInspectionAccess(session, inspection.vesselId);
   return { session, inspection };
+}
+
+export async function updateVesselAction(vesselId: string, formData: FormData) {
+  const session = await requireVirSession();
+  ensureOffice(session);
+
+  const imageFile = formData.get("imageFile") as File | null;
+  let uploadedImageUrl: string | undefined;
+
+  if (imageFile && imageFile.size > 0) {
+    const buffer = Buffer.from(await imageFile.arrayBuffer());
+    const uploaded = await uploadToR2({
+      body: buffer,
+      contentType: imageFile.type || "image/jpeg",
+      fileName: imageFile.name || "vessel-image.jpg",
+      prefix: "vessels",
+    });
+    if (uploaded) {
+      uploadedImageUrl = uploaded.url;
+    }
+  }
+
+  const imageUrlField = toStringOrNull(formData.get("imageUrl"));
+  const resolvedImageUrl = uploadedImageUrl ?? (imageUrlField !== null ? imageUrlField : undefined);
+
+  await prisma.vessel.update({
+    where: { id: vesselId },
+    data: {
+      name: toStringOrNull(formData.get("name")) ?? undefined,
+      imoNumber: toStringOrNull(formData.get("imoNumber")),
+      vesselType: toStringOrNull(formData.get("vesselType")),
+      fleet: toStringOrNull(formData.get("fleet")),
+      flag: toStringOrNull(formData.get("flag")),
+      manager: toStringOrNull(formData.get("manager")),
+      ...(resolvedImageUrl !== undefined ? { imageUrl: resolvedImageUrl || null } : {}),
+    },
+  });
+
+  revalidatePath("/vessels");
+  revalidatePath(`/vessels/${vesselId}`);
+
+  const returnTo = toStringOrNull(formData.get("returnTo")) ?? "/vessels";
+  redirect(returnTo);
 }
 
 export async function upsertVirLibraryTypeAction(formData: FormData) {

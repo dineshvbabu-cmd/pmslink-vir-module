@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Eye, FileText, TriangleAlert } from "lucide-react";
 import { ActionIconLink } from "@/components/action-icon-link";
 import { prisma } from "@/lib/prisma";
+import { normalizeRemoteAssetUrl } from "@/lib/vir/live-checklist";
 import { canAccessVessel, requireVirSession } from "@/lib/vir/session";
 import { buildVesselProfile } from "@/lib/vir/vessel-profile";
 import { inspectionStatusLabel, toneForInspectionStatus } from "@/lib/vir/workflow";
@@ -68,28 +69,49 @@ export default async function VesselDetailsPage({
           </div>
           <div className="actions-row">
             <Link className="btn-secondary btn-compact" href={`/inspections/new?vesselId=${vessel.id}`}>
-              Create inspection-new format
+              Create inspection
             </Link>
             <Link className="btn-secondary btn-compact" href={`/inspections?scope=history&vesselId=${vessel.id}`}>
-              Open inspection history
+              Inspection history
             </Link>
+            {session.workspace === "OFFICE" ? (
+              <Link className="btn-secondary btn-compact" href={`/vessels?dialog=edit-vessel&vesselId=${vessel.id}`}>
+                Edit vessel
+              </Link>
+            ) : null}
             {latestInspection ? (
               <Link className="btn btn-compact" href={`/reports/inspection/${latestInspection.id}?variant=detailed`}>
-                Open latest report
+                Latest report
               </Link>
             ) : null}
           </div>
         </div>
 
-        <div className="report-detail-grid">
-          <DetailRow label="Vessel code" value={vessel.code} />
-          <DetailRow label="IMO number" value={vessel.imoNumber ?? "Not recorded"} />
-          <DetailRow label="Type" value={vessel.vesselType ?? "Not recorded"} />
-          <DetailRow label="Fleet" value={vessel.fleet ?? "Not recorded"} />
-          <DetailRow label="Flag" value={vessel.flag ?? "Not recorded"} />
-          <DetailRow label="Manager" value={vessel.manager ?? "Not recorded"} />
-          <DetailRow label="Latest VIR" value={latestInspection ? fmt.format(latestInspection.inspectionDate) : "Not recorded"} />
-          <DetailRow label="Pending deviations" value={`${pendingDeviationCount}`} />
+        <div style={{ display: "flex", gap: "1.5rem", alignItems: "flex-start", flexWrap: "wrap" }}>
+          {vessel.imageUrl ? (
+            <img
+              alt={vessel.name}
+              src={vessel.imageUrl}
+              style={{
+                width: "220px",
+                height: "140px",
+                objectFit: "cover",
+                borderRadius: "8px",
+                border: "1px solid var(--color-border)",
+                flexShrink: 0,
+              }}
+            />
+          ) : null}
+          <div className="report-detail-grid" style={{ flex: 1 }}>
+            <DetailRow label="Vessel code" value={vessel.code} />
+            <DetailRow label="IMO number" value={vessel.imoNumber ?? "Not recorded"} />
+            <DetailRow label="Type" value={vessel.vesselType ?? "Not recorded"} />
+            <DetailRow label="Fleet" value={vessel.fleet ?? "Not recorded"} />
+            <DetailRow label="Flag" value={vessel.flag ?? "Not recorded"} />
+            <DetailRow label="Manager" value={vessel.manager ?? "Not recorded"} />
+            <DetailRow label="Latest VIR" value={latestInspection ? fmt.format(latestInspection.inspectionDate) : "Not recorded"} />
+            <DetailRow label="Pending deviations" value={`${pendingDeviationCount}`} />
+          </div>
         </div>
       </section>
 
@@ -212,12 +234,17 @@ export default async function VesselDetailsPage({
                   <td>{item.description}</td>
                   <td>{item.criteria}</td>
                   <td>{item.scoreRange}</td>
-                  <td>
-                    {item.referenceImageUrl ? (
-                      <a className="inline-link" href={item.referenceImageUrl} target="_blank" rel="noreferrer">
-                        View reference
-                      </a>
-                    ) : (
+                    <td>
+                      {item.referenceImageUrl ? (
+                        <a
+                          className="inline-link"
+                          href={normalizeRemoteAssetUrl(item.referenceImageUrl)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          View reference
+                        </a>
+                      ) : (
                       "n/a"
                     )}
                   </td>

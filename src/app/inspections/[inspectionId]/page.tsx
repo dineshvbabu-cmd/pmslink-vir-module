@@ -271,6 +271,7 @@ export default async function InspectionDetailPage({
   const findingPanelCode = findingQuestion?.code ?? (findingLiveQuestion as any)?.code ?? "";
 
   const isInternalAudit = inspection.inspectionType.category === "INTERNAL";
+  const isAuditCategory = isInternalAudit || inspection.inspectionType.category === "AUDIT";
 
   return (
     <div className="page-stack">
@@ -385,8 +386,8 @@ export default async function InspectionDetailPage({
             { id: "findings", label: `Findings (${inspection.findings.length})` },
             { id: "evidence", label: `Evidence (${inspection.photos.length})` },
             { id: "signoff", label: `Sign-off (${inspection.signOffs.length})` },
-            ...(isInternalAudit ? [{ id: "certificates", label: "Certificates" }] : []),
-            ...(isInternalAudit ? [{ id: "narrative", label: "Narrative" }] : []),
+            ...(isAuditCategory ? [{ id: "certificates", label: "Certificates" }] : []),
+            ...(isAuditCategory ? [{ id: "narrative", label: "Narrative" }] : []),
           ].map((item) => (
             <Link
               className={`vir-pane-tab ${activePane === item.id ? "vir-pane-tab-active" : ""}`}
@@ -1430,7 +1431,7 @@ export default async function InspectionDetailPage({
       ) : null}
 
       {/* ── PANE: Certificates (Internal audits only) ── */}
-      {activePane === "certificates" && isInternalAudit ? (
+      {activePane === "certificates" && isAuditCategory ? (
         <div className="panel panel-elevated" style={{ padding: 0, overflow: "hidden" }}>
           <div className="vir-narrative-pane">
             <form action={saveHeader}>
@@ -1530,7 +1531,7 @@ export default async function InspectionDetailPage({
       ) : null}
 
       {/* ── PANE: Narrative (Internal audits only) ── */}
-      {activePane === "narrative" && isInternalAudit ? (
+      {activePane === "narrative" && isAuditCategory ? (
         <div className="panel panel-elevated" style={{ padding: 0, overflow: "hidden" }}>
           <div className="vir-narrative-pane">
             <form action={saveHeader}>
