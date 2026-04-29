@@ -24,7 +24,7 @@ export default async function LoginPage() {
     <div className="login-page">
       <section className="login-hero">
         <div className="eyebrow">PMSLink / QHSE Operations</div>
-        <h1 className="login-title">VIR workspace login</h1>
+        <h1 className="login-title">Inspection workspace login</h1>
         <p className="login-copy">
           Choose the role you want to operate as. Office users see fleet oversight, shore review, template
           governance, and import control. Vessel users see only their own execution lane, findings, and submission

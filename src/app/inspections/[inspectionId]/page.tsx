@@ -15,6 +15,7 @@ import {
 import { ActionIconLink } from "@/components/action-icon-link";
 import { EvidenceSyncPanel } from "@/components/evidence-sync-panel";
 import { FloatingActivityFeed } from "@/components/floating-activity-feed";
+import { LiveSectionProgress } from "@/components/live-section-progress";
 import { QuestionEvidenceInline } from "@/components/question-evidence-inline";
 import { SubmitButton } from "@/components/submit-button";
 import { prisma } from "@/lib/prisma";
@@ -459,6 +460,7 @@ export default async function InspectionDetailPage({
           <div className="vir-report-section">
             <div className="vir-report-section-title">Inspection Details</div>
             <form action={saveHeader}>
+              <input type="hidden" name="returnTo" value={`/inspections/${inspection.id}?pane=details`} />
               <div className="vir-detail-grid" style={{ marginBottom: "0.8rem" }}>
                 <VirField label="Vessel Name" value={inspection.vessel.name} />
                 <VirField label="Audit Type" value={inspection.inspectionType.name} />
@@ -805,7 +807,8 @@ export default async function InspectionDetailPage({
               </div>
             ) : null}
 
-            <form action={saveAnswers} style={{ display: "contents" }}>
+            <form action={saveAnswers} id="questionnaire-form" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+              <input type="hidden" name="returnTo" value={`/inspections/${inspection.id}?pane=questionnaire${selectedSectionId ? `&section=${selectedSectionId}` : ""}`} />
               <div className="checklist-table-scroll">
                 <table className="vir-q-table">
                   <thead>
@@ -1066,9 +1069,20 @@ export default async function InspectionDetailPage({
 
               {canEditInspection ? (
                 <div className="checklist-mark-done">
-                  <span className="small-text" style={{ color: "var(--color-ink-soft)" }}>
-                    Save answers for <strong>{selectedSection?.title}</strong>
-                  </span>
+                  {(() => {
+                    const activeSectionNav = sectionNavigation.find((s) => s.sectionId === selectedSectionId);
+                    const sectionQuestionCount = activeSectionNav?.questionCount ?? 0;
+                    const sectionSavedCount = legacySelectedSection
+                      ? legacySelectedSection.questions.filter((q: any) => isSavedAnswer(answerMap.get(q.id))).length
+                      : 0;
+                    return (
+                      <LiveSectionProgress
+                        formId="questionnaire-form"
+                        questionCount={sectionQuestionCount}
+                        savedAnsweredCount={sectionSavedCount}
+                      />
+                    );
+                  })()}
                   <SubmitButton className="btn">Mark as done</SubmitButton>
                 </div>
               ) : null}
@@ -1498,6 +1512,7 @@ export default async function InspectionDetailPage({
         <div className="panel panel-elevated" style={{ padding: 0, overflow: "hidden" }}>
           <div className="vir-narrative-pane">
             <form action={saveHeader}>
+              <input type="hidden" name="returnTo" value={`/inspections/${inspection.id}?pane=certificates`} />
               <div className="vir-narrative-card">
                 <div className="vir-narrative-card-header">
                   <div className="vir-narrative-card-title">Vessel Certificates — Status Register</div>
@@ -1598,6 +1613,7 @@ export default async function InspectionDetailPage({
         <div className="panel panel-elevated" style={{ padding: 0, overflow: "hidden" }}>
           <div className="vir-narrative-pane">
             <form action={saveHeader} encType="multipart/form-data">
+              <input type="hidden" name="returnTo" value={`/inspections/${inspection.id}?pane=narrative`} />
               {/* Items of Concern */}
               <div className="vir-narrative-card">
                 <div className="vir-narrative-card-header">
@@ -1633,6 +1649,7 @@ export default async function InspectionDetailPage({
                     📎 Upload supporting documents
                     <input accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" multiple name="bestPracticeFiles" type="file" style={{ display: "block", margin: "0.4rem auto 0", fontSize: "0.76rem" }} />
                   </div>
+                  <NarrativeFileList urls={Array.isArray(narrativeMetadata.bestPracticeFileUrls) ? narrativeMetadata.bestPracticeFileUrls as string[] : []} />
                 </div>
               </div>
 
@@ -1654,6 +1671,7 @@ export default async function InspectionDetailPage({
                     📎 Upload supporting documents
                     <input accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" multiple name="equipmentFiles" type="file" style={{ display: "block", margin: "0.4rem auto 0", fontSize: "0.76rem" }} />
                   </div>
+                  <NarrativeFileList urls={Array.isArray(narrativeMetadata.equipmentFileUrls) ? narrativeMetadata.equipmentFileUrls as string[] : []} />
                 </div>
               </div>
 
@@ -1675,6 +1693,7 @@ export default async function InspectionDetailPage({
                     📎 Upload safety meeting records
                     <input accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" multiple name="safetyMeetingFiles" type="file" style={{ display: "block", margin: "0.4rem auto 0", fontSize: "0.76rem" }} />
                   </div>
+                  <NarrativeFileList urls={Array.isArray(narrativeMetadata.safetyMeetingFileUrls) ? narrativeMetadata.safetyMeetingFileUrls as string[] : []} />
                 </div>
               </div>
 
@@ -1688,6 +1707,7 @@ export default async function InspectionDetailPage({
                     📎 Upload other audit-related documents
                     <input accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" multiple name="otherDocuments" type="file" style={{ display: "block", margin: "0.4rem auto 0", fontSize: "0.76rem" }} />
                   </div>
+                  <NarrativeFileList urls={Array.isArray(narrativeMetadata.otherDocumentUrls) ? narrativeMetadata.otherDocumentUrls as string[] : []} />
                 </div>
               </div>
 
@@ -1941,6 +1961,55 @@ function findBoundQuestion(question: LiveChecklistQuestion, byPrompt: Map<string
   const promptMatch = byPrompt.get(normalizeLookupKey(question.prompt));
   if (promptMatch) return promptMatch;
   return byCode.get(normalizeLookupKey(question.code)) ?? null;
+}
+
+function NarrativeFileList({ urls }: { urls: string[] }) {
+  if (!urls.length) return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.6rem" }}>
+      {urls.map((url, i) => {
+        const isImage = /\.(png|jpe?g|gif|webp|heic)$/i.test(url);
+        const isPdf = /\.pdf$/i.test(url);
+        const name = url.split("/").pop() ?? `File ${i + 1}`;
+        return (
+          <a
+            href={url}
+            key={url}
+            rel="noreferrer"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "0.25rem",
+              border: "1px solid var(--color-border)",
+              borderRadius: "0.5rem",
+              padding: "0.4rem 0.6rem",
+              fontSize: "0.72rem",
+              color: "var(--color-blue)",
+              textDecoration: "none",
+              background: "var(--color-surface)",
+              maxWidth: "120px",
+            }}
+            target="_blank"
+            title={name}
+          >
+            {isImage ? (
+              <img
+                alt={name}
+                src={url}
+                style={{ width: "80px", height: "60px", objectFit: "cover", borderRadius: "0.3rem" }}
+              />
+            ) : (
+              <span style={{ fontSize: "1.6rem" }}>{isPdf ? "📄" : "📎"}</span>
+            )}
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100px" }}>
+              {name}
+            </span>
+          </a>
+        );
+      })}
+    </div>
+  );
 }
 
 function isSavedAnswer(

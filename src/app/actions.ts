@@ -1219,18 +1219,23 @@ export async function saveInspectionAnswersAction(inspectionId: string, formData
     !Array.isArray(existingMetadata.questionWorkflow)
       ? (existingMetadata.questionWorkflow as Record<string, unknown>)
       : {};
+
+  // Strip stale live-* entries when saving a template-based inspection (no live checklist).
+  const hasLiveChecklist = Boolean(existingMetadata.liveChecklist);
   const questionWorkflow: Record<string, { surveyStatus: string | null; score: number | null; comment?: string | null }> = Object.fromEntries(
-    Object.entries(existingQuestionWorkflow).map(([key, value]) => {
-      const record = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-      return [
-        key,
-        {
-          surveyStatus: typeof record.surveyStatus === "string" ? record.surveyStatus : null,
-          score: typeof record.score === "number" ? record.score : null,
-          comment: typeof record.comment === "string" ? record.comment : null,
-        },
-      ];
-    })
+    Object.entries(existingQuestionWorkflow)
+      .filter(([key]) => hasLiveChecklist || !key.startsWith("live-"))
+      .map(([key, value]) => {
+        const record = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+        return [
+          key,
+          {
+            surveyStatus: typeof record.surveyStatus === "string" ? record.surveyStatus : null,
+            score: typeof record.score === "number" ? record.score : null,
+            comment: typeof record.comment === "string" ? record.comment : null,
+          },
+        ];
+      })
   );
 
   for (const section of (hasTemplate ? inspectionTemplate!.template!.sections : [])) {
@@ -1341,6 +1346,12 @@ export async function saveInspectionAnswersAction(inspectionId: string, formData
 
   await syncInspectionCounters(inspectionId);
   revalidateVirPaths(inspectionId);
+
+  const returnTo = toStringOrNull(formData.get("returnTo"));
+  if (returnTo && returnTo.startsWith(`/inspections/${inspectionId}`)) {
+    redirect(returnTo);
+  }
+  redirect(`/inspections/${inspectionId}?pane=questionnaire`);
 }
 
 export async function saveInspectionHeaderAction(inspectionId: string, formData: FormData) {
@@ -1442,6 +1453,12 @@ export async function saveInspectionHeaderAction(inspectionId: string, formData:
   });
 
   revalidateVirPaths(inspectionId);
+
+  const returnTo = toStringOrNull(formData.get("returnTo"));
+  if (returnTo && returnTo.startsWith(`/inspections/${inspectionId}`)) {
+    redirect(returnTo);
+  }
+  redirect(`/inspections/${inspectionId}?pane=details`);
 }
 
 export async function addFindingAction(inspectionId: string, formData: FormData) {

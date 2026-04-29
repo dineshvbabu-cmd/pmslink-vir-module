@@ -175,6 +175,12 @@ export default async function InspectionReportPage({
   const inspectionMode = inferInspectionMode(inspection.title, inspection.inspectionType.name);
   const vesselProfile = buildVesselProfile(inspection.vessel);
   const liveChecklist = buildLiveChecklist(inspection);
+  const heroPhoto = inspection.photos[0]
+    ? {
+        ...inspection.photos[0],
+        url: normalizeRemoteAssetUrl(inspection.photos[0].url),
+      }
+    : null;
   const questions = liveChecklist
     ? liveChecklist.sections.flatMap((section) => section.subsections.flatMap((subsection) => subsection.questions))
     : inspection.template?.sections.flatMap((section) => section.questions) ?? [];
@@ -403,9 +409,9 @@ export default async function InspectionReportPage({
           </div>
 
           <div className="report-hero-image-card">
-            {inspection.photos[0] ? (
-              <a href={inspection.photos[0].url} rel="noreferrer" target="_blank">
-                <img alt={inspection.photos[0].caption ?? inspection.photos[0].fileName ?? inspection.title} src={inspection.photos[0].url} />
+            {heroPhoto ? (
+              <a href={heroPhoto.url} rel="noreferrer" target="_blank">
+                <img alt={heroPhoto.caption ?? heroPhoto.fileName ?? inspection.title} src={heroPhoto.url} />
               </a>
             ) : (
               <div className="report-image-placeholder">No cover image linked</div>
@@ -595,7 +601,7 @@ export default async function InspectionReportPage({
                           })}
                           scroll={false}
                         >
-                          <img alt={photo.caption} src={photo.url} />
+                          <img alt={photo.caption} src={normalizeRemoteAssetUrl(photo.url)} />
                         </Link>
                         <span className="report-image-choice-copy">
                           <strong>{photo.label}</strong>
@@ -842,7 +848,7 @@ export default async function InspectionReportPage({
                       })}
                       scroll={false}
                     >
-                      <img alt={photo.caption} src={photo.url} />
+                      <img alt={photo.caption} src={normalizeRemoteAssetUrl(photo.url)} />
                     </Link>
                     <div className="report-photo-meta">
                       <strong>{photo.label}</strong>
@@ -1076,8 +1082,12 @@ export default async function InspectionReportPage({
 
                 <div className="report-thumb-row report-thumb-row-spacious">
                   {finding.photos.map((photo) => (
-                    <a href={photo.url} key={photo.id} rel="noreferrer" target="_blank">
-                      <img alt={photo.caption ?? photo.fileName ?? finding.title} className="report-thumb report-thumb-large" src={photo.url} />
+                    <a href={normalizeRemoteAssetUrl(photo.url)} key={photo.id} rel="noreferrer" target="_blank">
+                      <img
+                        alt={photo.caption ?? photo.fileName ?? finding.title}
+                        className="report-thumb report-thumb-large"
+                        src={normalizeRemoteAssetUrl(photo.url)}
+                      />
                     </a>
                   ))}
                   {!finding.photos.length ? <div className="small-text">No finding images linked.</div> : null}
@@ -1228,7 +1238,7 @@ export default async function InspectionReportPage({
                     })}
                     scroll={false}
                   >
-                    <img alt={photo.caption} src={photo.url} />
+                    <img alt={photo.caption} src={normalizeRemoteAssetUrl(photo.url)} />
                   </Link>
                   <div className="report-photo-meta">
                     <strong>{photo.label}</strong>
@@ -1912,7 +1922,7 @@ function QuestionReasoningCard({
                       <img
                         alt={photo.caption ?? photo.fileName ?? question.code}
                         className="report-thumb report-thumb-large"
-                        src={photo.url}
+                        src={normalizeRemoteAssetUrl(photo.url)}
                       />
                     </Link>
                   ))

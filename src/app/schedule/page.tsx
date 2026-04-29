@@ -162,7 +162,7 @@ export default async function SchedulePage({
     <div className="page-stack">
       <section className="hero-panel">
         <div>
-          <div className="eyebrow">VIR Calendar</div>
+          <div className="eyebrow">Inspection Calendar</div>
           <h2 className="hero-title">VESSEL INSPECTION STATUS &amp; PLANNER - 2026</h2>
           <p className="hero-copy">
             Review previous vessel inspection, last vessel inspection, and inspection planner &amp; compliance status in one
@@ -172,7 +172,7 @@ export default async function SchedulePage({
         <div className="actions-row">
           {isOffice ? (
             <Link className="btn btn-compact" href="/inspections/new">
-              Schedule VIR
+              Schedule Inspection
             </Link>
           ) : null}
           <Link
@@ -189,7 +189,7 @@ export default async function SchedulePage({
         <MetricTile label="Approved" note="Last inspection approved" value={filteredRows.filter((row) => row.lastInspection && ["SHORE_REVIEWED", "CLOSED"].includes(row.lastInspection.status)).length} />
         <MetricTile label="Due Range" note="Due inside 30 days" value={filteredRows.filter((row) => row.plannerStatus === "Due Range").length} />
         <MetricTile label="Overdue" note="Past next due" value={filteredRows.filter((row) => row.plannerStatus === "Overdue").length} />
-        <MetricTile label="No 2 VIR" note="Inspection compliance exception" value={filteredRows.filter((row) => row.inspectionCompliance === "No 2 VIR").length} />
+        <MetricTile label="No 2 Inspection" note="Inspection compliance exception" value={filteredRows.filter((row) => row.inspectionCompliance === "No 2 VIR").length} />
         <MetricTile label="No Sailing" note="Sailing compliance exception" value={filteredRows.filter((row) => row.sailingCompliance === "No Sailing").length} />
       </section>
 
@@ -279,7 +279,7 @@ export default async function SchedulePage({
           {[
             { id: "ALL", label: "All compliance" },
             { id: "IN_ORDER", label: "In Order" },
-            { id: "NO_2_VIR", label: "No 2 VIR" },
+            { id: "NO_2_VIR", label: "No 2 Inspection" },
             { id: "NO_SAILING", label: "No Sailing" },
           ].map((item) => (
             <Link

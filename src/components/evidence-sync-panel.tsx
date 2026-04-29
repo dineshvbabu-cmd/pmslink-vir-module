@@ -10,6 +10,7 @@ import {
   removeQueuedEvidence,
 } from "@/lib/vir/evidence-queue";
 import { prepareEvidenceFile } from "@/lib/vir/evidence-client";
+import { normalizeRemoteAssetUrl } from "@/lib/vir/live-checklist";
 
 type SelectOption = {
   id: string;
@@ -373,7 +374,10 @@ export function EvidenceSyncPanel({
           <div className="evidence-card" key={photo.id}>
             <div className="evidence-thumb">
               {isImageEvidence(photo) ? (
-                <img alt={photo.caption ?? photo.fileName ?? "Inspection evidence"} src={photo.url} />
+                <img
+                  alt={photo.caption ?? photo.fileName ?? "Inspection evidence"}
+                  src={normalizeRemoteAssetUrl(photo.url)}
+                />
               ) : (
                 <div className="evidence-file-tile">{documentGlyph(photo.fileName)}</div>
               )}

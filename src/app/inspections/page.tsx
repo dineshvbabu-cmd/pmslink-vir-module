@@ -206,9 +206,16 @@ export default async function InspectionsPage({
       surveyStatus: questionWorkflow[a.questionId]?.surveyStatus ?? null,
       score: questionWorkflow[a.questionId]?.score ?? null,
     }));
-    const liveUnbound = Object.entries(questionWorkflow).filter(
-      ([key, wf]) => key.startsWith("live-") && (Boolean(wf?.surveyStatus) || typeof wf?.score === "number")
-    ).length;
+    const hasLiveChecklist =
+      inspection.metadata &&
+      typeof inspection.metadata === "object" &&
+      !Array.isArray(inspection.metadata) &&
+      Boolean((inspection.metadata as Record<string, unknown>).liveChecklist);
+    const liveUnbound = hasLiveChecklist
+      ? Object.entries(questionWorkflow).filter(
+          ([key, wf]) => key.startsWith("live-") && (Boolean(wf?.surveyStatus) || typeof wf?.score === "number")
+        ).length
+      : 0;
     const baseProgress = summarizeProgress(questions, enrichedAnswers);
     const answeredTotal = baseProgress.answeredQuestions + liveUnbound;
     const total = Math.max(baseProgress.totalQuestions, answeredTotal);
