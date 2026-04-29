@@ -1124,6 +1124,10 @@ export default async function InspectionDetailPage({
               <input id="vesselResponse" name="vesselResponse" placeholder="Immediate action taken" />
             </div>
             <div className="field-wide">
+              <label style={{ fontSize: "0.8rem" }}>Attachments (images)</label>
+              <input accept=".png,.jpg,.jpeg,.gif,.tif,.tiff,.webp,.heic" multiple name="attachments" type="file" style={{ fontSize: "0.8rem" }} />
+            </div>
+            <div className="field-wide">
               <SubmitButton className="btn">Raise finding</SubmitButton>
             </div>
           </form>
@@ -1164,6 +1168,36 @@ export default async function InspectionDetailPage({
                       ) : null}
                     </div>
                   </div>
+
+                  {(() => {
+                    const findingPhotos = inspection.photos.filter((p) => p.findingId === finding.id);
+                    return findingPhotos.length > 0 ? (
+                      <div className="evidence-gallery" style={{ marginTop: "0.75rem", marginBottom: "0.5rem" }}>
+                        {findingPhotos.map((photo) => (
+                          <div className="evidence-card" key={photo.id}>
+                            <div className="evidence-thumb">
+                              {photo.contentType?.startsWith("image/") ? (
+                                <img
+                                  alt={photo.caption ?? photo.fileName ?? "Finding evidence"}
+                                  src={normalizeRemoteAssetUrl(photo.url)}
+                                />
+                              ) : (
+                                <a
+                                  className="evidence-file-tile"
+                                  href={normalizeRemoteAssetUrl(photo.url)}
+                                  rel="noreferrer"
+                                  target="_blank"
+                                >
+                                  {photo.fileName?.split(".").pop()?.toUpperCase() ?? "FILE"}
+                                </a>
+                              )}
+                            </div>
+                            <div className="small-text">{photo.caption ?? photo.fileName ?? "Finding evidence"}</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null;
+                  })()}
 
                   <div className="stack-list">
                     {finding.correctiveActions.map((action) => (
