@@ -1257,6 +1257,7 @@ export async function saveInspectionAnswersAction(inspectionId: string, formData
       questionWorkflow[question.id] = {
         surveyStatus: normalizedSurveyStatus,
         score: normalizedScore,
+        comment,
       };
 
       await prisma.virAnswer.upsert({
@@ -1312,7 +1313,7 @@ export async function saveInspectionAnswersAction(inspectionId: string, formData
   ] as const;
 
   const narrativeMetadata = Object.fromEntries(
-    narrativeKeys.map((key) => [key, toStringOrNull(formData.get(key))])
+    narrativeKeys.map((key) => [key, toStringOrNull(formData.get(key))]).filter(([, v]) => v !== null)
   );
 
   const metadataPayload = {

@@ -168,7 +168,7 @@ export default async function InspectionDetailPage({
     inspection.metadata && typeof inspection.metadata === "object" && !Array.isArray(inspection.metadata)
       ? ((inspection.metadata as Record<string, unknown>).questionWorkflow as Record<
           string,
-          { surveyStatus?: string | null; score?: number | null } | undefined
+          { surveyStatus?: string | null; score?: number | null; comment?: string | null } | undefined
         > | undefined) ?? {}
       : {};
   const enrichedAnswers = inspection.answers.map((answer) => ({
@@ -177,13 +177,26 @@ export default async function InspectionDetailPage({
     score: questionWorkflow[answer.questionId]?.score ?? null,
   }));
   const answerMap = new Map(enrichedAnswers.map((answer) => [answer.questionId, answer]));
-  const progress = summarizeProgress(questions, enrichedAnswers);
+  const progressBase = summarizeProgress(questions, enrichedAnswers);
   const score = calculateInspectionScore(questions, enrichedAnswers, inspection.findings);
   const liveChecklist = buildLiveChecklist(inspection);
   const liveSections = liveChecklist?.sections ?? [];
   const templateQuestionCount = liveChecklist
     ? liveChecklist.summary.questionCount
     : inspection.template?.sections.reduce((sum, section) => sum + section.questions.length, 0) ?? 0;
+  const liveUnboundAnswered = liveChecklist
+    ? Object.entries(questionWorkflow).filter(
+        ([key, wf]) => key.startsWith("live-") && (Boolean(wf?.surveyStatus) || typeof wf?.score === "number")
+      ).length
+    : 0;
+  const liveTotal = liveChecklist ? templateQuestionCount : progressBase.totalQuestions;
+  const liveAnswered = progressBase.answeredQuestions + liveUnboundAnswered;
+  const progress = {
+    ...progressBase,
+    answeredQuestions: liveAnswered,
+    totalQuestions: liveTotal,
+    completionPct: liveTotal > 0 ? Math.round((liveAnswered / liveTotal) * 100) : 0,
+  };
   const concentratedQuestions = liveChecklist
     ? liveSections.flatMap((section) =>
         section.subsections.flatMap((subsection) => subsection.questions.filter((question) => question.isCicCandidate))
@@ -881,7 +894,7 @@ export default async function InspectionDetailPage({
                                 <td className="td-comments">
                                   <input
                                     className="comment-input"
-                                    defaultValue={answer?.comment ?? ""}
+                                    defaultValue={answer?.comment ?? liveWorkflow?.comment ?? ""}
                                     name={`comment:${questionKey}`}
                                     placeholder="Comment..."
                                     type="text"
