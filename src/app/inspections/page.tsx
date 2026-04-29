@@ -338,12 +338,6 @@ export default async function InspectionsPage({
             <p className="panel-subtitle">{header.subtitle}</p>
           </div>
           <div className="actions-row">
-            <Link className="btn-secondary btn-compact" href={modeHref("approved", { vesselId: selectedVesselId, view: viewMode, q })}>
-              Approved inspections
-            </Link>
-            <Link className="btn-secondary btn-compact" href={modeHref("history", { vesselId: selectedVesselId, view: viewMode, q })}>
-              Inspection history
-            </Link>
             {isOfficeSession(session) ? (
               <Link className="btn btn-compact" href="/inspections/new">
                 Create Inspection

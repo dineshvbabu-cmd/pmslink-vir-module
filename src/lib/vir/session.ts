@@ -33,12 +33,12 @@ export type VirWorkspaceFilter = {
 };
 
 const officeNavigation: WorkspaceNavItem[] = [
-  { href: "/", label: "Dashboard", note: "VIR dashboard" },
+  { href: "/", label: "Dashboard", note: "Inspection dashboard" },
   { href: "/inspections?scope=approved", label: "Approved inspections", note: "Approved register" },
   { href: "/inspections?scope=history", label: "Inspection history", note: "All inspection records" },
-  { href: "/schedule", label: "VIR Calendar", note: "Planner and compliance status" },
+  { href: "/schedule", label: "Inspection Calendar", note: "Planner and compliance status" },
   { href: "/inspections", label: "Inspection Register", note: "Draft, review, sync, and closure" },
-  { href: "/inspections/new", label: "Create VIR", note: "Draft planning and manager approval" },
+  { href: "/inspections/new", label: "Create Inspection", note: "Draft planning and manager approval" },
   { href: "/templates", label: "Template Library", note: "Questionnaires" },
   { href: "/register", label: "Library Register", note: "Office template masters" },
   { href: "/imports", label: "Import Engine", note: "Checklist normalization" },
@@ -47,7 +47,7 @@ const officeNavigation: WorkspaceNavItem[] = [
 const vesselNavigation: WorkspaceNavItem[] = [
   { href: "/", label: "Dashboard", note: "Vessel dashboard" },
   { href: "/inspections?scope=history", label: "Inspection history", note: "My vessel record" },
-  { href: "/schedule", label: "VIR Calendar", note: "View-only vessel plan" },
+  { href: "/schedule", label: "Inspection Calendar", note: "View-only vessel plan" },
   { href: "/inspections", label: "Inspection Register", note: "Synced vessel inspections" },
 ];
 

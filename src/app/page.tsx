@@ -315,15 +315,7 @@ async function OfficeDashboard({
                 },
               ]}
             />
-            <Link className="btn-secondary btn-compact" href={buildInspectionListHref("approved", selectedVesselId)}>
-              Approved inspections
-            </Link>
-            <Link className="btn-secondary btn-compact" href={buildInspectionListHref("history", selectedVesselId)}>
-              Inspection history
-            </Link>
-            <Link className="btn-secondary btn-compact" href={buildScheduleHref(selectedVesselId)}>
-              Inspection Calendar
-            </Link>
+
           </div>
         </div>
       </section>
@@ -791,15 +783,7 @@ async function VesselDashboard({ vesselId, vesselName }: { vesselId: string; ves
                 },
               ]}
             />
-            <Link className="btn-secondary btn-compact" href="/inspections">
-              Inspection register
-            </Link>
-            <Link className="btn-secondary btn-compact" href="/inspections?scope=history">
-              Inspection history
-            </Link>
-            <Link className="btn-secondary btn-compact" href="/schedule">
-              Inspection Calendar
-            </Link>
+
           </div>
         </div>
       </section>

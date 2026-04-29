@@ -1,8 +1,14 @@
 import Link from "next/link";
 import {
+  Anchor,
   Bell,
+  CalendarDays,
+  Grid2x2,
   HelpCircle,
+  History,
+  House,
   LogOut,
+  ShieldCheck,
 } from "lucide-react";
 import "./globals.css";
 import { logoutAction } from "@/app/session-actions";
@@ -72,6 +78,54 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 </div>
 
                 <div className="topbar-utility-nav">
+                  <Link
+                    aria-label="Dashboard"
+                    className="topbar-icon-link"
+                    href={buildWorkspaceHref("/", session.workspace, workspaceFilter)}
+                    title="Dashboard"
+                  >
+                    <House size={18} />
+                  </Link>
+                  <Link
+                    aria-label="Vessel list"
+                    className="topbar-icon-link"
+                    href={buildWorkspaceHref("/vessels", session.workspace, workspaceFilter)}
+                    title="Vessel list"
+                  >
+                    <Anchor size={18} />
+                  </Link>
+                  <Link
+                    aria-label="Approved inspections"
+                    className="topbar-icon-link"
+                    href={buildWorkspaceHref("/inspections?scope=approved", session.workspace, workspaceFilter)}
+                    title="Approved inspections"
+                  >
+                    <ShieldCheck size={18} />
+                  </Link>
+                  <Link
+                    aria-label="Inspection history"
+                    className="topbar-icon-link"
+                    href={buildWorkspaceHref("/inspections?scope=history", session.workspace, workspaceFilter)}
+                    title="Inspection history"
+                  >
+                    <History size={18} />
+                  </Link>
+                  <Link
+                    aria-label="Inspection Calendar"
+                    className="topbar-icon-link"
+                    href={buildWorkspaceHref("/schedule", session.workspace, workspaceFilter)}
+                    title="Inspection Calendar"
+                  >
+                    <CalendarDays size={18} />
+                  </Link>
+                  <Link
+                    aria-label="Analytics Boards"
+                    className="topbar-icon-link"
+                    href={buildWorkspaceHref("/dashboards", session.workspace, workspaceFilter)}
+                    title="Analytics Boards"
+                  >
+                    <Grid2x2 size={18} />
+                  </Link>
                   <button aria-label="Notifications" className="topbar-icon-link" title="Notifications" type="button">
                     <Bell size={18} />
                   </button>
