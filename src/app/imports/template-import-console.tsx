@@ -92,7 +92,7 @@ export function TemplateImportConsole() {
         <div>
           <h3 className="panel-title">Questionnaire Import Engine</h3>
           <p className="panel-subtitle">
-            Import checklist and questionnaire definitions in the seeded VIR format, normalize them into the standard
+            Import checklist and questionnaire definitions in the standard inspection format, normalize them into the standard
             inspection template model, and commit directly as a live template.
           </p>
         </div>
@@ -279,7 +279,7 @@ export function TemplateImportConsole() {
                 <div>
                   <h4 className="panel-title">Cross-reference review</h4>
                   <p className="panel-subtitle">
-                    Validate how the imported source fields have been mapped into the seeded VIR template structure
+                    Validate how the imported source fields have been mapped into the standard inspection template structure
                     before accepting the template into the office catalogue.
                   </p>
                 </div>

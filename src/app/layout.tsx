@@ -1,14 +1,8 @@
 import Link from "next/link";
 import {
-  Anchor,
   Bell,
-  CalendarDays,
-  Grid2x2,
   HelpCircle,
-  History,
-  House,
   LogOut,
-  ShieldCheck,
 } from "lucide-react";
 import "./globals.css";
 import { logoutAction } from "@/app/session-actions";
@@ -26,7 +20,7 @@ import {
 } from "@/lib/vir/session";
 
 export const metadata = {
-  title: "PMSLink VIR Module",
+  title: "PMSLink Inspection Reports",
   description: "ERP-style vessel inspection platform with office and vessel workspaces, questionnaire execution, findings workflow, imports, and dashboards.",
 };
 
@@ -44,7 +38,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <aside className="erp-sidebar">
               <div className="sidebar-profile">
                 <div>
-                  <div className="brand-title brand-title-large">PMSLink VIR</div>
+                  <div className="brand-title brand-title-large">PMSLink IR</div>
                   <div className="workspace-meta workspace-meta-strong">{session.username}</div>
                 </div>
                 <div className="profile-avatar">{session.actorName.slice(0, 1).toUpperCase()}</div>
@@ -78,59 +72,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 </div>
 
                 <div className="topbar-utility-nav">
-                  <Link
-                    aria-label="Dashboard"
-                    className="topbar-icon-link"
-                    href={buildWorkspaceHref("/", session.workspace, workspaceFilter)}
-                    title="Dashboard"
-                  >
-                    <House size={18} />
-                  </Link>
-                  <Link
-                    aria-label="Vessel list"
-                    className="topbar-icon-link"
-                    href={buildWorkspaceHref("/vessels", session.workspace, workspaceFilter)}
-                    title="Vessel list"
-                  >
-                    <Anchor size={18} />
-                  </Link>
-                  <Link
-                    aria-label="Approved inspections"
-                    className="topbar-icon-link"
-                    href={buildWorkspaceHref("/inspections?scope=approved", session.workspace, workspaceFilter)}
-                    title="Approved inspections"
-                  >
-                    <ShieldCheck size={18} />
-                  </Link>
-                  <Link
-                    aria-label="Inspection history"
-                    className="topbar-icon-link"
-                    href={buildWorkspaceHref("/inspections?scope=history", session.workspace, workspaceFilter)}
-                    title="Inspection history"
-                  >
-                    <History size={18} />
-                  </Link>
-                  <Link
-                    aria-label="VIR Calendar"
-                    className="topbar-icon-link"
-                    href={buildWorkspaceHref("/schedule", session.workspace, workspaceFilter)}
-                    title="VIR Calendar"
-                  >
-                    <CalendarDays size={18} />
-                  </Link>
-                  <Link
-                    aria-label="Analytics Boards"
-                    className="topbar-icon-link"
-                    href={buildWorkspaceHref("/dashboards", session.workspace, workspaceFilter)}
-                    title="Analytics Boards"
-                  >
-                    <Grid2x2 size={18} />
-                  </Link>
                   <button aria-label="Notifications" className="topbar-icon-link" title="Notifications" type="button">
                     <Bell size={18} />
                   </button>
                   <Link
-                    aria-label="Instruction"
+                    aria-label="Help"
                     className="topbar-help-link"
                     href={buildWorkspaceHref("/instruction", session.workspace, workspaceFilter)}
                     rel="noreferrer"

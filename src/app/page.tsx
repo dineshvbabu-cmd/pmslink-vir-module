@@ -322,7 +322,7 @@ async function OfficeDashboard({
               Inspection history
             </Link>
             <Link className="btn-secondary btn-compact" href={buildScheduleHref(selectedVesselId)}>
-              VIR Calendar
+              Inspection Calendar
             </Link>
           </div>
         </div>
@@ -374,17 +374,17 @@ async function OfficeDashboard({
           label="Completed Inspection"
           split={[
             {
-              label: "Sailing VIR",
+              label: "Sailing Inspection",
               value: `${completedSailing}`,
               href: buildDashboardPageHref({ range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId, focus: "sailing-vir" }),
             },
             {
-              label: "Port VIR",
+              label: "Port Inspection",
               value: `${completedPort}`,
               href: buildDashboardPageHref({ range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId, focus: "port-vir" }),
             },
             {
-              label: "Total VIR",
+              label: "Total Inspections",
               value: `${completedInspections.length}`,
               href: buildDashboardPageHref({ range: rangeDays, fleet: selectedFleet, vesselId: selectedVesselId, focus: "total-vir" }),
             },
@@ -798,7 +798,7 @@ async function VesselDashboard({ vesselId, vesselName }: { vesselId: string; ves
               Inspection history
             </Link>
             <Link className="btn-secondary btn-compact" href="/schedule">
-              VIR Calendar
+              Inspection Calendar
             </Link>
           </div>
         </div>
@@ -1205,21 +1205,21 @@ function buildDashboardFocusContent({
     case "sailing-vir":
       return {
         kind: "inspections" as const,
-        title: "Completed sailing VIR",
+        title: "Completed sailing inspection",
         subtitle: "Approved or closed sailing-mode VIR records.",
         rows: completedInspections.filter((inspection) => inferInspectionMode(inspection.title, inspection.inspectionType.name).includes("Sailing")),
       };
     case "port-vir":
       return {
         kind: "inspections" as const,
-        title: "Completed port VIR",
+        title: "Completed port inspection",
         subtitle: "Approved or closed port-mode VIR records.",
         rows: completedInspections.filter((inspection) => inferInspectionMode(inspection.title, inspection.inspectionType.name) === "Port"),
       };
     case "total-vir":
       return {
         kind: "inspections" as const,
-        title: "Completed total VIR",
+        title: "All completed inspections",
         subtitle: "All approved or closed VIR records within the selected period.",
         rows: completedInspections,
       };
@@ -1255,7 +1255,7 @@ function buildDashboardFocusContent({
       return {
         kind: "vessels" as const,
         title: "Planner status: Due Range",
-        subtitle: "Vessels approaching the next VIR due date.",
+        subtitle: "Vessels approaching the next inspection due date.",
         rows: latestByVessel.filter((item) => item.plannerStatus === "Due Range"),
       };
     case "planner-overdue":

@@ -6,12 +6,12 @@ const platformMap = [
   "Dashboard",
   "Approved inspections",
   "Inspection history",
-  "VIR Calendar",
+  "Inspection Calendar",
   "Help",
 ];
 
 const officeWorkflow = [
-  "Create the VIR from office as a draft and keep it in Inspection Register for manager approval.",
+  "Create the Inspection Report from office as a draft and keep it in Inspection Register for manager approval.",
   "Approve the draft from office management so the inspection can be synced to vessel for execution.",
   "Monitor execution, evidence, findings, and vessel responses after the synced record is worked by superintendent or external inspectors.",
   "Review returned vessel updates from office, send back for vessel updates when required, and complete the second office approval.",
@@ -19,7 +19,7 @@ const officeWorkflow = [
 ];
 
 const vesselWorkflow = [
-  "Open only the synced VIR assigned from office using Dashboard, Inspection Register, or Inspection history.",
+  "Open only the synced Inspection Report assigned from office using Dashboard, Inspection Register, or Inspection history.",
   "Execute the questionnaire section by section, starting with mandatory and concentrated-focus questions.",
   "Attach actual evidence against the question or finding while comparing it with the reference image.",
   "Complete section comments, findings, corrective actions, and sign-off before submission back to office review.",
@@ -30,7 +30,7 @@ const statusLegend = [
   { label: "In Window", detail: "Next due date remains comfortably ahead of the planning threshold." },
   { label: "Due Range", detail: "Inspection is nearing due window and requires planner visibility." },
   { label: "Overdue", detail: "Latest due date has passed and the vessel requires immediate intervention." },
-  { label: "No 2 VIR", detail: "Inspection compliance exception against the expected recurring cycle." },
+  { label: "Inspection Overdue", detail: "Inspection compliance exception against the expected recurring cycle." },
   { label: "No Sailing", detail: "Latest sailing-mode inspection requirement is not in order." },
   { label: "Synced", detail: "Office and vessel records are aligned for report and evidence data." },
   { label: "Not Synced", detail: "Draft, returned, or offline queue items still need synchronization." },
@@ -56,7 +56,7 @@ const reviewModes = [
 ];
 
 const signOffRules = [
-  "Manager approval is required before a draft VIR is released from office and synced to vessel.",
+  "Manager approval is required before a draft Inspection Report is released from office and synced to vessel.",
   "Vessel submission confirms that the questionnaire, findings, evidence, and comments are ready for office review.",
   "Office review can return the VIR for vessel updates, then apply the second approval before closure and approved-register release.",
   "Every workflow action must appear in the activity timeline so the inspection retains a full operational audit trail.",
@@ -65,7 +65,7 @@ const signOffRules = [
 const workflowDiagram = [
   {
     lane: "Office",
-    step: "1. Create VIR",
+    step: "1. Create Inspection Report",
     detail:
       "Select vessel, report type, inspection mode, date range, location, alongside-by, operations at inspection, inspection authority, cause analysis page, and corrective action plan target before saving the inspection as draft.",
   },
@@ -85,7 +85,7 @@ const workflowDiagram = [
     lane: "Vessel",
     step: "4. Submit to office review",
     detail:
-      "Confirm section summaries, findings, evidence, meetings, sign-offs, and sync status before sending the VIR back to office review.",
+      "Confirm section summaries, findings, evidence, meetings, sign-offs, and sync status before sending the Inspection Report back to office review.",
   },
   {
     lane: "Office",
@@ -95,7 +95,7 @@ const workflowDiagram = [
   },
   {
     lane: "Office",
-    step: "6. Close VIR",
+    step: "6. Close Inspection Report",
     detail:
       "Close only after questionnaire review, findings review, action review, approval confirmation, sync confirmation, and management-ready reporting are complete.",
   },
@@ -103,7 +103,7 @@ const workflowDiagram = [
 
 const fieldGuidance = [
   {
-    title: "Create VIR - mandatory selections",
+    title: "Create Inspection Report - mandatory selections",
     items: [
       "Report Type",
       "Inspection Mode",
@@ -115,7 +115,7 @@ const fieldGuidance = [
     ],
   },
   {
-    title: "Create VIR - free text / date fields",
+    title: "Create Inspection Report - free text / date fields",
     items: [
       "Inspection from / to dates",
       "Location and draft fields",
@@ -149,7 +149,7 @@ export default async function InstructionPage() {
           <div className="eyebrow">Vessel Inspection Checklist</div>
           <h2 className="hero-title">{isOffice ? "Office instruction and review manual" : "Vessel execution and sync manual"}</h2>
           <p className="hero-copy">
-            This instruction page mirrors the live operating workflow of the VIR platform while keeping the demo neutral,
+            This instruction page mirrors the live operating workflow of the Inspection Report platform while keeping the demo neutral,
             anonymized, and ready for management review.
           </p>
         </div>
@@ -209,7 +209,7 @@ export default async function InstructionPage() {
         <div className="section-header">
           <div>
             <div className="eyebrow">Workflow diagram</div>
-            <h3 className="panel-title">Create VIR to close VIR</h3>
+            <h3 className="panel-title">Create Inspection Report to close VIR</h3>
             <p className="panel-subtitle">
               The office and vessel workflow should be followed in sequence so that launch, execution, evidence,
               approval, and closure remain aligned in the same inspection record.

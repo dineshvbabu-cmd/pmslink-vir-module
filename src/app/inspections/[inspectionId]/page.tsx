@@ -74,11 +74,11 @@ export default async function InspectionDetailPage({
   searchParams,
 }: {
   params: Promise<{ inspectionId: string }>;
-  searchParams: Promise<{ pane?: string; section?: string; findingQ?: string; view?: string }>;
+  searchParams: Promise<{ pane?: string; section?: string; findingQ?: string; view?: string; error?: string }>;
 }) {
   const session = await requireVirSession();
   const { inspectionId } = await params;
-  const { pane, section, findingQ } = await searchParams;
+  const { pane, section, findingQ, error } = await searchParams;
 
   const inspection = await prisma.virInspection.findUnique({
     where: { id: inspectionId },
@@ -292,7 +292,7 @@ export default async function InspectionDetailPage({
       <div className="panel panel-elevated" style={{ padding: 0, overflow: "hidden" }}>
         <div className="vir-topbar">
           <div className="vir-topbar-left">
-            <Link className="vir-topbar-back" href={historyHref}>← New Report</Link>
+            <Link className="vir-topbar-back" href={historyHref}>← Register</Link>
             <span className="vir-topbar-divider">|</span>
             <span className="vir-topbar-vessel">{inspection.vessel.name}</span>
             <span className="vir-topbar-divider">|</span>
@@ -413,6 +413,13 @@ export default async function InspectionDetailPage({
           ))}
         </div>
       </div>
+
+      {/* ── Error banner ── */}
+      {error === "mandatory-incomplete" ? (
+        <div className="sync-banner" style={{ borderColor: "var(--color-danger, #e53935)", background: "rgba(229,57,53,0.06)", color: "var(--color-danger, #c62828)", fontWeight: 600 }}>
+          Not all mandatory questions have been answered. Complete all mandatory items before submitting for review.
+        </div>
+      ) : null}
 
       {/* ── Metrics strip ── */}
       <section className="erp-metrics-grid">
@@ -1590,7 +1597,7 @@ export default async function InspectionDetailPage({
       {activePane === "narrative" && isAuditCategory ? (
         <div className="panel panel-elevated" style={{ padding: 0, overflow: "hidden" }}>
           <div className="vir-narrative-pane">
-            <form action={saveHeader}>
+            <form action={saveHeader} encType="multipart/form-data">
               {/* Items of Concern */}
               <div className="vir-narrative-card">
                 <div className="vir-narrative-card-header">

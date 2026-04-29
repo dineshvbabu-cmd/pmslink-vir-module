@@ -1029,6 +1029,7 @@ export async function updateInspectionStatusAction(inspectionId: string, nextSta
     select: {
       id: true,
       vesselId: true,
+      metadata: true,
       template: {
         select: {
           sections: {
@@ -1078,10 +1079,19 @@ export async function updateInspectionStatusAction(inspectionId: string, nextSta
 
   if (nextStatus === "SUBMITTED") {
     const questions = inspection.template?.sections.flatMap((section) => section.questions) ?? [];
-    const progress = summarizeProgress(questions, inspection.answers);
+    const qwf =
+      inspection.metadata && typeof inspection.metadata === "object" && !Array.isArray(inspection.metadata)
+        ? ((inspection.metadata as Record<string, unknown>).questionWorkflow as Record<string, { surveyStatus?: string | null } | undefined> | undefined) ?? {}
+        : {};
+    const enriched = inspection.answers.map((a) => ({
+      ...a,
+      surveyStatus: qwf[a.questionId]?.surveyStatus ?? null,
+      score: null as number | null,
+    }));
+    const progress = summarizeProgress(questions, enriched);
 
     if (questions.length > 0 && progress.answeredMandatory < progress.mandatoryQuestions) {
-      throw new Error("All mandatory questionnaire items must be answered before submission.");
+      redirect(`/inspections/${inspectionId}?error=mandatory-incomplete`);
     }
 
     await prisma.virInspection.update({
@@ -1375,11 +1385,52 @@ export async function saveInspectionHeaderAction(inspectionId: string, formData:
     closingMeetingNotes: toStringOrNull(formData.get("closingMeetingNotes")),
   };
 
+  // Capture all certificate status fields (cert_<key>_issue, cert_<key>_expiry, etc.)
+  for (const key of formData.keys()) {
+    if (key.startsWith("cert_")) {
+      headerMetadata[key] = toStringOrNull(formData.get(key));
+    }
+  }
+
   const summary = toStringOrNull(formData.get("summary"));
 
   const mergedMetadata: Prisma.JsonObject = {};
   for (const [key, value] of Object.entries({ ...existingMetadata, ...headerMetadata })) {
-    mergedMetadata[key] = value as Prisma.JsonValue;
+    if (value !== null) {
+      mergedMetadata[key] = value as Prisma.JsonValue;
+    }
+  }
+
+  // Upload narrative section files to R2 and append URLs into metadata
+  const narrativeFileGroups = [
+    { inputName: "bestPracticeFiles", metaKey: "bestPracticeFileUrls" },
+    { inputName: "equipmentFiles", metaKey: "equipmentFileUrls" },
+    { inputName: "safetyMeetingFiles", metaKey: "safetyMeetingFileUrls" },
+    { inputName: "otherDocuments", metaKey: "otherDocumentUrls" },
+  ] as const;
+
+  for (const { inputName, metaKey } of narrativeFileGroups) {
+    const files = formData.getAll(inputName) as Array<File | string>;
+    const newUrls: string[] = [];
+    for (const file of files) {
+      if (!(file instanceof File) || file.size === 0) continue;
+      try {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const uploaded = await uploadToR2({
+          body: buffer,
+          contentType: file.type || "application/octet-stream",
+          fileName: file.name || "document",
+          prefix: `narrative/${inspectionId}`,
+        });
+        if (uploaded) newUrls.push(uploaded.url);
+      } catch {
+        // ignore individual upload failures — text content is still saved
+      }
+    }
+    if (newUrls.length > 0) {
+      const existing = Array.isArray(mergedMetadata[metaKey]) ? (mergedMetadata[metaKey] as string[]) : [];
+      mergedMetadata[metaKey] = [...existing, ...newUrls] as Prisma.JsonValue;
+    }
   }
 
   await prisma.virInspection.update({

@@ -222,7 +222,7 @@ export default async function InspectionsPage({
       finding.correctiveActions.length > 0 && finding.dueDate && finding.dueDate < new Date()
     ).length;
     const approvedSignOff = inspection.signOffs.find((item) => item.approved) ?? null;
-    const reportType = inspection.inspectionType.name.includes("VIR") ? inspection.inspectionType.name : "VIR";
+    const reportType = inspection.inspectionType.name || "Inspection Report";
 
     const meta =
       inspection.metadata && typeof inspection.metadata === "object" && !Array.isArray(inspection.metadata)

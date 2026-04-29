@@ -254,7 +254,7 @@ export default async function DashboardBoardsPage({
             {session.workspace === "VESSEL" ? "Vessel performance, compliance, and execution" : "Fleet performance and assurance boards"}
           </h2>
           <p className="hero-copy">
-            Separate operational boards for TMSA, class/statutory, and PSC/SIRE, with role-aware scope and drill-down into the live VIR workflow.
+            Separate operational boards for TMSA, class/statutory, and PSC/SIRE, with role-aware scope and drill-down into the live inspection workflow.
           </p>
         </div>
         <div className="actions-row">
