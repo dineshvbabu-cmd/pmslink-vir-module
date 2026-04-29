@@ -1395,7 +1395,9 @@ export async function saveInspectionHeaderAction(inspectionId: string, formData:
 
 export async function addFindingAction(inspectionId: string, formData: FormData) {
   const { session, inspection } = await getInspectionAccess(inspectionId);
-  const questionId = toStringOrNull(formData.get("questionId"));
+  const rawQuestionId = toStringOrNull(formData.get("questionId"));
+  // live-* IDs are not DB rows — nullify to avoid FK constraint violation
+  const questionId = rawQuestionId && !rawQuestionId.startsWith("live-") ? rawQuestionId : null;
   const severity = (toStringOrNull(formData.get("severity")) ?? "MEDIUM") as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   const findingType = (toStringOrNull(formData.get("findingType")) ?? "OBSERVATION") as
     | "NON_CONFORMITY"

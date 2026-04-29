@@ -727,7 +727,14 @@ export default async function InspectionDetailPage({
                 ? collectSectionQuestionBindings(liveSection, dbQuestionByPrompt, dbQuestionByCode, answerMap)
                 : [];
               const answeredCount = liveChecklist
-                ? sectionBindings.filter((b) => isSavedAnswer(b.answer)).length
+                ? sectionBindings.filter((b) => {
+                    if (isSavedAnswer(b.answer)) return true;
+                    if (!b.bindingQuestion) {
+                      const liveWf = questionWorkflow[`live-${(b.question as { id: string }).id}`];
+                      return Boolean(liveWf?.surveyStatus) || typeof liveWf?.score === "number";
+                    }
+                    return false;
+                  }).length
                 : (inspection.template?.sections
                     .find((s) => s.id === sectionItem.sectionId)
                     ?.questions.filter((q) => isSavedAnswer(answerMap.get(q.id))).length ?? 0);
@@ -751,7 +758,9 @@ export default async function InspectionDetailPage({
                       {liveSection.subsections.map((sub) => {
                         const subAnswered = sub.questions.filter((q) => {
                           const bq = findBoundQuestion(q, dbQuestionByPrompt, dbQuestionByCode);
-                          return bq ? isSavedAnswer(answerMap.get(bq.id)) : false;
+                          if (bq) return isSavedAnswer(answerMap.get(bq.id));
+                          const liveWf = questionWorkflow[`live-${(q as { id: string }).id}`];
+                          return Boolean(liveWf?.surveyStatus) || typeof liveWf?.score === "number";
                         }).length;
                         const subTotal = sub.questions.length;
                         return (

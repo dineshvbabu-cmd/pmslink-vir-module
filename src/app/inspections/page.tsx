@@ -195,7 +195,29 @@ export default async function InspectionsPage({
 
   const enriched = inspections.map((inspection) => {
     const questions = inspection.template?.sections.flatMap((section) => section.questions) ?? [];
-    const progress = summarizeProgress(questions, inspection.answers);
+    const questionWorkflow =
+      inspection.metadata && typeof inspection.metadata === "object" && !Array.isArray(inspection.metadata)
+        ? ((inspection.metadata as Record<string, unknown>).questionWorkflow as
+            | Record<string, { surveyStatus?: string | null; score?: number | null } | undefined>
+            | undefined) ?? {}
+        : {};
+    const enrichedAnswers = inspection.answers.map((a) => ({
+      ...a,
+      surveyStatus: questionWorkflow[a.questionId]?.surveyStatus ?? null,
+      score: questionWorkflow[a.questionId]?.score ?? null,
+    }));
+    const liveUnbound = Object.entries(questionWorkflow).filter(
+      ([key, wf]) => key.startsWith("live-") && (Boolean(wf?.surveyStatus) || typeof wf?.score === "number")
+    ).length;
+    const baseProgress = summarizeProgress(questions, enrichedAnswers);
+    const answeredTotal = baseProgress.answeredQuestions + liveUnbound;
+    const total = Math.max(baseProgress.totalQuestions, answeredTotal);
+    const progress = {
+      ...baseProgress,
+      answeredQuestions: answeredTotal,
+      totalQuestions: total,
+      completionPct: total > 0 ? Math.round((answeredTotal / total) * 100) : 0,
+    };
     const overdueActions = inspection.findings.filter((finding) =>
       finding.correctiveActions.length > 0 && finding.dueDate && finding.dueDate < new Date()
     ).length;
@@ -324,7 +346,7 @@ export default async function InspectionsPage({
             </Link>
             {isOfficeSession(session) ? (
               <Link className="btn btn-compact" href="/inspections/new">
-                Create VIR
+                Create Inspection
               </Link>
             ) : null}
           </div>
@@ -537,7 +559,7 @@ function InspectionHistoryGrid({
           <tr>
             <th>Progress</th>
             {isOffice ? <th>Vessel</th> : null}
-            <th>VIR No</th>
+            <th>Ref No</th>
             <th>Status</th>
             <th>Place</th>
             <th>Insp. From</th>
