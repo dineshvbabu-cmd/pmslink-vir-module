@@ -1333,6 +1333,9 @@ textarea {
   cursor: pointer;
   font-weight: 800;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .btn {

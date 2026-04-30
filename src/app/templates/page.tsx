@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Copy, FilePlus, Trash2, Upload } from "lucide-react";
 import {
   cloneVirTemplateVersionAction,
   createVirTemplateAction,
@@ -238,7 +239,8 @@ export default async function TemplatesPage({
                     <input name="code" placeholder="HULL" type="text" />
                   </label>
                   <div className="register-form-actions">
-                    <button className="button button-primary" type="submit">
+                    <button className="btn btn-compact" type="submit">
+                      <FilePlus size={14} />
                       Add section
                     </button>
                   </div>
@@ -252,47 +254,6 @@ export default async function TemplatesPage({
             </section>
           ) : null}
 
-          {/* Available QHSE questionnaire libraries */}
-          <section className="panel panel-elevated">
-            <div className="section-header">
-              <div>
-                <h3 className="panel-title">QHSE Libraries</h3>
-                <p className="panel-subtitle">
-                  Bind these answer libraries to questions in the template
-                  editor.
-                </p>
-              </div>
-            </div>
-            <div className="stack-list">
-              {libraryTypes.length === 0 ? (
-                <div className="empty-state">
-                  No questionnaire libraries defined yet.{" "}
-                  <Link className="inline-link" href="/register">
-                    Open library register
-                  </Link>{" "}
-                  to create them.
-                </div>
-              ) : (
-                libraryTypes.map((lib) => (
-                  <div className="list-card" key={lib.id}>
-                    <div className="list-card-title">{lib.name}</div>
-                    <div className="small-text">
-                      {lib.code} /{" "}
-                      {lib.items.length > 0
-                        ? lib.items
-                            .slice(0, 3)
-                            .map((i) => i.label)
-                            .join(", ") +
-                          (lib.items.length > 3
-                            ? ` +${lib.items.length - 3} more`
-                            : "")
-                        : "No items yet"}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
         </aside>
 
         {/* ── Main content ── */}
@@ -312,20 +273,14 @@ export default async function TemplatesPage({
                       : "Editable — no inspections yet."}
                   </p>
                 </div>
-                <div className="template-editor-toolbar">
-                  <Link
-                    className="button button-secondary"
-                    href="/imports"
-                  >
-                    Import engine
+                <div className="table-actions">
+                  <Link className="btn-secondary btn-compact" href="/imports">
+                    <Upload size={14} />
+                    Import template
                   </Link>
-                  <form
-                    action={cloneVirTemplateVersionAction.bind(
-                      null,
-                      selectedTemplate.id
-                    )}
-                  >
-                    <button className="button button-primary" type="submit">
+                  <form action={cloneVirTemplateVersionAction.bind(null, selectedTemplate.id)}>
+                    <button className="btn btn-compact" type="submit">
+                      <Copy size={14} />
                       Clone new version
                     </button>
                   </form>
@@ -438,7 +393,8 @@ export default async function TemplatesPage({
                       </span>
                       {!templateLocked ? (
                         <form action={deleteVirTemplateSectionAction.bind(null, selectedSection.id)}>
-                          <button className="button button-ghost-danger" style={{ fontSize: "0.72rem", padding: "0.2rem 0.5rem" }} type="submit">
+                          <button className="btn-danger btn-compact" type="submit">
+                            <Trash2 size={13} />
                             Delete section
                           </button>
                         </form>
@@ -590,8 +546,8 @@ export default async function TemplatesPage({
                             <td style={{ textAlign: "center" }}>
                               {!templateLocked ? (
                                 <form action={deleteVirTemplateQuestionAction.bind(null, question.id)}>
-                                  <button className="button button-ghost-danger" style={{ fontSize: "0.7rem", padding: "0.15rem 0.4rem" }} type="submit">
-                                    Del
+                                  <button className="btn-danger btn-compact" style={{ fontSize: "0.7rem", padding: "0.2rem 0.45rem" }} title="Delete question" type="submit">
+                                    <Trash2 size={12} />
                                   </button>
                                 </form>
                               ) : null}
@@ -765,8 +721,9 @@ export default async function TemplatesPage({
                     modules from the register.
                   </p>
                 </div>
-                <Link className="button button-secondary" href="/imports">
-                  Import engine
+                <Link className="btn-secondary btn-compact" href="/imports">
+                  <Upload size={14} />
+                  Import template
                 </Link>
               </div>
 
@@ -960,7 +917,8 @@ function QuestionEditForm({
       </form>
     </details>
     <form action={deleteVirTemplateQuestionAction.bind(null, question.id)}>
-      <button className="button button-ghost-danger" style={{ fontSize: "0.72rem", padding: "0.2rem 0.5rem" }} type="submit">
+      <button className="btn-danger btn-compact" title="Delete question" type="submit">
+        <Trash2 size={13} />
         Delete
       </button>
     </form>

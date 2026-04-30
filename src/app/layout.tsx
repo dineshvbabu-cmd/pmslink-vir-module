@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   Anchor,
   Bell,
+  BookOpen,
   CalendarDays,
   Grid2x2,
   HelpCircle,
@@ -74,7 +75,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <header className="erp-topbar">
                 <div className="topbar-title-block">
                   <div className="eyebrow">Enterprise workspace</div>
-                  <h1 className="app-title">Vessel Inspection Report</h1>
+                  <h1 className="app-title">Inspection Reports</h1>
                 </div>
 
                 <div className="topbar-utility-nav">
@@ -126,6 +127,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   >
                     <Grid2x2 size={18} />
                   </Link>
+                  {session.workspace === "OFFICE" ? (
+                    <Link
+                      aria-label="Library Register"
+                      className="topbar-icon-link"
+                      href="/register"
+                      title="Library Register"
+                    >
+                      <BookOpen size={18} />
+                    </Link>
+                  ) : null}
                   <button aria-label="Notifications" className="topbar-icon-link" title="Notifications" type="button">
                     <Bell size={18} />
                   </button>

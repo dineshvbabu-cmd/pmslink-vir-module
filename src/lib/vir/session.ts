@@ -37,10 +37,7 @@ const officeNavigation: WorkspaceNavItem[] = [
   { href: "/inspections?scope=approved", label: "Approved inspections", note: "Approved register" },
   { href: "/schedule", label: "Inspection Calendar", note: "Planner and compliance status" },
   { href: "/inspections", label: "Inspection Register", note: "Draft, review, sync, and closure" },
-  { href: "/vessels", label: "Vessel Register", note: "Vessel details and history" },
   { href: "/templates", label: "Template Library", note: "Questionnaires" },
-  { href: "/register", label: "Library Register", note: "Office template masters" },
-  { href: "/imports", label: "Import Engine", note: "Checklist normalization" },
 ];
 
 const vesselNavigation: WorkspaceNavItem[] = [
