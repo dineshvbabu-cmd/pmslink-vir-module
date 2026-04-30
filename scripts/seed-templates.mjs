@@ -13,7 +13,7 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 config({ path: resolve(__dirname, "../.env.local") });
 config({ path: resolve(__dirname, "../.env") });
 
-const prisma = new PrismaClient();
+const _prisma = new PrismaClient();
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -1029,7 +1029,8 @@ const TEMPLATES = [
 
 // ─── Seed function ────────────────────────────────────────────────────────────
 
-async function seedTemplates() {
+async function seedTemplates(clientOverride) {
+  const prisma = clientOverride ?? _prisma;
   let totalTypes = 0;
   let totalTemplates = 0;
   let totalSections = 0;
@@ -1133,6 +1134,8 @@ async function seedTemplates() {
   return { totalTypes, totalTemplates, totalSections, totalQuestions };
 }
 
+export default seedTemplates;
+
 async function main() {
   console.log("[seed-templates] Seeding 8 SAF-35 inspection templates...\n");
   try {
@@ -1146,7 +1149,7 @@ async function main() {
     console.error("[seed-templates] Failed:", err.message);
     process.exit(1);
   } finally {
-    await prisma.$disconnect();
+    await _prisma.$disconnect();
   }
 }
 

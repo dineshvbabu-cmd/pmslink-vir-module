@@ -151,6 +151,14 @@ async function main() {
   } finally {
     await prisma.$disconnect();
   }
+
+  // Run SAF-35 template seed (safe to re-run — uses upserts)
+  try {
+    const { default: seedTemplates } = await import("./seed-templates.mjs");
+    await seedTemplates();
+  } catch (err) {
+    console.error("[seed] Template seed failed:", err.message);
+  }
 }
 
 main();
