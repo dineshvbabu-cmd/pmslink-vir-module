@@ -5,7 +5,7 @@ import { ActionIconLink } from "@/components/action-icon-link";
 import { prisma } from "@/lib/prisma";
 import { buildVesselProfile } from "@/lib/vir/vessel-profile";
 import { updateVesselAction } from "@/app/actions";
-import { requireVirSession } from "@/lib/vir/session";
+import { isTsiSession, requireVirSession } from "@/lib/vir/session";
 
 export const dynamic = "force-dynamic";
 
@@ -30,10 +30,14 @@ export default async function VesselListPage({
   const dialogVesselId = params.vesselId ?? "";
   const createdUserFor = params.createdUserFor ?? "";
 
+  const isTsi = session.workspace === "OFFICE" && isTsiSession(session);
+  const scopedCodes = isTsi ? (session.dashboardVesselCodes ?? []) : [];
+
   const vessels = await prisma.vessel.findMany({
     where: {
       isActive: true,
       ...(session.workspace === "VESSEL" && session.vesselId ? { id: session.vesselId } : {}),
+      ...(scopedCodes.length > 0 ? { code: { in: scopedCodes } } : {}),
       ...(query
         ? {
             OR: [
