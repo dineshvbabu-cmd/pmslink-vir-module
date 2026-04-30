@@ -891,6 +891,75 @@ export async function deleteVirTemplateQuestionAction(questionId: string) {
   revalidatePath(`/templates/${question.section.templateId}/edit`);
 }
 
+export async function copyQuestionsFromSectionAction(formData: FormData) {
+  const session = await requireVirSession();
+  ensureOffice(session);
+
+  const targetSectionId = toStringOrNull(formData.get("targetSectionId"));
+  const sourceSectionId = toStringOrNull(formData.get("sourceSectionId"));
+  const returnTo = toStringOrNull(formData.get("returnTo")) ?? "/templates";
+
+  if (!targetSectionId || !sourceSectionId) throw new Error("Source and target sections are required.");
+  if (targetSectionId === sourceSectionId) throw new Error("Source and target sections must be different.");
+
+  const [targetSection, sourceSection] = await Promise.all([
+    prisma.virTemplateSection.findUnique({
+      where: { id: targetSectionId },
+      select: { id: true, template: { select: { inspections: { where: { isDeleted: false }, select: { id: true }, take: 1 } } } },
+    }),
+    prisma.virTemplateSection.findUnique({
+      where: { id: sourceSectionId },
+      select: {
+        questions: {
+          orderBy: { sortOrder: "asc" },
+          select: {
+            code: true, prompt: true, helpText: true, cicTopic: true, referenceImageUrl: true,
+            responseType: true, riskLevel: true, isMandatory: true, allowsPhoto: true,
+            isCicCandidate: true, sortOrder: true, answerLibraryTypeId: true,
+            options: { orderBy: { sortOrder: "asc" }, select: { value: true, label: true, score: true, sortOrder: true } },
+          },
+        },
+      },
+    }),
+  ]);
+
+  if (!targetSection) throw new Error("Target section not found.");
+  if (targetSection.template.inspections.length) throw new Error("Clone a new version before copying into a locked template.");
+  if (!sourceSection?.questions.length) throw new Error("Source section has no questions.");
+
+  const existing = await prisma.virTemplateQuestion.findMany({ where: { sectionId: targetSectionId }, select: { code: true, sortOrder: true }, orderBy: { sortOrder: "desc" } });
+  const existingCodes = new Set(existing.map((q) => q.code));
+  let nextSort = (existing[0]?.sortOrder ?? 0) + 1;
+
+  for (const q of sourceSection.questions) {
+    let code = q.code;
+    let suffix = 2;
+    while (existingCodes.has(code)) {
+      code = `${q.code}_COPY${suffix++}`;
+    }
+    existingCodes.add(code);
+
+    const created = await prisma.virTemplateQuestion.create({
+      data: {
+        sectionId: targetSectionId, code, prompt: q.prompt, helpText: q.helpText,
+        cicTopic: q.cicTopic, referenceImageUrl: q.referenceImageUrl,
+        responseType: q.responseType, riskLevel: q.riskLevel, isMandatory: q.isMandatory,
+        allowsPhoto: q.allowsPhoto, isCicCandidate: q.isCicCandidate,
+        sortOrder: nextSort++, answerLibraryTypeId: q.answerLibraryTypeId,
+      },
+    });
+
+    if (q.options.length) {
+      await prisma.virTemplateQuestionOption.createMany({
+        data: q.options.map((o) => ({ questionId: created.id, value: o.value, label: o.label, score: o.score, sortOrder: o.sortOrder })),
+      });
+    }
+  }
+
+  revalidateVirPaths();
+  redirect(returnTo);
+}
+
 export async function deleteDraftInspectionAction(inspectionId: string) {
   const session = await requireVirSession();
   ensureOffice(session);
