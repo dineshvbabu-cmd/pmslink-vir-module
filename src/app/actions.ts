@@ -1108,6 +1108,7 @@ export async function updateInspectionStatusAction(inspectionId: string, nextSta
       metadata: true,
       template: {
         select: {
+          workflowConfig: true,
           sections: {
             select: {
               questions: {
@@ -1210,6 +1211,14 @@ export async function updateInspectionStatusAction(inspectionId: string, nextSta
     const hasFinalAcknowledgement = inspection.signOffs.some(
       (signOff) => signOff.stage === "FINAL_ACKNOWLEDGEMENT" && signOff.approved
     );
+
+    // Check whether final acknowledgement is required per template workflow config
+    const wfConfig = inspection.template?.workflowConfig;
+    const finalAckRequired =
+      wfConfig && typeof wfConfig === "object" && !Array.isArray(wfConfig) && Array.isArray((wfConfig as Record<string, unknown>).stages)
+        ? ((wfConfig as { stages: Array<{ stage: string; isRequired?: boolean }> }).stages.find((s) => s.stage === "FINAL_ACKNOWLEDGEMENT")?.isRequired ?? false)
+        : false;
+
     const pendingCorrectiveActions = inspection.findings.flatMap((finding) => finding.correctiveActions).filter((action) =>
       ["OPEN", "IN_PROGRESS", "REJECTED"].includes(action.status)
     );
@@ -1218,7 +1227,7 @@ export async function updateInspectionStatusAction(inspectionId: string, nextSta
       throw new Error("Office review sign-off is required before closing the VIR.");
     }
 
-    if (!hasFinalAcknowledgement) {
+    if (finalAckRequired && !hasFinalAcknowledgement) {
       throw new Error("Vessel final acknowledgement is required before closure.");
     }
 
