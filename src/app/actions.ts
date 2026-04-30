@@ -559,12 +559,20 @@ export async function upsertVirTemplateAction(formData: FormData) {
   const description = toStringOrNull(formData.get("description"));
   const isActive = isChecked(formData, "isActive");
   const questionnaireLibraryId = toStringOrNull(formData.get("questionnaireLibraryId"));
+  const showCertificatesTab = isChecked(formData, "showCertificatesTab");
 
   if (!id || !name) {
     throw new Error("Template and template name are required.");
   }
 
   await assertTemplateEditable(id);
+
+  // Merge showCertificatesTab into existing workflowConfig
+  const existing = await prisma.virTemplate.findUnique({ where: { id }, select: { workflowConfig: true } });
+  const existingConfig =
+    existing?.workflowConfig && typeof existing.workflowConfig === "object" && !Array.isArray(existing.workflowConfig)
+      ? (existing.workflowConfig as Record<string, unknown>)
+      : {};
 
   await prisma.virTemplate.update({
     where: { id },
@@ -573,6 +581,7 @@ export async function upsertVirTemplateAction(formData: FormData) {
       description,
       isActive,
       questionnaireLibraryId: questionnaireLibraryId || null,
+      workflowConfig: { ...existingConfig, showCertificatesTab },
     },
   });
 
@@ -590,7 +599,7 @@ export async function upsertVirTemplateWorkflowAction(formData: FormData) {
     throw new Error("Template id is required.");
   }
 
-  const STAGES = ["VESSEL_SUBMISSION", "SHORE_REVIEW", "FINAL_ACKNOWLEDGEMENT"] as const;
+  const STAGES = ["SHORE_REVIEW", "FINAL_ACKNOWLEDGEMENT"] as const;
 
   const stages = STAGES.map((stage) => ({
     stage,
@@ -608,10 +617,8 @@ export async function upsertVirTemplateWorkflowAction(formData: FormData) {
   revalidateVirPaths();
 }
 
-function defaultStageLabel(stage: "VESSEL_SUBMISSION" | "SHORE_REVIEW" | "FINAL_ACKNOWLEDGEMENT") {
+function defaultStageLabel(stage: "SHORE_REVIEW" | "FINAL_ACKNOWLEDGEMENT") {
   switch (stage) {
-    case "VESSEL_SUBMISSION":
-      return "Vessel submission";
     case "SHORE_REVIEW":
       return "Office review";
     case "FINAL_ACKNOWLEDGEMENT":
@@ -1098,19 +1105,6 @@ export async function updateInspectionStatusAction(inspectionId: string, nextSta
       where: { id: inspectionId },
       data: { status: "SUBMITTED" },
     });
-
-    await prisma.virSignOff.create({
-      data: {
-        inspectionId,
-        stage: "VESSEL_SUBMISSION",
-        approved: true,
-        actorName: session.actorName,
-        actorRole: session.actorRole,
-        comment: isVesselSession(session)
-          ? "Submitted from vessel workspace for office review."
-          : "Submitted from office control tower for review.",
-      },
-    });
   } else if (nextStatus === "RETURNED") {
     ensureOffice(session, "Only office workspaces can return an inspection.");
 
@@ -1461,6 +1455,44 @@ export async function saveInspectionHeaderAction(inspectionId: string, formData:
   redirect(`/inspections/${inspectionId}?pane=details`);
 }
 
+export async function addInspectionCertificateAction(inspectionId: string, formData: FormData) {
+  await getInspectionAccess(inspectionId);
+  const certKey = toStringOrNull(formData.get("certKey"));
+  if (!certKey) return;
+
+  const existing = await prisma.virInspection.findUnique({ where: { id: inspectionId }, select: { metadata: true } });
+  const meta = existing?.metadata && typeof existing.metadata === "object" && !Array.isArray(existing.metadata)
+    ? (existing.metadata as Record<string, unknown>)
+    : {};
+  const enabled: string[] = Array.isArray(meta.certEnabled) ? (meta.certEnabled as string[]) : [];
+  if (!enabled.includes(certKey)) {
+    await prisma.virInspection.update({
+      where: { id: inspectionId },
+      data: { metadata: { ...(meta as Record<string, Prisma.JsonValue>), certEnabled: [...enabled, certKey] } },
+    });
+  }
+
+  revalidateVirPaths(inspectionId);
+  redirect(`/inspections/${inspectionId}?pane=certificates`);
+}
+
+export async function removeInspectionCertificateAction(inspectionId: string, certKey: string) {
+  await getInspectionAccess(inspectionId);
+
+  const existing = await prisma.virInspection.findUnique({ where: { id: inspectionId }, select: { metadata: true } });
+  const meta = existing?.metadata && typeof existing.metadata === "object" && !Array.isArray(existing.metadata)
+    ? (existing.metadata as Record<string, unknown>)
+    : {};
+  const enabled: string[] = Array.isArray(meta.certEnabled) ? (meta.certEnabled as string[]) : [];
+  await prisma.virInspection.update({
+    where: { id: inspectionId },
+    data: { metadata: { ...(meta as Record<string, Prisma.JsonValue>), certEnabled: enabled.filter((k) => k !== certKey) } },
+  });
+
+  revalidateVirPaths(inspectionId);
+  redirect(`/inspections/${inspectionId}?pane=certificates`);
+}
+
 export async function addFindingAction(inspectionId: string, formData: FormData) {
   const { session, inspection } = await getInspectionAccess(inspectionId);
   const rawQuestionId = toStringOrNull(formData.get("questionId"));
@@ -1472,6 +1504,13 @@ export async function addFindingAction(inspectionId: string, formData: FormData)
     | "OBSERVATION"
     | "RECOMMENDATION"
     | "POSITIVE";
+  const title = toStringOrNull(formData.get("title")) ?? "Untitled finding";
+  const description = toStringOrNull(formData.get("description")) ?? "No description provided.";
+  const requiresCAR = formData.get("requiresCAR") === "yes";
+  const carActionText = toStringOrNull(formData.get("carActionText"));
+  const carOwner = toStringOrNull(formData.get("carOwner"));
+  const carTargetDate = toDateOrNull(formData.get("carTargetDate"));
+  const returnTo = toStringOrNull(formData.get("returnTo"));
 
   const finding = await prisma.virFinding.create({
     data: {
@@ -1479,8 +1518,8 @@ export async function addFindingAction(inspectionId: string, formData: FormData)
       questionId,
       findingType,
       severity,
-      title: toStringOrNull(formData.get("title")) ?? "Untitled finding",
-      description: toStringOrNull(formData.get("description")) ?? "No description provided.",
+      title,
+      description,
       ownerName: toStringOrNull(formData.get("ownerName")),
       dueDate: toDateOrNull(formData.get("dueDate")),
       vesselResponse: toStringOrNull(formData.get("vesselResponse")),
@@ -1489,16 +1528,16 @@ export async function addFindingAction(inspectionId: string, formData: FormData)
     },
   });
 
-  if (findingType !== "POSITIVE") {
+  // Create CAR: use explicit form fields if provided, else auto-generate for serious findings
+  const shouldCreateCAR = requiresCAR || (findingType !== "POSITIVE" && (findingType === "NON_CONFORMITY" || severity === "HIGH" || severity === "CRITICAL"));
+  if (shouldCreateCAR) {
     const autoDueDays = findingType === "NON_CONFORMITY" || severity === "HIGH" || severity === "CRITICAL" ? 14 : 30;
-    const targetDate = new Date();
-    targetDate.setDate(targetDate.getDate() + autoDueDays);
-
+    const targetDate = carTargetDate ?? (() => { const d = new Date(); d.setDate(d.getDate() + autoDueDays); return d; })();
     await prisma.virCorrectiveAction.create({
       data: {
         findingId: finding.id,
-        actionText: `Auto-generated CAR for ${finding.title}`,
-        ownerName: toStringOrNull(formData.get("ownerName")),
+        actionText: carActionText ?? `CAR for: ${title}`,
+        ownerName: carOwner ?? toStringOrNull(formData.get("ownerName")),
         targetDate,
         status: "OPEN",
       },
@@ -1541,6 +1580,11 @@ export async function addFindingAction(inspectionId: string, formData: FormData)
 
   await syncInspectionCounters(inspection.id);
   revalidateVirPaths(inspection.id);
+
+  if (returnTo && returnTo.startsWith(`/inspections/${inspectionId}`)) {
+    redirect(returnTo);
+  }
+  redirect(`/inspections/${inspectionId}?pane=findings`);
 }
 
 export async function updateFindingStatusAction(
@@ -1679,16 +1723,11 @@ export async function addSignOffAction(inspectionId: string, formData: FormData)
 
   ensureInspectionAccess(session, inspection.vesselId);
 
-  const stage = (toStringOrNull(formData.get("stage")) ?? "VESSEL_SUBMISSION") as VirSignOffStage;
+  const stage = (toStringOrNull(formData.get("stage")) ?? "SHORE_REVIEW") as VirSignOffStage;
   const approved = (toStringOrNull(formData.get("approved")) ?? "YES") === "YES";
 
-  if (stage === "SHORE_REVIEW") {
-    ensureOffice(session, "Only office workspaces can record shore review sign-off.");
-  }
-
-  if ((stage === "VESSEL_SUBMISSION" || stage === "FINAL_ACKNOWLEDGEMENT") && !isVesselSession(session)) {
-    throw new Error("Only vessel workspaces can record vessel sign-off stages.");
-  }
+  // All sign-off stages are now office-only (vessel submission workflow removed)
+  ensureOffice(session, "Only office workspaces can record sign-off stages.");
 
   await prisma.virSignOff.create({
     data: {

@@ -5,7 +5,9 @@ import { AlignJustify, Edit, Eye, FileText, Grid2x2, TriangleAlert } from "lucid
 import {
   addCorrectiveActionAction,
   addFindingAction,
+  addInspectionCertificateAction,
   addSignOffAction,
+  removeInspectionCertificateAction,
   saveInspectionAnswersAction,
   saveInspectionHeaderAction,
   updateCorrectiveActionStatusAction,
@@ -45,7 +47,6 @@ const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", y
 const fmtDate = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
 
 const signOffStageLabels: Record<string, string> = {
-  VESSEL_SUBMISSION: "Vessel Submission",
   SHORE_REVIEW: "Office Review",
   FINAL_ACKNOWLEDGEMENT: "Final Acknowledgement",
 };
@@ -256,6 +257,8 @@ export default async function InspectionDetailPage({
   const saveHeader = saveInspectionHeaderAction.bind(null, inspection.id);
   const addFinding = addFindingAction.bind(null, inspection.id);
   const addSignOff = addSignOffAction.bind(null, inspection.id);
+  const addCert = addInspectionCertificateAction.bind(null, inspection.id);
+  const removeCert = removeInspectionCertificateAction.bind(null, inspection.id);
 
   const questionOptions = questions.map((question) => ({
     id: question.id,
@@ -288,6 +291,30 @@ export default async function InspectionDetailPage({
 
   const isInternalAudit = inspection.inspectionType.category === "INTERNAL";
   const isAuditCategory = isInternalAudit || inspection.inspectionType.category === "AUDIT";
+  const templateWorkflowConfig =
+    inspection.template?.workflowConfig &&
+    typeof inspection.template.workflowConfig === "object" &&
+    !Array.isArray(inspection.template.workflowConfig)
+      ? (inspection.template.workflowConfig as Record<string, unknown>)
+      : {};
+  const showCertificatesTab = isAuditCategory || Boolean(templateWorkflowConfig.showCertificatesTab);
+
+  // Certificate library: look for a VirLibraryType with code VESSEL_CERTIFICATES; fall back to hardcoded list
+  const certLibraryType = showCertificatesTab
+    ? await prisma.virLibraryType.findFirst({
+        where: { code: "VESSEL_CERTIFICATES", isActive: true },
+        include: { items: { where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { label: "asc" }] } },
+      })
+    : null;
+  const availableCerts: Array<{ key: string; name: string }> = certLibraryType
+    ? certLibraryType.items.map((item) => ({ key: item.id, name: item.label }))
+    : VESSEL_CERTIFICATES;
+  const certEnabledRaw = Array.isArray(narrativeMetadata.certEnabled)
+    ? (narrativeMetadata.certEnabled as string[])
+    : null;
+  const certEnabledSet = new Set(certEnabledRaw ?? availableCerts.map((c) => c.key));
+  const enabledCerts = availableCerts.filter((c) => certEnabledSet.has(c.key));
+  const disabledCerts = availableCerts.filter((c) => !certEnabledSet.has(c.key));
 
   return (
     <div className="page-stack">
@@ -320,13 +347,6 @@ export default async function InspectionDetailPage({
               </div>
               <span className="vir-topbar-pct">{progress.completionPct}%</span>
             </div>
-            {isVesselSession(session) && (inspection.status === "DRAFT" || inspection.status === "RETURNED") ? (
-              <form action={updateInspectionStatusAction.bind(null, inspection.id, "SUBMITTED")}>
-                <SubmitButton className="btn btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
-                  Send for approval
-                </SubmitButton>
-              </form>
-            ) : null}
             {isOfficeSession(session) && (inspection.status === "DRAFT" || inspection.status === "RETURNED") ? (
               <form action={updateInspectionStatusAction.bind(null, inspection.id, "SUBMITTED")}>
                 <SubmitButton className="btn btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
@@ -402,7 +422,7 @@ export default async function InspectionDetailPage({
             { id: "findings", label: `Findings (${inspection.findings.length})` },
             { id: "evidence", label: `Evidence (${inspection.photos.length})` },
             { id: "signoff", label: `Sign-off (${inspection.signOffs.length})` },
-            ...(isAuditCategory ? [{ id: "certificates", label: "Certificates" }] : []),
+            ...(showCertificatesTab ? [{ id: "certificates", label: "Certificates" }] : []),
             ...(isAuditCategory ? [{ id: "narrative", label: "Narrative" }] : []),
           ].map((item) => (
             <Link
@@ -1509,10 +1529,30 @@ export default async function InspectionDetailPage({
         </div>
       ) : null}
 
-      {/* ── PANE: Certificates (Internal audits only) ── */}
-      {activePane === "certificates" && isAuditCategory ? (
+      {/* ── PANE: Certificates ── */}
+      {activePane === "certificates" && showCertificatesTab ? (
         <div className="panel panel-elevated" style={{ padding: 0, overflow: "hidden" }}>
           <div className="vir-narrative-pane">
+            {/* Add certificate from library */}
+            {canEditInspection && disabledCerts.length > 0 ? (
+              <div className="vir-narrative-card" style={{ marginBottom: 0 }}>
+                <div className="vir-narrative-card-header">
+                  <div className="vir-narrative-card-title">Add certificate to register</div>
+                </div>
+                <div className="vir-narrative-card-body">
+                  <form action={addCert} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <select className="field-input" name="certKey" style={{ minWidth: "260px", padding: "0.3rem 0.5rem", fontSize: "0.82rem" }}>
+                      <option value="">— Select certificate —</option>
+                      {disabledCerts.map((c) => (
+                        <option key={c.key} value={c.key}>{c.name}</option>
+                      ))}
+                    </select>
+                    <SubmitButton className="btn btn-compact">Add</SubmitButton>
+                  </form>
+                </div>
+              </div>
+            ) : null}
+
             <form action={saveHeader}>
               <input type="hidden" name="returnTo" value={`/inspections/${inspection.id}?pane=certificates`} />
               <div className="vir-narrative-card">
@@ -1532,10 +1572,11 @@ export default async function InspectionDetailPage({
                           <th>Expiry Date</th>
                           <th>Status</th>
                           <th>Remarks</th>
+                          {canEditInspection ? <th></th> : null}
                         </tr>
                       </thead>
                       <tbody>
-                        {VESSEL_CERTIFICATES.map((cert) => {
+                        {enabledCerts.map((cert) => {
                           const key = cert.key;
                           const issueVal = typeof narrativeMetadata[`cert_${key}_issue`] === "string" ? narrativeMetadata[`cert_${key}_issue`] as string : "";
                           const expiryVal = typeof narrativeMetadata[`cert_${key}_expiry`] === "string" ? narrativeMetadata[`cert_${key}_expiry`] as string : "";
@@ -1592,13 +1633,34 @@ export default async function InspectionDetailPage({
                                   type="text"
                                 />
                               </td>
+                              {canEditInspection ? (
+                                <td>
+                                  <form action={removeCert.bind(null, key)}>
+                                    <button
+                                      className="action-icon-link action-icon-link-danger"
+                                      title="Remove from register"
+                                      type="submit"
+                                      style={{ background: "none", border: "none", cursor: "pointer" }}
+                                    >
+                                      ×
+                                    </button>
+                                  </form>
+                                </td>
+                              ) : null}
                             </tr>
                           );
                         })}
+                        {enabledCerts.length === 0 ? (
+                          <tr>
+                            <td colSpan={canEditInspection ? 6 : 5} style={{ textAlign: "center", color: "var(--color-ink-soft)", padding: "1.5rem" }}>
+                              No certificates added yet. Use the &ldquo;Add certificate&rdquo; panel above.
+                            </td>
+                          </tr>
+                        ) : null}
                       </tbody>
                     </table>
                   </div>
-                  {canEditInspection ? (
+                  {canEditInspection && enabledCerts.length > 0 ? (
                     <div style={{ display: "flex", justifyContent: "flex-end", padding: "0.75rem 0 0" }}>
                       <SubmitButton className="btn">Save certificates</SubmitButton>
                     </div>
@@ -1853,9 +1915,23 @@ export default async function InspectionDetailPage({
             </div>
             <form action={addFinding} className="finding-panel-body">
               <input name="questionId" type="hidden" value={findingQ} />
+              <input name="returnTo" type="hidden" value={`/inspections/${inspection.id}?pane=questionnaire${selectedSectionId ? `&section=${selectedSectionId}` : ""}`} />
+
+              {/* Title */}
+              <div className="field-wide">
+                <label htmlFor="fp-title">Finding Title *</label>
+                <input
+                  id="fp-title"
+                  name="title"
+                  placeholder="Short descriptive title for the finding"
+                  required
+                  style={{ fontSize: "0.85rem" }}
+                  type="text"
+                />
+              </div>
 
               <div className="field">
-                <label htmlFor="fp-findingType">Type of Finding *</label>
+                <label htmlFor="fp-findingType">Type *</label>
                 <select id="fp-findingType" name="findingType" required>
                   <option value="">Select type...</option>
                   <option value="OBSERVATION">Observation</option>
@@ -1876,23 +1952,48 @@ export default async function InspectionDetailPage({
               </div>
 
               <div className="field-wide">
-                <label htmlFor="fp-description">Description of Finding</label>
-                <textarea id="fp-description" name="description" placeholder="Describe the defect, evidence observed, and impact." rows={5} />
+                <label htmlFor="fp-description">Description *</label>
+                <textarea id="fp-description" name="description" placeholder="Describe the defect, evidence observed, and impact." required rows={4} />
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem" }}>
                 <div className="checkbox-row">
                   <input id="fp-drydock" name="isDrydockRelated" type="checkbox" value="yes" />
-                  <label htmlFor="fp-drydock">Is the Defect Associated to Drydock?</label>
+                  <label htmlFor="fp-drydock">Associated to Drydock?</label>
                 </div>
                 <div className="checkbox-row">
-                  <label htmlFor="fp-ioc">Item Of Concern</label>
                   <input id="fp-ioc" name="isItemOfConcern" type="checkbox" value="yes" />
+                  <label htmlFor="fp-ioc">Item Of Concern</label>
+                </div>
+                <div className="checkbox-row">
+                  <input id="fp-car" name="requiresCAR" type="checkbox" value="yes" />
+                  <label htmlFor="fp-car">Requires CAR (Corrective Action)?</label>
                 </div>
               </div>
 
+              {/* CAR fields — shown when checkbox ticked (client JS not available; always render, user fills if needed) */}
+              <details style={{ marginTop: "0.75rem" }}>
+                <summary style={{ cursor: "pointer", fontSize: "0.8rem", fontWeight: 600, color: "var(--color-ink-soft)" }}>
+                  + Add Corrective Action Request (CAR)
+                </summary>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
+                  <label style={{ fontSize: "0.8rem", fontWeight: 600 }}>
+                    CAR action text
+                    <textarea name="carActionText" placeholder="Describe the corrective action required." rows={3} style={{ marginTop: "0.3rem", fontSize: "0.82rem" }} />
+                  </label>
+                  <label style={{ fontSize: "0.8rem", fontWeight: 600 }}>
+                    Responsible party
+                    <input name="carOwner" placeholder="Name or role responsible for action" style={{ marginTop: "0.3rem", fontSize: "0.82rem" }} type="text" />
+                  </label>
+                  <label style={{ fontSize: "0.8rem", fontWeight: 600 }}>
+                    Target date
+                    <input name="carTargetDate" style={{ marginTop: "0.3rem", fontSize: "0.82rem" }} type="date" />
+                  </label>
+                </div>
+              </details>
+
               <div className="finding-panel-attach">
-                <div style={{ fontWeight: 700, fontSize: "0.82rem" }}>📎 ATTACHMENTS</div>
+                <div style={{ fontWeight: 700, fontSize: "0.82rem" }}>ATTACHMENTS</div>
                 <div style={{ fontSize: "0.75rem", marginTop: "0.3rem", color: "var(--color-ink-soft)" }}>
                   Max 10 images. Allowed: .png .jpeg .gif .tif .webp .heic
                 </div>
@@ -1907,7 +2008,7 @@ export default async function InspectionDetailPage({
 
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "auto", paddingTop: "0.5rem" }}>
                 <Link className="btn-secondary" href={closeHref} scroll={false}>Cancel</Link>
-                <SubmitButton className="btn">Mark as done</SubmitButton>
+                <SubmitButton className="btn">Save Finding</SubmitButton>
               </div>
             </form>
           </div>
@@ -2051,9 +2152,8 @@ function buildSignoffStages(
   workflowConfig: unknown
 ) {
   const defaultStages = [
-    { key: "VESSEL_SUBMISSION", label: "Vessel submission", actorRole: "Inspector / Master" },
-    { key: "SHORE_REVIEW", label: "Office review", actorRole: "QHSE Superintendent" },
-    { key: "FINAL_ACKNOWLEDGEMENT", label: "Final acknowledgement", actorRole: "Inspector / Master" },
+    { key: "SHORE_REVIEW", label: "Office review", actorRole: "QHSE Superintendent / Office Manager" },
+    { key: "FINAL_ACKNOWLEDGEMENT", label: "Final acknowledgement", actorRole: "DPA / Fleet Manager" },
   ];
   const configStages =
     workflowConfig &&

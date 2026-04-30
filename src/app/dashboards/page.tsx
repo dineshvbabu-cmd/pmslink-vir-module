@@ -15,7 +15,7 @@ import { inspectionStatusLabel, toneForInspectionStatus } from "@/lib/vir/workfl
 export const dynamic = "force-dynamic";
 
 type BoardKey = "tmsa" | "class" | "psc-sire";
-type RangeKey = "90" | "180" | "365";
+type RangeKey = "90" | "180" | "365" | "ytd";
 
 const boardOptions: Array<{ key: BoardKey; label: string }> = [
   { key: "tmsa", label: "TMSA compliance" },
@@ -86,7 +86,15 @@ export default async function DashboardBoardsPage({
 
   const now = new Date();
   const sinceDate = new Date();
-  sinceDate.setDate(now.getDate() - Number(range));
+  if (range === "ytd") {
+    sinceDate.setMonth(0, 1);
+    sinceDate.setHours(0, 0, 0, 0);
+  } else {
+    sinceDate.setDate(now.getDate() - Number(range));
+  }
+  const rangeDaysComputed = range === "ytd"
+    ? Math.ceil((now.getTime() - sinceDate.getTime()) / (24 * 60 * 60 * 1000))
+    : Number(range);
   const dueSoonDate = new Date();
   dueSoonDate.setDate(now.getDate() + 45);
 
@@ -287,6 +295,25 @@ export default async function DashboardBoardsPage({
           </div>
         </div>
 
+        {/* Period preset chips */}
+        <div style={{ display: "flex", gap: "0.4rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
+          {([
+            { key: "90", label: "3 Months" },
+            { key: "180", label: "6 Months" },
+            { key: "365", label: "1 Year" },
+            { key: "ytd", label: "YTD" },
+          ] as const).map((preset) => (
+            <Link
+              className={`filter-chip${range === preset.key ? " filter-chip-active" : ""}`}
+              href={toSearchParams({ board, scope, vesselId: requestedVesselId, range: preset.key })}
+              key={preset.key}
+              scroll={false}
+            >
+              {preset.label}
+            </Link>
+          ))}
+        </div>
+
         <form className="inline-form inline-form-wide" method="get" style={{ marginTop: "1rem" }}>
           <label className="inline-form-label" htmlFor="board">
             Board
@@ -299,12 +326,13 @@ export default async function DashboardBoardsPage({
             ))}
           </select>
           <label className="inline-form-label" htmlFor="range">
-            Timeline
+            Period
           </label>
           <select defaultValue={range} id="range" name="range">
-            <option value="90">3 months to today</option>
-            <option value="180">6 months to today</option>
-            <option value="365">1 year to today</option>
+            <option value="90">3 months (90 days)</option>
+            <option value="180">6 months (180 days)</option>
+            <option value="365">1 year (365 days)</option>
+            <option value="ytd">Year to date</option>
           </select>
           <label className="inline-form-label" htmlFor="vesselId">
             Vessel
@@ -336,7 +364,7 @@ export default async function DashboardBoardsPage({
 
       <section className="dashboard-grid dashboard-grid-equal">
         <TrendLineChart
-          points={buildInspectionTrend(filteredInspections, Number(range))}
+          points={buildInspectionTrend(filteredInspections, rangeDaysComputed)}
           subtitle={`Inspection activity trend over the last ${range} days.`}
           title="Inspection trend"
         />
@@ -549,7 +577,7 @@ export default async function DashboardBoardsPage({
               title="Class burden bars"
             />
             <TrendLineChart
-              points={buildInspectionTrend(classInspections.map((item) => item.inspection), Number(range))}
+              points={buildInspectionTrend(classInspections.map((item) => item.inspection), rangeDaysComputed)}
               subtitle={`Class and statutory inspection volume over the last ${range} days.`}
               title="Class trend"
             />
@@ -731,7 +759,7 @@ function normalizeBoard(value: string | string[] | undefined): BoardKey {
 }
 
 function normalizeRange(value: string | undefined): RangeKey {
-  if (value === "90" || value === "180" || value === "365") {
+  if (value === "90" || value === "180" || value === "365" || value === "ytd") {
     return value;
   }
 

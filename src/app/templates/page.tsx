@@ -392,6 +392,20 @@ export default async function TemplatesPage({
                     />
                     Active template
                   </label>
+                  <label className="checkbox-row">
+                    <input
+                      defaultChecked={
+                        selectedTemplate.workflowConfig &&
+                        typeof selectedTemplate.workflowConfig === "object" &&
+                        !Array.isArray(selectedTemplate.workflowConfig)
+                          ? Boolean((selectedTemplate.workflowConfig as Record<string, unknown>).showCertificatesTab)
+                          : false
+                      }
+                      name="showCertificatesTab"
+                      type="checkbox"
+                    />
+                    Show Certificates tab in inspection
+                  </label>
                   <div className="register-form-actions">
                     <button
                       className="button button-secondary"
@@ -498,63 +512,99 @@ export default async function TemplatesPage({
                     </details>
                   ) : null}
 
-                  {/* Questions list */}
-                  <div className="question-list-viewport">
-                    <div className="stack-list">
-                      {selectedSection.questions.map((question) => (
-                        <article className="list-card" key={question.id}>
-                          <div className="section-header">
-                            <div>
-                              <div className="question-code">
-                                {question.code}
-                              </div>
-                              <p className="question-prompt">
-                                {question.prompt}
-                              </p>
-                            </div>
-                            <div className="meta-row">
-                              <span className="chip chip-info">
+                  {/* Questions table — mirrors the questionnaire execution layout */}
+                  <div className="table-shell table-shell-compact" style={{ marginBottom: "1rem" }}>
+                    <table className="table data-table vir-data-table" style={{ tableLayout: "fixed" }}>
+                      <thead>
+                        <tr>
+                          <th style={{ width: "3rem" }}>S.No</th>
+                          <th style={{ width: "6rem" }}>CODE</th>
+                          <th>QUESTION</th>
+                          <th style={{ width: "7rem" }}>RESPONSE</th>
+                          <th style={{ width: "5rem" }}>MANDATORY</th>
+                          <th style={{ width: "4rem" }}>CIR</th>
+                          <th style={{ width: "9rem" }}>LIBRARY / OPTIONS</th>
+                          <th style={{ width: "6rem" }}>SCORE</th>
+                          <th style={{ width: "5rem" }}>ACTIONS</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedSection.questions.map((question, qi) => (
+                          <tr key={question.id}>
+                            <td style={{ textAlign: "center", color: "var(--color-ink-soft)", fontSize: "0.78rem" }}>{qi + 1}</td>
+                            <td style={{ fontSize: "0.78rem", fontWeight: 600, fontFamily: "monospace" }}>{question.code}</td>
+                            <td>
+                              <div style={{ fontWeight: 500, fontSize: "0.83rem", marginBottom: "0.15rem" }}>{question.prompt}</div>
+                              {question.helpText ? (
+                                <div style={{ fontSize: "0.74rem", color: "var(--color-ink-soft)" }}>{question.helpText}</div>
+                              ) : null}
+                              {!templateLocked ? (
+                                <QuestionEditForm
+                                  question={question}
+                                  sectionId={selectedSection.id}
+                                  libraryTypes={libraryTypes}
+                                />
+                              ) : (
+                                <div className="small-text" style={{ color: "var(--color-muted)", marginTop: "0.25rem" }}>
+                                  Read-only — clone to edit.
+                                </div>
+                              )}
+                            </td>
+                            <td>
+                              <span className="chip chip-info" style={{ fontSize: "0.7rem" }}>
                                 {responseTypeLabels[question.responseType] ?? question.responseType}
                               </span>
+                            </td>
+                            <td style={{ textAlign: "center" }}>
                               {question.isMandatory ? (
-                                <span className="chip chip-warning">
-                                  Mandatory
-                                </span>
-                              ) : null}
+                                <span className="chip chip-warning" style={{ fontSize: "0.7rem" }}>M</span>
+                              ) : (
+                                <span style={{ color: "var(--color-ink-soft)", fontSize: "0.75rem" }}>—</span>
+                              )}
+                            </td>
+                            <td style={{ textAlign: "center" }}>
                               {question.isCicCandidate ? (
-                                <span className="chip chip-danger">
-                                  CIR focus
-                                </span>
-                              ) : null}
+                                <span className="chip chip-danger" style={{ fontSize: "0.7rem" }}>CIR</span>
+                              ) : (
+                                <span style={{ color: "var(--color-ink-soft)", fontSize: "0.75rem" }}>—</span>
+                              )}
+                            </td>
+                            <td style={{ fontSize: "0.75rem" }}>
                               {question.answerLibraryType ? (
-                                <span className="chip chip-success">
-                                  {question.answerLibraryType.name}
-                                </span>
+                                <span className="chip chip-success" style={{ fontSize: "0.7rem" }}>{question.answerLibraryType.name}</span>
                               ) : question.options.length > 0 ? (
-                                <span className="chip chip-muted">
-                                  {question.options.length} inline options
+                                <span className="chip chip-muted" style={{ fontSize: "0.7rem" }}>{question.options.length} options</span>
+                              ) : (
+                                <span style={{ color: "var(--color-ink-soft)" }}>—</span>
+                              )}
+                            </td>
+                            <td style={{ fontSize: "0.75rem", textAlign: "center" }}>
+                              {question.options.length > 0 ? (
+                                <span style={{ color: "var(--color-ink-soft)" }}>
+                                  {question.options.filter((o) => o.score !== null).length > 0
+                                    ? question.options.map((o) => o.score).filter(Boolean).join("/")
+                                    : "—"}
                                 </span>
+                              ) : "—"}
+                            </td>
+                            <td style={{ textAlign: "center" }}>
+                              {!templateLocked ? (
+                                <form action={deleteVirTemplateQuestionAction.bind(null, question.id)}>
+                                  <button className="button button-ghost-danger" style={{ fontSize: "0.7rem", padding: "0.15rem 0.4rem" }} type="submit">
+                                    Del
+                                  </button>
+                                </form>
                               ) : null}
-                            </div>
-                          </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
 
-                          {!templateLocked ? (
-                            <QuestionEditForm
-                              question={question}
-                              sectionId={selectedSection.id}
-                              libraryTypes={libraryTypes}
-                            />
-                          ) : (
-                            <div className="small-text" style={{ padding: "0.35rem 0", color: "var(--color-muted)" }}>
-                              Read-only — template in use. Clone a new version to edit.
-                            </div>
-                          )}
-                        </article>
-                      ))}
-
-                      {/* Add new question */}
-                      {!templateLocked ? (
-                        <article className="list-card">
+                  {/* Add new question */}
+                  {!templateLocked ? (
+                    <article className="list-card">
                           <div className="section-header">
                             <div>
                               <h4 className="panel-title">Add question</h4>
@@ -696,9 +746,7 @@ export default async function TemplatesPage({
                             </div>
                           </form>
                         </article>
-                      ) : null}
-                    </div>
-                  </div>
+                  ) : null}
                 </section>
               ) : (
                 <div className="empty-state">
@@ -983,7 +1031,7 @@ function NewTemplateForm({
 }
 
 type WorkflowStageConfig = {
-  stage: "VESSEL_SUBMISSION" | "SHORE_REVIEW" | "FINAL_ACKNOWLEDGEMENT";
+  stage: "SHORE_REVIEW" | "FINAL_ACKNOWLEDGEMENT";
   label: string;
   description?: string | null;
   actorRole?: string | null;
@@ -992,24 +1040,17 @@ type WorkflowStageConfig = {
 
 const DEFAULT_WORKFLOW_STAGES: WorkflowStageConfig[] = [
   {
-    stage: "VESSEL_SUBMISSION",
-    label: "Vessel submission",
-    description: "Inspector or master submits the completed questionnaire from the vessel.",
-    actorRole: "Inspector / Master",
-    isRequired: true,
-  },
-  {
     stage: "SHORE_REVIEW",
     label: "Office review",
-    description: "QHSE superintendent reviews findings, evidence, and questionnaire quality.",
-    actorRole: "QHSE Superintendent",
+    description: "QHSE superintendent or office manager reviews findings, evidence, and questionnaire quality.",
+    actorRole: "QHSE Superintendent / Office Manager",
     isRequired: true,
   },
   {
     stage: "FINAL_ACKNOWLEDGEMENT",
     label: "Final acknowledgement",
-    description: "Vessel acknowledges the office review outcome before closure.",
-    actorRole: "Inspector / Master",
+    description: "Senior office manager or DPA provides final sign-off before closure.",
+    actorRole: "DPA / Fleet Manager",
     isRequired: false,
   },
 ];
@@ -1023,7 +1064,9 @@ function parseWorkflowConfig(raw: unknown): WorkflowStageConfig[] {
     return DEFAULT_WORKFLOW_STAGES;
   }
   return DEFAULT_WORKFLOW_STAGES.map((def) => {
-    const saved = (config.stages as WorkflowStageConfig[]).find((s) => s.stage === def.stage);
+    const saved = (config.stages as Array<{ stage: string; label?: string; description?: string | null; actorRole?: string | null; isRequired?: boolean }>)
+      .filter((s) => s.stage !== "VESSEL_SUBMISSION")
+      .find((s) => s.stage === def.stage);
     return saved
       ? {
           stage: def.stage,
