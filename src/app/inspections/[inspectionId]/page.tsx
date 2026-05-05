@@ -7,6 +7,7 @@ import {
   addFindingAction,
   addInspectionCertificateAction,
   addSignOffAction,
+  markNotificationsReadAction,
   removeInspectionCertificateAction,
   saveInspectionAnswersAction,
   saveInspectionHeaderAction,
@@ -247,6 +248,12 @@ export default async function InspectionDetailPage({
     inspection.metadata && typeof inspection.metadata === "object" && !Array.isArray(inspection.metadata)
       ? (inspection.metadata as Record<string, unknown>)
       : {};
+
+  // Unread notifications for the current workspace
+  const allNotifications = Array.isArray(narrativeMetadata.notifications)
+    ? (narrativeMetadata.notifications as Array<{ id: string; for: string; message: string; createdAt: string; read: boolean }>)
+    : [];
+  const unreadNotifications = allNotifications.filter((n) => n.for === session.workspace && !n.read);
   const activityItems = buildInspectionActivity(inspection);
   const vesselProfile = buildVesselProfile(inspection.vessel);
   const selectedSectionQuery = selectedSectionId ? `&section=${selectedSectionId}` : "";
@@ -348,9 +355,23 @@ export default async function InspectionDetailPage({
               <span className="vir-topbar-pct">{progress.completionPct}%</span>
             </div>
             {isOfficeSession(session) && (inspection.status === "DRAFT" || inspection.status === "RETURNED") ? (
+              <form action={updateInspectionStatusAction.bind(null, inspection.id, "SENT_TO_VESSEL")}>
+                <SubmitButton className="btn-secondary btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
+                  Send to Vessel
+                </SubmitButton>
+              </form>
+            ) : null}
+            {isOfficeSession(session) && inspection.status === "SENT_TO_VESSEL" ? (
+              <form action={updateInspectionStatusAction.bind(null, inspection.id, "RETURNED")}>
+                <SubmitButton className="btn-danger btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
+                  Return to Vessel
+                </SubmitButton>
+              </form>
+            ) : null}
+            {isVesselSession(session) && (inspection.status === "SENT_TO_VESSEL" || inspection.status === "RETURNED") ? (
               <form action={updateInspectionStatusAction.bind(null, inspection.id, "SUBMITTED")}>
                 <SubmitButton className="btn btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
-                  Submit for review
+                  Submit to Office
                 </SubmitButton>
               </form>
             ) : null}
@@ -442,6 +463,18 @@ export default async function InspectionDetailPage({
           Not all mandatory questions have been answered. Complete all mandatory items before submitting for review.
         </div>
       ) : null}
+
+      {/* ── Notification banners ── */}
+      {unreadNotifications.map((notif) => (
+        <div key={notif.id} className="sync-banner" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
+          <span>{notif.message}</span>
+          <form action={markNotificationsReadAction.bind(null, inspection.id)}>
+            <button className="btn-secondary btn-compact" style={{ fontSize: "0.72rem", padding: "0.2rem 0.55rem", whiteSpace: "nowrap" }} type="submit">
+              Dismiss
+            </button>
+          </form>
+        </div>
+      ))}
 
       {/* ── Metrics strip ── */}
       <section className="erp-metrics-grid">

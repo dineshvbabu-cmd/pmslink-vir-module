@@ -17,6 +17,7 @@ enum VirInspectionTypeCategory {
 
 enum VirInspectionStatus {
   DRAFT
+  SENT_TO_VESSEL
   SUBMITTED
   RETURNED
   SHORE_REVIEWED

@@ -34,7 +34,7 @@ const responseTypeLabels: Record<string, string> = {
 export default async function TemplatesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: string; template?: string; section?: string; addSection?: string; copyFrom?: string }>;
+  searchParams: Promise<{ type?: string; template?: string; section?: string; addSection?: string; copyFrom?: string; q?: string }>;
 }) {
   const session = await requireVirSession();
 
@@ -54,7 +54,7 @@ export default async function TemplatesPage({
     );
   }
 
-  const { type, template, section, addSection, copyFrom } = await searchParams;
+  const { type, template, section, addSection, copyFrom, q } = await searchParams;
 
   const [templates, libraryTypes, importSessions] = await Promise.all([
     prisma.virTemplate.findMany({

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { FileDown } from "lucide-react";
+import type { VirInspectionStatus } from "@prisma/client";
 import { CompactBarChart, DonutChart, TrendLineChart } from "@/components/erp-charts";
 import { prisma } from "@/lib/prisma";
 import { calculateInspectionScore } from "@/lib/vir/analytics";
@@ -16,6 +17,7 @@ export const dynamic = "force-dynamic";
 
 type BoardKey = "tmsa" | "class" | "psc-sire";
 type RangeKey = "90" | "180" | "365" | "ytd";
+type ViewKey = "boards" | "register";
 
 const boardOptions: Array<{ key: BoardKey; label: string }> = [
   { key: "tmsa", label: "TMSA compliance" },
@@ -63,6 +65,7 @@ export default async function DashboardBoardsPage({
   const workspaceFilter = await getVirWorkspaceFilter();
   const params = await searchParams;
   const board = normalizeBoard(params.board);
+  const view = normalizeView(params.view);
   const range = normalizeRange(
     typeof params.range === "string" ? params.range : workspaceFilter?.range ?? undefined
   );
@@ -98,7 +101,7 @@ export default async function DashboardBoardsPage({
   const dueSoonDate = new Date();
   dueSoonDate.setDate(now.getDate() + 45);
 
-  const [vessels, inspections, overdueActions] = await Promise.all([
+  const [vessels, inspections, overdueActions, allTimeInspections] = await Promise.all([
     prisma.vessel.findMany({
       where: vesselWhere,
       orderBy: { name: "asc" },
@@ -106,6 +109,8 @@ export default async function DashboardBoardsPage({
         id: true,
         code: true,
         name: true,
+        imoNumber: true,
+        vesselType: true,
         fleet: true,
         manager: true,
       },
@@ -193,6 +198,27 @@ export default async function DashboardBoardsPage({
       orderBy: { targetDate: "asc" },
       take: 12,
     }),
+    prisma.virInspection.findMany({
+      where: {
+        isDeleted: false,
+        status: { not: "ARCHIVED" },
+        vessel: vesselWhere,
+      },
+      orderBy: { inspectionDate: "desc" },
+      select: {
+        id: true,
+        vesselId: true,
+        inspectionDate: true,
+        status: true,
+        conditionScore: true,
+        metadata: true,
+        inspectionType: { select: { code: true, name: true, category: true } },
+        findings: {
+          where: { status: { not: "CLOSED" } },
+          select: { severity: true },
+        },
+      },
+    }),
   ]);
 
   const vesselCodes = new Set(vessels.map((vessel) => vessel.code));
@@ -233,6 +259,66 @@ export default async function DashboardBoardsPage({
       ),
     };
   });
+
+  // Fleet compliance register rows
+  const fleetRegisterRows = vessels.map((vessel, index) => {
+    const vesselAllTime = allTimeInspections.filter((i) => i.vesselId === vessel.id);
+    const latest = vesselAllTime[0] ?? null;
+    const lastInspectionDate = latest?.inspectionDate ?? null;
+    const inspMeta =
+      latest?.metadata && typeof latest.metadata === "object" && !Array.isArray(latest.metadata)
+        ? (latest.metadata as Record<string, unknown>)
+        : {};
+    const lastInspectionMode = typeof inspMeta.inspectionMode === "string" ? inspMeta.inspectionMode : null;
+    const nextDueDate = lastInspectionDate
+      ? new Date(lastInspectionDate.getTime() + 365 * 24 * 60 * 60 * 1000)
+      : null;
+    const dueInDays = nextDueDate
+      ? Math.ceil((nextDueDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
+      : null;
+    const hasOpenCritical = latest?.findings.some((f) => f.severity === "CRITICAL") ?? false;
+    const hasOpenHigh = latest?.findings.some((f) => f.severity === "HIGH") ?? false;
+    const inspectionCompliance =
+      !lastInspectionDate
+        ? ("NOT_STARTED" as const)
+        : dueInDays! < 0
+          ? ("OVERDUE" as const)
+          : dueInDays! <= 60
+            ? ("DUE_SOON" as const)
+            : ("COMPLIANT" as const);
+    const sailingCompliance = hasOpenCritical
+      ? ("AT_RISK" as const)
+      : hasOpenHigh
+        ? ("CAUTION" as const)
+        : ("COMPLIANT" as const);
+    return {
+      sNo: index + 1,
+      vessel,
+      inspectionHistory: vesselAllTime.length,
+      latest,
+      lastInspectionDate,
+      lastInspectionMode,
+      lastInspectionType: latest?.inspectionType ?? null,
+      nextDueDate,
+      dueInDays,
+      inspectionCompliance,
+      sailingCompliance,
+    };
+  });
+
+  // Compliance rate by inspection type category (using all-time data)
+  const typeCategoryMap = new Map<string, { total: number; compliant: number; overdue: number; dueSoon: number }>();
+  for (const insp of allTimeInspections) {
+    const cat = insp.inspectionType.category;
+    const entry = typeCategoryMap.get(cat) ?? { total: 0, compliant: 0, overdue: 0, dueSoon: 0 };
+    const nextDue = new Date(insp.inspectionDate.getTime() + 365 * 24 * 60 * 60 * 1000);
+    const dueIn = Math.ceil((nextDue.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+    entry.total++;
+    if (dueIn < 0) entry.overdue++;
+    else if (dueIn <= 60) entry.dueSoon++;
+    else entry.compliant++;
+    typeCategoryMap.set(cat, entry);
+  }
 
   const tmsaInspections = inspectionScores.filter(
     (item) => item.inspection.inspectionType.code.includes("TMSA") || item.inspection.inspectionType.name.includes("TMSA")
@@ -285,6 +371,25 @@ export default async function DashboardBoardsPage({
       </section>
 
       <section className="panel panel-elevated">
+        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+          <Link
+            className={`filter-chip${view === "boards" ? " filter-chip-active" : ""}`}
+            href={`/dashboards?board=${board}&range=${range}${requestedVesselId ? `&vesselId=${encodeURIComponent(requestedVesselId)}` : ""}&view=boards`}
+            scroll={false}
+          >
+            Analytics Boards
+          </Link>
+          <Link
+            className={`filter-chip${view === "register" ? " filter-chip-active" : ""}`}
+            href="/dashboards?view=register"
+            scroll={false}
+          >
+            Fleet Compliance Register
+          </Link>
+        </div>
+
+        {view === "boards" ? (
+          <>
         <div className="section-header">
           <div>
             <h3 className="panel-title">Board selector</h3>
@@ -360,8 +465,14 @@ export default async function DashboardBoardsPage({
             Apply
           </button>
         </form>
+          </>
+        ) : (
+          <p className="panel-subtitle">Scope: {visibleScopeLabel}</p>
+        )}
       </section>
 
+      {view === "boards" ? (
+        <>
       <section className="dashboard-grid dashboard-grid-equal">
         <TrendLineChart
           points={buildInspectionTrend(filteredInspections, rangeDaysComputed)}
@@ -744,6 +855,195 @@ export default async function DashboardBoardsPage({
           </table>
         </div>
       </section>
+        </>
+      ) : (
+        <>
+          {/* Fleet Compliance Register */}
+          <section className="panel panel-elevated">
+            <div className="section-header">
+              <div>
+                <h3 className="panel-title">Fleet Compliance Register</h3>
+                <p className="panel-subtitle">Latest inspection status and compliance indicators per vessel. Scope: {visibleScopeLabel}</p>
+              </div>
+            </div>
+            <div className="table-shell table-shell-compact" style={{ overflowX: "auto" }}>
+              <table className="table data-table">
+                <thead>
+                  <tr>
+                    <th>S.No</th>
+                    <th>Vessel Name</th>
+                    <th>IMO Number</th>
+                    <th>Type</th>
+                    <th style={{ textAlign: "center" }}>Inspection History</th>
+                    <th>Last VIR Done Date</th>
+                    <th>Last VIR Inspection Mode</th>
+                    <th>VIR Report Status</th>
+                    <th>Inspection Status</th>
+                    <th>Next Due Date</th>
+                    <th style={{ textAlign: "center" }}>Next VIR Due In (Days)</th>
+                    <th>Inspection Compliance</th>
+                    <th>Sailing Compliance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fleetRegisterRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={13}>No vessel data available in the current scope.</td>
+                    </tr>
+                  ) : (
+                    fleetRegisterRows.map((row) => (
+                      <tr key={row.vessel.id}>
+                        <td>{row.sNo}</td>
+                        <td>
+                          <Link className="table-link" href={`/inspections?vesselId=${row.vessel.id}`}>
+                            {row.vessel.name}
+                          </Link>
+                        </td>
+                        <td>{row.vessel.imoNumber ?? "—"}</td>
+                        <td>{row.vessel.vesselType ?? "—"}</td>
+                        <td style={{ textAlign: "center" }}>
+                          {row.inspectionHistory > 0 ? (
+                            <Link className="table-link" href={`/inspections?vesselId=${row.vessel.id}`}>
+                              {row.inspectionHistory}
+                            </Link>
+                          ) : "0"}
+                        </td>
+                        <td>{row.lastInspectionDate ? fmt.format(row.lastInspectionDate) : "—"}</td>
+                        <td>{row.lastInspectionMode ?? "—"}</td>
+                        <td>
+                          {row.latest?.conditionScore != null
+                            ? `Score: ${row.latest.conditionScore}`
+                            : row.lastInspectionType?.name ?? "—"}
+                        </td>
+                        <td>
+                          {row.latest ? (
+                            <span className={`chip ${toneForInspectionStatus(row.latest.status as VirInspectionStatus)}`}>
+                              {inspectionStatusLabel[row.latest.status as VirInspectionStatus]}
+                            </span>
+                          ) : "—"}
+                        </td>
+                        <td>{row.nextDueDate ? fmt.format(row.nextDueDate) : "—"}</td>
+                        <td style={{ textAlign: "center" }}>
+                          {row.dueInDays !== null ? (
+                            <span className={`chip ${row.dueInDays < 0 ? "chip-danger" : row.dueInDays <= 60 ? "chip-warning" : "chip-success"}`}>
+                              {row.dueInDays < 0 ? `${Math.abs(row.dueInDays)}d overdue` : `${row.dueInDays}d`}
+                            </span>
+                          ) : "—"}
+                        </td>
+                        <td>
+                          <span className={`chip ${
+                            row.inspectionCompliance === "COMPLIANT" ? "chip-success" :
+                            row.inspectionCompliance === "OVERDUE" ? "chip-danger" :
+                            row.inspectionCompliance === "DUE_SOON" ? "chip-warning" :
+                            "chip-muted"
+                          }`}>
+                            {row.inspectionCompliance === "COMPLIANT" ? "Compliant" :
+                             row.inspectionCompliance === "OVERDUE" ? "Overdue" :
+                             row.inspectionCompliance === "DUE_SOON" ? "Due Soon" :
+                             "Not Started"}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`chip ${
+                            row.sailingCompliance === "AT_RISK" ? "chip-danger" :
+                            row.sailingCompliance === "CAUTION" ? "chip-warning" :
+                            "chip-success"
+                          }`}>
+                            {row.sailingCompliance === "AT_RISK" ? "At Risk" :
+                             row.sailingCompliance === "CAUTION" ? "Caution" :
+                             "Compliant"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* Compliance summary metrics */}
+          <section className="erp-metrics-grid">
+            <MetricTile
+              label="Total vessels"
+              note="In scope"
+              value={fleetRegisterRows.length}
+            />
+            <MetricTile
+              label="Compliant"
+              note="Inspection within 365 days"
+              value={fleetRegisterRows.filter((r) => r.inspectionCompliance === "COMPLIANT").length}
+            />
+            <MetricTile
+              label="Due soon"
+              note="Within 60 days"
+              value={fleetRegisterRows.filter((r) => r.inspectionCompliance === "DUE_SOON").length}
+            />
+            <MetricTile
+              label="Overdue"
+              note="Past 365-day threshold"
+              value={fleetRegisterRows.filter((r) => r.inspectionCompliance === "OVERDUE").length}
+            />
+            <MetricTile
+              label="Not started"
+              note="No inspections on record"
+              value={fleetRegisterRows.filter((r) => r.inspectionCompliance === "NOT_STARTED").length}
+            />
+            <MetricTile
+              label="At risk"
+              note="Critical open findings"
+              value={fleetRegisterRows.filter((r) => r.sailingCompliance === "AT_RISK").length}
+            />
+          </section>
+
+          {/* Compliance charts */}
+          <section className="dashboard-grid dashboard-grid-equal">
+            <CompactBarChart
+              bars={[...typeCategoryMap.entries()].map(([cat, data]) => ({
+                label: cat,
+                value: data.total > 0 ? Math.round((data.compliant / data.total) * 100) : 0,
+                note: `${data.compliant} compliant / ${data.overdue} overdue / ${data.dueSoon} due soon`,
+              }))}
+              subtitle="Compliance rate (%) per inspection type category across all recorded inspections."
+              title="Compliance by inspection type"
+            />
+            <DonutChart
+              segments={[
+                { label: "Compliant", value: fleetRegisterRows.filter((r) => r.inspectionCompliance === "COMPLIANT").length, className: "donut-segment-success" },
+                { label: "Due Soon", value: fleetRegisterRows.filter((r) => r.inspectionCompliance === "DUE_SOON").length, className: "donut-segment-warning" },
+                { label: "Overdue", value: fleetRegisterRows.filter((r) => r.inspectionCompliance === "OVERDUE").length, className: "donut-segment-danger" },
+                { label: "Not Started", value: fleetRegisterRows.filter((r) => r.inspectionCompliance === "NOT_STARTED").length, className: "donut-segment-muted" },
+              ]}
+              subtitle="Fleet-wide inspection compliance distribution."
+              title="Fleet compliance overview"
+            />
+          </section>
+
+          {/* Sailing compliance chart */}
+          <section className="dashboard-grid dashboard-grid-equal">
+            <CompactBarChart
+              bars={fleetRegisterRows.slice(0, 12).map((row) => ({
+                label: row.vessel.name,
+                value: row.dueInDays !== null ? Math.max(0, Math.min(100, Math.round((row.dueInDays / 365) * 100))) : 0,
+                note: row.dueInDays !== null
+                  ? (row.dueInDays < 0 ? `${Math.abs(row.dueInDays)}d overdue` : `${row.dueInDays}d until due`)
+                  : "No inspection on record",
+              }))}
+              subtitle="Days remaining until next inspection due, relative to 365-day cycle."
+              title="Vessel inspection runway"
+            />
+            <DonutChart
+              segments={[
+                { label: "Compliant", value: fleetRegisterRows.filter((r) => r.sailingCompliance === "COMPLIANT").length, className: "donut-segment-success" },
+                { label: "Caution", value: fleetRegisterRows.filter((r) => r.sailingCompliance === "CAUTION").length, className: "donut-segment-warning" },
+                { label: "At Risk", value: fleetRegisterRows.filter((r) => r.sailingCompliance === "AT_RISK").length, className: "donut-segment-danger" },
+              ]}
+              subtitle="Sailing compliance based on open critical and high findings."
+              title="Sailing compliance"
+            />
+          </section>
+        </>
+      )}
     </div>
   );
 }
@@ -756,6 +1056,11 @@ function normalizeBoard(value: string | string[] | undefined): BoardKey {
   }
 
   return "tmsa";
+}
+
+function normalizeView(value: string | string[] | undefined): ViewKey {
+  const v = Array.isArray(value) ? value[0] : value;
+  return v === "register" ? "register" : "boards";
 }
 
 function normalizeRange(value: string | undefined): RangeKey {

@@ -9,9 +9,10 @@ import { prisma } from "@/lib/prisma";
 
 export const inspectionStatusLabel: Record<VirInspectionStatus, string> = {
   DRAFT: "Draft",
+  SENT_TO_VESSEL: "Sent to Vessel",
   SUBMITTED: "Submitted",
-  RETURNED: "Returned",
-  SHORE_REVIEWED: "Shore Reviewed",
+  RETURNED: "Returned to Vessel",
+  SHORE_REVIEWED: "Approved",
   CLOSED: "Closed",
   IMPORT_REVIEW: "Import Review",
   ARCHIVED: "Archived",
@@ -47,6 +48,8 @@ export function toneForInspectionStatus(status: VirInspectionStatus) {
       return "chip-success";
     case "SUBMITTED":
     case "IMPORT_REVIEW":
+      return "chip-info";
+    case "SENT_TO_VESSEL":
       return "chip-info";
     case "RETURNED":
       return "chip-danger";

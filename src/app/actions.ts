@@ -558,8 +558,11 @@ export async function upsertVirTemplateAction(formData: FormData) {
   const name = toStringOrNull(formData.get("name"));
   const description = toStringOrNull(formData.get("description"));
   const isActive = isChecked(formData, "isActive");
-  const questionnaireLibraryId = toStringOrNull(formData.get("questionnaireLibraryId"));
   const showCertificatesTab = isChecked(formData, "showCertificatesTab");
+
+  // Multi-select library IDs sent as repeated fields "questionnaireLibraryIds"
+  const libraryIds = formData.getAll("questionnaireLibraryIds").map(String).filter(Boolean);
+  const primaryLibraryId = libraryIds[0] ?? null;
 
   if (!id || !name) {
     throw new Error("Template and template name are required.");
@@ -567,7 +570,6 @@ export async function upsertVirTemplateAction(formData: FormData) {
 
   await assertTemplateEditable(id);
 
-  // Merge showCertificatesTab into existing workflowConfig
   const existing = await prisma.virTemplate.findUnique({ where: { id }, select: { workflowConfig: true } });
   const existingConfig =
     existing?.workflowConfig && typeof existing.workflowConfig === "object" && !Array.isArray(existing.workflowConfig)
@@ -580,8 +582,8 @@ export async function upsertVirTemplateAction(formData: FormData) {
       name,
       description,
       isActive,
-      questionnaireLibraryId: questionnaireLibraryId || null,
-      workflowConfig: { ...existingConfig, showCertificatesTab },
+      questionnaireLibraryId: primaryLibraryId,
+      workflowConfig: { ...existingConfig, showCertificatesTab, questionnaireLibraryIds: libraryIds },
     },
   });
 
@@ -1173,14 +1175,21 @@ export async function updateInspectionStatusAction(inspectionId: string, nextSta
 
     await prisma.virInspection.update({
       where: { id: inspectionId },
-      data: { status: "SUBMITTED" },
+      data: { status: "SUBMITTED", metadata: addNotification(inspection.metadata, "OFFICE", `${session.actorName} submitted inspection for office review.`) },
+    });
+  } else if (nextStatus === "SENT_TO_VESSEL") {
+    ensureOffice(session, "Only office workspaces can send an inspection to vessel.");
+
+    await prisma.virInspection.update({
+      where: { id: inspectionId },
+      data: { status: "SENT_TO_VESSEL", metadata: addNotification(inspection.metadata, "VESSEL", `Office has sent this inspection for vessel completion. Please fill in all required sections and submit.`) },
     });
   } else if (nextStatus === "RETURNED") {
     ensureOffice(session, "Only office workspaces can return an inspection.");
 
     await prisma.virInspection.update({
       where: { id: inspectionId },
-      data: { status: "RETURNED" },
+      data: { status: "RETURNED", metadata: addNotification(inspection.metadata, "VESSEL", `Office has returned this inspection. Please review and resubmit.`) },
     });
   } else if (nextStatus === "SHORE_REVIEWED") {
     ensureOffice(session, "Only office workspaces can mark shore review.");
@@ -1252,6 +1261,47 @@ export async function updateInspectionStatusAction(inspectionId: string, nextSta
   }
 
   revalidateVirPaths(inspectionId);
+}
+
+export async function markNotificationsReadAction(inspectionId: string) {
+  const { session } = await getInspectionAccess(inspectionId);
+  const existing = await prisma.virInspection.findUnique({ where: { id: inspectionId }, select: { metadata: true } });
+  if (!existing) return;
+
+  const meta = existing.metadata && typeof existing.metadata === "object" && !Array.isArray(existing.metadata)
+    ? (existing.metadata as Record<string, unknown>)
+    : {};
+  const notifications = Array.isArray(meta.notifications) ? (meta.notifications as Array<Record<string, unknown>>) : [];
+  const workspace = session.workspace;
+  const updated = notifications.map((n) =>
+    n.for === workspace ? { ...n, read: true } : n
+  );
+
+  await prisma.virInspection.update({ where: { id: inspectionId }, data: { metadata: { ...(meta as Record<string, Prisma.JsonValue>), notifications: updated as unknown as Prisma.JsonValue } } });
+  revalidateVirPaths(inspectionId);
+}
+
+function addNotification(
+  existingMeta: unknown,
+  forWorkspace: "VESSEL" | "OFFICE",
+  message: string
+): Record<string, Prisma.JsonValue> {
+  const meta = existingMeta && typeof existingMeta === "object" && !Array.isArray(existingMeta)
+    ? (existingMeta as Record<string, unknown>)
+    : {};
+  const notifications = Array.isArray(meta.notifications)
+    ? (meta.notifications as Array<Record<string, unknown>>)
+    : [];
+
+  const newNotification = {
+    id: `notif_${Date.now()}`,
+    for: forWorkspace,
+    message,
+    createdAt: new Date().toISOString(),
+    read: false,
+  };
+
+  return { ...(meta as Record<string, Prisma.JsonValue>), notifications: [...notifications, newNotification] as unknown as Prisma.JsonValue };
 }
 
 export async function saveInspectionAnswersAction(inspectionId: string, formData: FormData) {
