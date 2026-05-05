@@ -12,48 +12,16 @@ import {
   requireVirSession,
 } from "@/lib/vir/session";
 import { inspectionStatusLabel, toneForInspectionStatus } from "@/lib/vir/workflow";
+import { DashboardFilterPanel } from "./filter-panel";
+import type { BoardKey, RangeKey, ViewKey } from "./filter-panel";
 
 export const dynamic = "force-dynamic";
 
-type BoardKey = "tmsa" | "class" | "psc-sire";
-type RangeKey = "90" | "180" | "365" | "ytd";
-type ViewKey = "boards" | "register";
-
-const boardOptions: Array<{ key: BoardKey; label: string }> = [
-  { key: "tmsa", label: "TMSA compliance" },
-  { key: "class", label: "Class and statutory" },
-  { key: "psc-sire", label: "PSC and SIRE / vetting" },
-];
-
 const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 
-function toSearchParams({
-  board,
-  scope,
-  vesselId,
-  range,
-}: {
-  board: BoardKey;
-  scope?: string | null;
-  vesselId?: string | null;
-  range?: string | null;
-}) {
-  const params = new URLSearchParams();
-  params.set("board", board);
-
-  if (scope) {
-    params.set("scope", scope);
-  }
-
-  if (vesselId) {
-    params.set("vesselId", vesselId);
-  }
-
-  if (range) {
-    params.set("range", range);
-  }
-
-  return `/dashboards?${params.toString()}`;
+function toParamArray(value: string | string[] | undefined): string[] {
+  if (!value) return [];
+  return Array.isArray(value) ? value.filter(Boolean) : [value].filter(Boolean);
 }
 
 export default async function DashboardBoardsPage({
@@ -66,16 +34,20 @@ export default async function DashboardBoardsPage({
   const params = await searchParams;
   const board = normalizeBoard(params.board);
   const view = normalizeView(params.view);
-  const range = normalizeRange(
-    typeof params.range === "string" ? params.range : workspaceFilter?.range ?? undefined
-  );
   const scope = typeof params.scope === "string" ? params.scope : null;
-  const requestedVesselId =
-    typeof params.vesselId === "string"
-      ? params.vesselId
-      : session.workspace === "OFFICE"
-        ? workspaceFilter?.vesselId ?? null
-        : session.vesselId;
+
+  // Multi-select vessel IDs — new param name "vesselIds"
+  const requestedVesselIds = toParamArray(params.vesselIds);
+  // Fleet multi-select chips
+  const requestedFleets = toParamArray(params.fleets);
+  // Custom date range
+  const rawDateFrom = typeof params.dateFrom === "string" ? params.dateFrom : null;
+  const rawDateTo = typeof params.dateTo === "string" ? params.dateTo : null;
+
+  const range = normalizeRange(
+    rawDateFrom || rawDateTo ? undefined : (typeof params.range === "string" ? params.range : workspaceFilter?.range ?? undefined)
+  );
+
   const defaultScopedCodes = defaultDashboardScopedVesselCodes(session);
   const showExpandedScope = isOfficeSession(session) && scope === "all";
   const enforcedVesselCodes = defaultScopedCodes.length > 0 && !showExpandedScope ? defaultScopedCodes : [];
@@ -84,20 +56,28 @@ export default async function DashboardBoardsPage({
     isActive: true,
     ...(session.workspace === "VESSEL" && session.vesselId ? { id: session.vesselId } : {}),
     ...(enforcedVesselCodes.length > 0 ? { code: { in: enforcedVesselCodes } } : {}),
-    ...(requestedVesselId ? { id: requestedVesselId } : {}),
+    ...(requestedVesselIds.length > 0 ? { id: { in: requestedVesselIds } } : {}),
+    ...(requestedFleets.length > 0 ? { fleet: { in: requestedFleets } } : {}),
   };
 
   const now = new Date();
-  const sinceDate = new Date();
-  if (range === "ytd") {
-    sinceDate.setMonth(0, 1);
-    sinceDate.setHours(0, 0, 0, 0);
+
+  // Date range — custom inputs take priority over presets
+  let sinceDate: Date;
+  let endDate: Date = now;
+  if (rawDateFrom || rawDateTo) {
+    sinceDate = rawDateFrom ? new Date(rawDateFrom) : (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d; })();
+    if (rawDateTo) endDate = new Date(rawDateTo);
   } else {
-    sinceDate.setDate(now.getDate() - Number(range));
+    sinceDate = new Date();
+    if (range === "ytd") {
+      sinceDate.setMonth(0, 1);
+      sinceDate.setHours(0, 0, 0, 0);
+    } else {
+      sinceDate.setDate(now.getDate() - Number(range));
+    }
   }
-  const rangeDaysComputed = range === "ytd"
-    ? Math.ceil((now.getTime() - sinceDate.getTime()) / (24 * 60 * 60 * 1000))
-    : Number(range);
+  const rangeDaysComputed = Math.max(1, Math.ceil((endDate.getTime() - sinceDate.getTime()) / (24 * 60 * 60 * 1000)));
   const dueSoonDate = new Date();
   dueSoonDate.setDate(now.getDate() + 45);
 
@@ -118,7 +98,7 @@ export default async function DashboardBoardsPage({
     prisma.virInspection.findMany({
       where: {
         status: { not: "ARCHIVED" },
-        inspectionDate: { gte: sinceDate },
+        inspectionDate: { gte: sinceDate, ...(endDate < now ? { lte: endDate } : {}) },
         vessel: vesselWhere,
       },
       orderBy: [{ inspectionDate: "desc" }, { createdAt: "desc" }],
@@ -330,14 +310,21 @@ export default async function DashboardBoardsPage({
       item.inspection.inspectionType.category === "VETTING" ||
       ["SIRE", "SIRE_2_0", "RIGHTSHIP", "CID"].includes(item.inspection.inspectionType.code)
   );
+  // Unique fleet names from scoped vessels (for fleet toggle chips)
+  const uniqueFleets = [...new Set(vessels.map((v) => v.fleet).filter((f): f is string => Boolean(f)))].sort();
+
   const visibleScopeLabel =
     session.workspace === "VESSEL"
       ? session.vesselName ?? "Assigned vessel"
       : isTsiSession(session) && !showExpandedScope
         ? session.dashboardScopeLabel ?? "TSI assigned vessels"
-        : requestedVesselId
-          ? vessels.find((vessel) => vessel.id === requestedVesselId)?.name ?? requestedVesselId
-          : "Fleet-wide view";
+        : requestedVesselIds.length === 1
+          ? vessels.find((v) => v.id === requestedVesselIds[0])?.name ?? "Selected vessel"
+          : requestedVesselIds.length > 1
+            ? `${requestedVesselIds.length} vessels selected`
+            : requestedFleets.length > 0
+              ? requestedFleets.join(", ")
+              : "Fleet-wide view";
 
   return (
     <div className="page-stack">
@@ -355,11 +342,11 @@ export default async function DashboardBoardsPage({
           <AnalyticsExportMenu
             items={[
               {
-                href: `/api/reports/dashboard/pdf?kind=analytics&board=${board}&range=${range}${requestedVesselId ? `&vesselId=${encodeURIComponent(requestedVesselId)}` : ""}`,
+                href: `/api/reports/dashboard/pdf?kind=analytics&board=${board}&range=${range}`,
                 label: "Analytics PDF",
               },
               {
-                href: `/api/reports/dashboard/pdf?kind=dashboard&range=${range}${requestedVesselId ? `&vesselId=${encodeURIComponent(requestedVesselId)}` : ""}`,
+                href: `/api/reports/dashboard/pdf?kind=dashboard&range=${range}`,
                 label: "Dashboard PDF",
               },
             ]}
@@ -371,104 +358,21 @@ export default async function DashboardBoardsPage({
       </section>
 
       <section className="panel panel-elevated">
-        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-          <Link
-            className={`filter-chip${view === "boards" ? " filter-chip-active" : ""}`}
-            href={`/dashboards?board=${board}&range=${range}${requestedVesselId ? `&vesselId=${encodeURIComponent(requestedVesselId)}` : ""}&view=boards`}
-            scroll={false}
-          >
-            Analytics Boards
-          </Link>
-          <Link
-            className={`filter-chip${view === "register" ? " filter-chip-active" : ""}`}
-            href="/dashboards?view=register"
-            scroll={false}
-          >
-            Fleet Compliance Register
-          </Link>
-        </div>
-
-        {view === "boards" ? (
-          <>
-        <div className="section-header">
-          <div>
-            <h3 className="panel-title">Board selector</h3>
-            <p className="panel-subtitle">
-              Scope: {visibleScopeLabel}
-              {isTsiSession(session) ? " / TSI defaults to assigned vessels but can widen scope when needed." : ""}
-            </p>
-          </div>
-        </div>
-
-        {/* Period preset chips */}
-        <div style={{ display: "flex", gap: "0.4rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
-          {([
-            { key: "90", label: "3 Months" },
-            { key: "180", label: "6 Months" },
-            { key: "365", label: "1 Year" },
-            { key: "ytd", label: "YTD" },
-          ] as const).map((preset) => (
-            <Link
-              className={`filter-chip${range === preset.key ? " filter-chip-active" : ""}`}
-              href={toSearchParams({ board, scope, vesselId: requestedVesselId, range: preset.key })}
-              key={preset.key}
-              scroll={false}
-            >
-              {preset.label}
-            </Link>
-          ))}
-        </div>
-
-        <form className="inline-form inline-form-wide" method="get" style={{ marginTop: "1rem" }}>
-          <label className="inline-form-label" htmlFor="board">
-            Board
-          </label>
-          <select defaultValue={board} id="board" name="board">
-            {boardOptions.map((option) => (
-              <option key={option.key} value={option.key}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <label className="inline-form-label" htmlFor="range">
-            Period
-          </label>
-          <select defaultValue={range} id="range" name="range">
-            <option value="90">3 months (90 days)</option>
-            <option value="180">6 months (180 days)</option>
-            <option value="365">1 year (365 days)</option>
-            <option value="ytd">Year to date</option>
-          </select>
-          <label className="inline-form-label" htmlFor="vesselId">
-            Vessel
-          </label>
-          <select defaultValue={requestedVesselId ?? ""} id="vesselId" name="vesselId">
-            <option value="">All visible vessels</option>
-            {vessels.map((vessel) => (
-              <option key={vessel.id} value={vessel.id}>
-                {vessel.name}
-              </option>
-            ))}
-          </select>
-          {isTsiSession(session) ? (
-            <>
-              <label className="inline-form-label" htmlFor="scope">
-                Scope
-              </label>
-              <select defaultValue={showExpandedScope ? "all" : "default"} id="scope" name="scope">
-                <option value="default">Assigned scope</option>
-                <option value="all">Expand to fleet</option>
-              </select>
-            </>
-          ) : null}
-          <button className="btn-secondary" type="submit">
-            Apply
-          </button>
-        </form>
-          </>
-        ) : (
-          <p className="panel-subtitle">Scope: {visibleScopeLabel}</p>
-        )}
+        <DashboardFilterPanel
+          vessels={vessels.map((v) => ({ id: v.id, name: v.name, fleet: v.fleet ?? null }))}
+          uniqueFleets={uniqueFleets}
+          isTsi={isTsiSession(session)}
+          isVessel={session.workspace === "VESSEL"}
+          visibleScopeLabel={visibleScopeLabel}
+          initialBoard={board}
+          initialRange={range}
+          initialVesselIds={requestedVesselIds}
+          initialFleets={requestedFleets}
+          initialDateFrom={rawDateFrom ?? ""}
+          initialDateTo={rawDateTo ?? ""}
+          initialScope={scope ?? ""}
+          currentView={view}
+        />
       </section>
 
       {view === "boards" ? (
