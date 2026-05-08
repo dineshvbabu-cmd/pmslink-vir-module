@@ -10,12 +10,13 @@ import { prisma } from "@/lib/prisma";
 
 export const inspectionStatusLabel: Record<VirInspectionStatus, string> = {
   DRAFT: "Draft",
-  PENDING_APPROVAL: "Pending Approval",
+  PENDING_APPROVAL: "Pending 1st Approval",
+  IN_PROGRESS: "In Progress",
   SENT_TO_VESSEL: "Sent to Vessel",
-  SUBMITTED: "Submitted",
-  RETURNED: "Returned to Vessel",
-  SHORE_REVIEWED: "Approved",
+  SUBMITTED: "Submitted by Vessel",
+  SHORE_REVIEWED: "Pending 2nd Approval",
   CLOSED: "Closed",
+  RETURNED: "Returned",
   IMPORT_REVIEW: "Import Review",
   ARCHIVED: "Archived",
 };
@@ -56,17 +57,22 @@ export function toneForInspectionStatus(status: VirInspectionStatus) {
     case "SUBMITTED":
     case "IMPORT_REVIEW":
       return "chip-info";
+    case "IN_PROGRESS":
+      return "chip-info";
     case "SENT_TO_VESSEL":
       return "chip-info";
-    case "RETURNED":
-      return "chip-danger";
+    case "SUBMITTED":
+      return "chip-warning";
     case "PENDING_APPROVAL":
       return "chip-warning";
+    case "SHORE_REVIEWED":
+      return "chip-warning";
+    case "RETURNED":
     case "ARCHIVED":
       return "chip-muted";
     case "DRAFT":
     default:
-      return "chip-warning";
+      return "chip-muted";
   }
 }
 

@@ -167,10 +167,10 @@ export default async function InspectionDetailPage({
     notFound();
   }
 
-  // Questionnaire is only editable after the inspection has been approved and sent to vessel
+  // Office edits when IN_PROGRESS; vessel edits only when SENT_TO_VESSEL
   const canEditInspection =
-    canAccessVessel(session, inspection.vesselId) &&
-    (inspection.status === "SENT_TO_VESSEL" || inspection.status === "RETURNED");
+    (isOfficeSession(session) && inspection.status === "IN_PROGRESS") ||
+    (isVesselSession(session) && inspection.status === "SENT_TO_VESSEL");
 
   const questions = inspection.template?.sections.flatMap((section) => section.questions) ?? [];
   const questionWorkflow =
@@ -360,15 +360,16 @@ export default async function InspectionDetailPage({
               </div>
               <span className="vir-topbar-pct">{progress.completionPct}%</span>
             </div>
-            {/* DRAFT: anyone with access sends for approval */}
-            {canAccessVessel(session, inspection.vesselId) && inspection.status === "DRAFT" ? (
+            {/* ── STEP 1: DRAFT → request 1st-level approval ── */}
+            {isOfficeSession(session) && inspection.status === "DRAFT" ? (
               <form action={updateInspectionStatusAction.bind(null, inspection.id, "PENDING_APPROVAL")}>
                 <SubmitButton className="btn-secondary btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
-                  Send for Approval
+                  Send for 1st Approval
                 </SubmitButton>
               </form>
             ) : null}
-            {/* PENDING_APPROVAL: office approves (→ SENT_TO_VESSEL) or declines (→ DRAFT) */}
+
+            {/* ── STEP 2: PENDING_APPROVAL → Approve (IN_PROGRESS) or Decline (DRAFT) ── */}
             {isOfficeSession(session) && inspection.status === "PENDING_APPROVAL" ? (
               <>
                 <form action={updateInspectionStatusAction.bind(null, inspection.id, "DRAFT")}>
@@ -376,69 +377,73 @@ export default async function InspectionDetailPage({
                     Decline
                   </SubmitButton>
                 </form>
-                <form action={updateInspectionStatusAction.bind(null, inspection.id, "SENT_TO_VESSEL")}>
+                <form action={updateInspectionStatusAction.bind(null, inspection.id, "IN_PROGRESS")}>
                   <SubmitButton className="btn btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
-                    Approve &amp; Send to Vessel
+                    Approve (1st Level)
                   </SubmitButton>
                 </form>
               </>
             ) : null}
-            {/* RETURNED: office re-sends without re-approval */}
-            {isOfficeSession(session) && inspection.status === "RETURNED" ? (
-              <form action={updateInspectionStatusAction.bind(null, inspection.id, "SENT_TO_VESSEL")}>
-                <SubmitButton className="btn-secondary btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
-                  Re-send to Vessel
-                </SubmitButton>
-              </form>
+
+            {/* ── STEP 3: IN_PROGRESS — office can optionally send to vessel or submit for 2nd approval ── */}
+            {isOfficeSession(session) && inspection.status === "IN_PROGRESS" ? (
+              <>
+                <form action={updateInspectionStatusAction.bind(null, inspection.id, "SENT_TO_VESSEL")}>
+                  <SubmitButton className="btn-secondary btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
+                    Send to Vessel
+                  </SubmitButton>
+                </form>
+                <form action={updateInspectionStatusAction.bind(null, inspection.id, "SHORE_REVIEWED")}>
+                  <SubmitButton className="btn btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
+                    Submit for 2nd Approval
+                  </SubmitButton>
+                </form>
+              </>
             ) : null}
+
+            {/* ── STEP 3 (optional): SENT_TO_VESSEL — office can cancel back; vessel submits ── */}
             {isOfficeSession(session) && inspection.status === "SENT_TO_VESSEL" ? (
-              <form action={updateInspectionStatusAction.bind(null, inspection.id, "RETURNED")}>
+              <form action={updateInspectionStatusAction.bind(null, inspection.id, "IN_PROGRESS")}>
                 <SubmitButton className="btn-danger btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
-                  Return to Vessel
+                  Cancel &amp; Return to In Progress
                 </SubmitButton>
               </form>
             ) : null}
-            {isVesselSession(session) && (inspection.status === "SENT_TO_VESSEL" || inspection.status === "RETURNED") ? (
+            {isVesselSession(session) && inspection.status === "SENT_TO_VESSEL" ? (
               <form action={updateInspectionStatusAction.bind(null, inspection.id, "SUBMITTED")}>
                 <SubmitButton className="btn btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
                   Submit to Office
                 </SubmitButton>
               </form>
             ) : null}
-            {isVesselSession(session) && inspection.status === "SHORE_REVIEWED" ? (
-              <form action={addSignOff}>
-                <input name="stage" type="hidden" value="FINAL_ACKNOWLEDGEMENT" />
-                <input name="approved" type="hidden" value="YES" />
-                <input name="comment" type="hidden" value="Acknowledged by vessel." />
+
+            {/* ── STEP 4: SUBMITTED — office accepts vessel work back into In Progress ── */}
+            {isOfficeSession(session) && inspection.status === "SUBMITTED" ? (
+              <form action={updateInspectionStatusAction.bind(null, inspection.id, "IN_PROGRESS")}>
                 <SubmitButton className="btn btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
-                  Acknowledge
+                  Accept &amp; Continue
                 </SubmitButton>
               </form>
             ) : null}
-            {isOfficeSession(session) && inspection.status === "SUBMITTED" ? (
+
+            {/* ── STEP 5: SHORE_REVIEWED (Pending 2nd Approval) — approve & close or return for rework ── */}
+            {isOfficeSession(session) && inspection.status === "SHORE_REVIEWED" ? (
               <>
-                <form action={updateInspectionStatusAction.bind(null, inspection.id, "RETURNED")}>
+                <form action={updateInspectionStatusAction.bind(null, inspection.id, "IN_PROGRESS")}>
                   <SubmitButton className="btn-danger btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
-                    Return
+                    Return for Rework
                   </SubmitButton>
                 </form>
-                <form action={updateInspectionStatusAction.bind(null, inspection.id, "SHORE_REVIEWED")}>
-                  <SubmitButton className="btn-secondary btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
-                    Approve
+                <form action={updateInspectionStatusAction.bind(null, inspection.id, "CLOSED")}>
+                  <SubmitButton
+                    className="btn btn-compact"
+                    confirmMessage="Approve (2nd level) and close this inspection? This cannot be undone."
+                    style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}
+                  >
+                    Approve &amp; Close
                   </SubmitButton>
                 </form>
               </>
-            ) : null}
-            {isOfficeSession(session) && inspection.status === "SHORE_REVIEWED" ? (
-              <form action={updateInspectionStatusAction.bind(null, inspection.id, "CLOSED")}>
-                <SubmitButton
-                  className="btn btn-compact"
-                  confirmMessage="Close Inspection after all reviews and sign-offs are complete. Continue?"
-                  style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}
-                >
-                  Close Inspection
-                </SubmitButton>
-              </form>
             ) : null}
             <Link
               className={`vir-topbar-icon-btn${activePane === "questionnaire" ? " vir-topbar-icon-btn-active" : ""}`}
@@ -987,11 +992,20 @@ export default async function InspectionDetailPage({
 
           {/* RIGHT: Question table */}
           <div className="checklist-main">
-            {!canEditInspection && (inspection.status === "DRAFT" || inspection.status === "PENDING_APPROVAL") ? (
+            {!canEditInspection ? (
               <div style={{ padding: "0.75rem 1rem", background: "var(--color-amber-soft)", borderBottom: "1px solid var(--color-border)", fontSize: "0.82rem", color: "var(--color-amber)", fontWeight: 500 }}>
-                {inspection.status === "DRAFT"
-                  ? <span>{"⏳ This inspection is pending approval. Use "}&#8220;Send for Approval&#8221;{" to notify the office approver before filling in the questionnaire."}</span>
-                  : <span>{"⏳ Awaiting office approval. The questionnaire will be unlocked once the approver clicks "}&#8220;Approve &amp; Send to Vessel&#8221;.</span>}
+                {{
+                  DRAFT: "⏳ Draft — send for 1st-level approval before the questionnaire can be filled.",
+                  PENDING_APPROVAL: "⏳ Awaiting 1st-level approval. The questionnaire unlocks once an office manager approves.",
+                  SENT_TO_VESSEL: isOfficeSession(session) ? "⏳ Sent to vessel — questionnaire is editable by vessel until they submit." : undefined,
+                  SUBMITTED: "⏳ Vessel has submitted. Office: click Accept & Continue to resume editing.",
+                  SHORE_REVIEWED: "⏳ Pending 2nd-level approval. The approver can return for rework or approve and close.",
+                  CLOSED: "✅ This inspection is closed and is read-only.",
+                  IN_PROGRESS: isVesselSession(session) ? "⏳ Office is conducting this inspection. No vessel input required at this stage." : undefined,
+                  RETURNED: undefined,
+                  IMPORT_REVIEW: undefined,
+                  ARCHIVED: "This inspection is archived and read-only.",
+                }[inspection.status] ?? null}
               </div>
             ) : null}
             <div className="checklist-notes-bar">

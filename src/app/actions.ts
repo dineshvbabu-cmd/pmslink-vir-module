@@ -1158,6 +1158,7 @@ export async function updateInspectionStatusAction(inspectionId: string, nextSta
     select: {
       id: true,
       vesselId: true,
+      status: true,
       metadata: true,
       template: {
         select: {
@@ -1207,7 +1208,54 @@ export async function updateInspectionStatusAction(inspectionId: string, nextSta
 
   ensureInspectionAccess(session, inspection.vesselId);
 
-  if (nextStatus === "SUBMITTED") {
+  // ── Step 1: DRAFT → PENDING_APPROVAL (sent for 1st-level manager approval) ──
+  if (nextStatus === "PENDING_APPROVAL") {
+    await prisma.virInspection.update({
+      where: { id: inspectionId },
+      data: { status: "PENDING_APPROVAL", metadata: addNotification(inspection.metadata, "OFFICE", `${session.actorName} has submitted this inspection for 1st-level approval. Please review and approve to begin the inspection.`) },
+    });
+
+  // ── Step 2 / re-entry: → IN_PROGRESS ──
+  // Triggered from PENDING_APPROVAL (1st-level approval), SUBMITTED (accept vessel work), or SHORE_REVIEWED (rework)
+  } else if (nextStatus === "IN_PROGRESS") {
+    ensureOffice(session, "Only office users can approve or progress an inspection.");
+
+    if (inspection.status === "PENDING_APPROVAL") {
+      // 1st-level approval: record sign-off
+      await prisma.virSignOff.create({
+        data: {
+          inspectionId,
+          stage: "SHORE_REVIEW",
+          approved: true,
+          actorName: session.actorName,
+          actorRole: session.actorRole ?? "Manager",
+          comment: "1st-level approval granted. Inspection released to office for execution.",
+        },
+      });
+    }
+
+    const notifyMsg = inspection.status === "SUBMITTED"
+      ? `Office has accepted vessel submission and resumed the inspection.`
+      : inspection.status === "SHORE_REVIEWED"
+      ? `2nd-level approver has returned this inspection for rework.`
+      : `Inspection approved. Office is now conducting the inspection.`;
+
+    await prisma.virInspection.update({
+      where: { id: inspectionId },
+      data: { status: "IN_PROGRESS", metadata: addNotification(inspection.metadata, "OFFICE", notifyMsg) },
+    });
+
+  // ── Step 3 (optional): IN_PROGRESS → SENT_TO_VESSEL (vessel involvement for CARs/findings) ──
+  } else if (nextStatus === "SENT_TO_VESSEL") {
+    ensureOffice(session, "Only office users can send an inspection to the vessel.");
+
+    await prisma.virInspection.update({
+      where: { id: inspectionId },
+      data: { status: "SENT_TO_VESSEL", metadata: addNotification(inspection.metadata, "VESSEL", `Office has sent this inspection to vessel for corrective action or findings input. Please respond and submit.`) },
+    });
+
+  // ── Step 4: SENT_TO_VESSEL → SUBMITTED (vessel submits their responses) ──
+  } else if (nextStatus === "SUBMITTED") {
     const questions = inspection.template?.sections.flatMap((section) => section.questions) ?? [];
     const qwf =
       inspection.metadata && typeof inspection.metadata === "object" && !Array.isArray(inspection.metadata)
@@ -1226,30 +1274,12 @@ export async function updateInspectionStatusAction(inspectionId: string, nextSta
 
     await prisma.virInspection.update({
       where: { id: inspectionId },
-      data: { status: "SUBMITTED", metadata: addNotification(inspection.metadata, "OFFICE", `${session.actorName} submitted inspection for office review.`) },
+      data: { status: "SUBMITTED", metadata: addNotification(inspection.metadata, "OFFICE", `${session.actorName} has submitted vessel responses. Please review and accept to continue.`) },
     });
-  } else if (nextStatus === "PENDING_APPROVAL") {
-    // Any user with vessel access can send for pre-execution approval; notifies OFFICE.
-    await prisma.virInspection.update({
-      where: { id: inspectionId },
-      data: { status: "PENDING_APPROVAL", metadata: addNotification(inspection.metadata, "OFFICE", `${session.actorName} has sent this inspection for approval. Please review and approve to release it to the vessel.`) },
-    });
-  } else if (nextStatus === "SENT_TO_VESSEL") {
-    ensureOffice(session, "Only office workspaces can approve and send an inspection to vessel.");
 
-    await prisma.virInspection.update({
-      where: { id: inspectionId },
-      data: { status: "SENT_TO_VESSEL", metadata: addNotification(inspection.metadata, "VESSEL", `Inspection has been approved and sent to vessel. Please fill in all required sections and submit.`) },
-    });
-  } else if (nextStatus === "RETURNED") {
-    ensureOffice(session, "Only office workspaces can return an inspection.");
-
-    await prisma.virInspection.update({
-      where: { id: inspectionId },
-      data: { status: "RETURNED", metadata: addNotification(inspection.metadata, "VESSEL", `Office has returned this inspection. Please review and resubmit.`) },
-    });
+  // ── Step 5: IN_PROGRESS → SHORE_REVIEWED (sent for 2nd-level approval) ──
   } else if (nextStatus === "SHORE_REVIEWED") {
-    ensureOffice(session, "Only office workspaces can mark shore review.");
+    ensureOffice(session, "Only office users can submit an inspection for final approval.");
 
     await prisma.virInspection.update({
       where: { id: inspectionId },
@@ -1257,63 +1287,43 @@ export async function updateInspectionStatusAction(inspectionId: string, nextSta
         status: "SHORE_REVIEWED",
         shoreReviewedBy: session.actorName,
         shoreReviewDate: new Date(),
+        metadata: addNotification(inspection.metadata, "OFFICE", `${session.actorName} has submitted this inspection for 2nd-level approval.`),
       },
     });
 
+  // ── Step 6: SHORE_REVIEWED → CLOSED (2nd-level approval + close) ──
+  } else if (nextStatus === "CLOSED") {
+    ensureOffice(session, "Only office users can close an inspection.");
+
+    const pendingCorrectiveActions = inspection.findings.flatMap((f) => f.correctiveActions).filter((a) =>
+      ["OPEN", "IN_PROGRESS", "REJECTED"].includes(a.status)
+    );
+    if (pendingCorrectiveActions.length > 0) {
+      throw new Error("All corrective actions must be completed or verified before closing the inspection.");
+    }
+
+    // Record 2nd-level approval sign-off
     await prisma.virSignOff.create({
       data: {
         inspectionId,
-        stage: "SHORE_REVIEW",
+        stage: "FINAL_ACKNOWLEDGEMENT",
         approved: true,
         actorName: session.actorName,
-        actorRole: session.actorRole,
-        comment: "Reviewed and released by office control tower.",
+        actorRole: session.actorRole ?? "Manager",
+        comment: "2nd-level approval granted. Inspection closed.",
       },
     });
-  } else if (nextStatus === "CLOSED") {
-    ensureOffice(session, "Only office workspaces can close a VIR.");
-
-    const hasShoreReview = inspection.signOffs.some((signOff) => signOff.stage === "SHORE_REVIEW" && signOff.approved);
-    const hasFinalAcknowledgement = inspection.signOffs.some(
-      (signOff) => signOff.stage === "FINAL_ACKNOWLEDGEMENT" && signOff.approved
-    );
-
-    // Check whether final acknowledgement is required per template workflow config
-    const wfConfig = inspection.template?.workflowConfig;
-    const finalAckRequired =
-      wfConfig && typeof wfConfig === "object" && !Array.isArray(wfConfig) && Array.isArray((wfConfig as Record<string, unknown>).stages)
-        ? ((wfConfig as { stages: Array<{ stage: string; isRequired?: boolean }> }).stages.find((s) => s.stage === "FINAL_ACKNOWLEDGEMENT")?.isRequired ?? false)
-        : false;
-
-    const pendingCorrectiveActions = inspection.findings.flatMap((finding) => finding.correctiveActions).filter((action) =>
-      ["OPEN", "IN_PROGRESS", "REJECTED"].includes(action.status)
-    );
-
-    if (!hasShoreReview) {
-      throw new Error("Office review sign-off is required before closing the VIR.");
-    }
-
-    if (finalAckRequired && !hasFinalAcknowledgement) {
-      throw new Error("Vessel final acknowledgement is required before closure.");
-    }
-
-    if (pendingCorrectiveActions.length > 0) {
-      throw new Error("All corrective actions must be completed or verified before closure.");
-    }
 
     await prisma.virInspection.update({
       where: { id: inspectionId },
-      data: {
-        status: "CLOSED",
-        closedAt: new Date(),
-      },
+      data: { status: "CLOSED", closedAt: new Date() },
     });
+
   } else {
+    // Fallback for ARCHIVED, IMPORT_REVIEW, etc.
     await prisma.virInspection.update({
       where: { id: inspectionId },
-      data: {
-        status: nextStatus,
-      },
+      data: { status: nextStatus },
     });
   }
 
@@ -1364,8 +1374,14 @@ function addNotification(
 export async function saveInspectionAnswersAction(inspectionId: string, formData: FormData) {
   const { session, inspection } = await getInspectionAccess(inspectionId);
 
-  if (inspection.status === "DRAFT" || inspection.status === "PENDING_APPROVAL") {
-    throw new Error("This inspection has not been approved for editing yet. Send for approval and wait for office approval before filling in the questionnaire.");
+  // Office edits in IN_PROGRESS; vessel edits only in SENT_TO_VESSEL
+  const isOffice = isOfficeSession(session);
+  const isVessel = isVesselSession(session);
+  if (isOffice && inspection.status !== "IN_PROGRESS") {
+    throw new Error("The questionnaire can only be edited while the inspection is In Progress.");
+  }
+  if (isVessel && inspection.status !== "SENT_TO_VESSEL") {
+    throw new Error("Vessel can only fill in the questionnaire when the inspection has been sent to vessel.");
   }
 
   const inspectionTemplate = await prisma.virInspection.findUnique({
