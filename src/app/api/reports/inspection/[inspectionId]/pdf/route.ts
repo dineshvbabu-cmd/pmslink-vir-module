@@ -413,7 +413,12 @@ function buildVariantSections(
 }
 
 function buildInspectionOutcomeLines(inspection: any, sectionRows: SectionRow[]) {
-  const answerCount = inspection.answers.filter((answer: any) => answer.answerText || answer.answerBoolean !== null || answer.answerNumber !== null || answer.selectedOptions.length > 0).length;
+  const answerCount = inspection.answers.filter((answer: any) =>
+    answer.answerText ||
+    answer.answerBoolean !== null ||
+    answer.answerNumber !== null ||
+    (Array.isArray(answer.selectedOptions) && answer.selectedOptions.length > 0)
+  ).length;
   const totalEvidence =
     inspection.photos.length +
     inspection.answers.reduce((sum: number, answer: any) => sum + answer.photos.length, 0) +

@@ -1183,7 +1183,7 @@ export default async function InspectionDetailPage({
                                     {(["YES", "NO", "NA"] as const).map((v) => (
                                       <label key={v} style={{ display: "flex", alignItems: "center", gap: "3px", fontSize: "0.72rem" }}>
                                         <input
-                                          defaultChecked={answer ? answer.answerText === v : question.favourableAnswer === v}
+                                          defaultChecked={(answer?.answerText ?? question.favourableAnswer) === v}
                                           disabled={!canEditInspection}
                                           name={`q:${question.id}`}
                                           type="radio"
@@ -1210,9 +1210,10 @@ export default async function InspectionDetailPage({
                                   <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                                     {question.options.map((o: any) => {
                                       const favValues = question.favourableAnswer?.split(",").map((s: string) => s.trim()) ?? [];
-                                      const isChecked = answer
-                                        ? Array.isArray(answer.selectedOptions) && (answer.selectedOptions as string[]).includes(o.value)
-                                        : favValues.includes(o.value);
+                                      const isChecked =
+                                        Array.isArray(answer?.selectedOptions) && (answer.selectedOptions as string[]).length > 0
+                                          ? (answer.selectedOptions as string[]).includes(o.value)
+                                          : favValues.includes(o.value);
                                       return (
                                         <label key={o.value} style={{ display: "flex", alignItems: "center", gap: "3px", fontSize: "0.72rem" }}>
                                           <input defaultChecked={isChecked} disabled={!canEditInspection} name={`q:${question.id}`} type="checkbox" value={o.value} />
