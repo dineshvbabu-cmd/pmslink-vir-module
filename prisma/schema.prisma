@@ -425,7 +425,7 @@ model VirCorrectiveAction {
 
 model VirPmsDefect {
   id                 String             @id @default(cuid())
-  correctiveActionId String             @unique
+  correctiveActionId String?            @unique
   findingId          String
   inspectionId       String
   defectRef          String
@@ -440,8 +440,8 @@ model VirPmsDefect {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
-  correctiveAction VirCorrectiveAction @relation(fields: [correctiveActionId], references: [id], onDelete: Cascade)
-  finding          VirFinding          @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  correctiveAction VirCorrectiveAction? @relation(fields: [correctiveActionId], references: [id], onDelete: Cascade)
+  finding          VirFinding           @relation(fields: [findingId], references: [id], onDelete: Cascade)
   inspection       VirInspection       @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
 
   @@index([inspectionId])

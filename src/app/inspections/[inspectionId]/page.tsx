@@ -7,6 +7,7 @@ import {
   addFindingAction,
   addInspectionCertificateAction,
   addSignOffAction,
+  approveInspectionFirstLevelAction,
   closePmsDefectAction,
   markNotificationsReadAction,
   removeInspectionCertificateAction,
@@ -148,7 +149,8 @@ export default async function InspectionDetailPage({
               },
             },
           },
-          correctiveActions: { orderBy: { createdAt: "desc" }, include: { pmsDefect: true } },
+          pmsDefects: { orderBy: { createdAt: "desc" } },
+          correctiveActions: { orderBy: { createdAt: "desc" } },
         },
       },
       signOffs: {
@@ -370,20 +372,39 @@ export default async function InspectionDetailPage({
               </form>
             ) : null}
 
-            {/* ── STEP 2: PENDING_APPROVAL → Approve (IN_PROGRESS) or Decline (DRAFT) ── */}
+            {/* ── STEP 2: PENDING_APPROVAL → Approve or Decline with remark ── */}
             {isOfficeSession(session) && inspection.status === "PENDING_APPROVAL" ? (
-              <>
-                <form action={updateInspectionStatusAction.bind(null, inspection.id, "DRAFT")}>
-                  <SubmitButton className="btn-danger btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
+              <form
+                action={approveInspectionFirstLevelAction.bind(null, inspection.id)}
+                style={{ display: "flex", flexDirection: "column", gap: "0.35rem", alignItems: "flex-start" }}
+              >
+                <textarea
+                  name="remark"
+                  placeholder="Approval remark — required for decline, optional for approval…"
+                  rows={2}
+                  style={{ fontSize: "0.74rem", width: "260px", padding: "0.25rem 0.4rem", resize: "vertical" }}
+                />
+                <div style={{ display: "flex", gap: "0.4rem" }}>
+                  <button
+                    className="btn-danger btn-compact"
+                    name="approved"
+                    style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}
+                    type="submit"
+                    value="no"
+                  >
                     Decline
-                  </SubmitButton>
-                </form>
-                <form action={updateInspectionStatusAction.bind(null, inspection.id, "IN_PROGRESS")}>
-                  <SubmitButton className="btn btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
+                  </button>
+                  <button
+                    className="btn btn-compact"
+                    name="approved"
+                    style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}
+                    type="submit"
+                    value="yes"
+                  >
                     Approve (1st Level)
-                  </SubmitButton>
-                </form>
-              </>
+                  </button>
+                </div>
+              </form>
             ) : null}
 
             {/* ── STEP 3: IN_PROGRESS — office can optionally send to vessel or submit for 2nd approval ── */}
@@ -1439,6 +1460,41 @@ export default async function InspectionDetailPage({
                     </div>
                   </div>
 
+                  {/* PMS defect at finding level */}
+                  {(() => {
+                    const defect = (finding as typeof finding & { pmsDefects?: Array<{ id: string; defectRef: string; status: string; closedBy?: string | null; closedAt?: Date | null; remarks?: string | null }> }).pmsDefects?.[0] ?? null;
+                    return defect ? (
+                      <div style={{ margin: "0.5rem 0", padding: "0.5rem 0.75rem", background: defect.status === "CLOSED" ? "var(--color-surface-success, #f0fdf4)" : "var(--color-surface-warn, #fffbeb)", borderRadius: "6px", border: `1px solid ${defect.status === "CLOSED" ? "#6ee7b7" : "#fde68a"}` }}>
+                        <div className="meta-row">
+                          <span style={{ fontFamily: "monospace", fontWeight: 600, fontSize: "0.74rem" }}>{defect.defectRef}</span>
+                          <span className={`chip ${defect.status === "CLOSED" ? "chip-success" : "chip-warning"}`} style={{ fontSize: "0.65rem" }}>
+                            {pmsDefectStatusLabel[defect.status as "OPEN" | "CLOSED"]}
+                          </span>
+                          {defect.status === "CLOSED" && defect.closedBy ? (
+                            <span className="small-text">Closed by {defect.closedBy}</span>
+                          ) : null}
+                        </div>
+                        {defect.remarks ? (
+                          <div className="small-text" style={{ marginTop: "0.2rem", fontStyle: "italic" }}>&#8220;{defect.remarks}&#8221;</div>
+                        ) : null}
+                        {isVesselSession(session) && defect.status === "OPEN" ? (
+                          <form action={closePmsDefectAction.bind(null, inspection.id, defect.id)} style={{ display: "flex", gap: "0.4rem", alignItems: "center", marginTop: "0.4rem" }}>
+                            <input
+                              className="comment-input"
+                              name="remarks"
+                              placeholder="Closure remarks (optional)…"
+                              style={{ flex: 1, fontSize: "0.74rem" }}
+                              type="text"
+                            />
+                            <SubmitButton className="btn btn-compact" style={{ fontSize: "0.74rem", whiteSpace: "nowrap" }}>
+                              Close PMS Defect
+                            </SubmitButton>
+                          </form>
+                        ) : null}
+                      </div>
+                    ) : null;
+                  })()}
+
                   {(() => {
                     const findingPhotos = inspection.photos.filter((p) => p.findingId === finding.id);
                     return findingPhotos.length > 0 ? (
@@ -1470,64 +1526,32 @@ export default async function InspectionDetailPage({
                   })()}
 
                   <div className="stack-list">
-                    {finding.correctiveActions.map((action) => {
-                      const defect = (action as typeof action & { pmsDefect?: { id: string; defectRef: string; status: string; closedBy?: string | null; closedAt?: Date | null } | null }).pmsDefect ?? null;
-                      const defectClosed = !defect || defect.status === "CLOSED";
-                      return (
-                        <div className="question-card" key={action.id}>
-                          <div className="section-header">
-                            <div>
-                              <div style={{ fontWeight: 700 }}>{action.actionText}</div>
-                              <div className="small-text">
-                                {action.ownerName ? `${action.ownerName} / ` : ""}
-                                {action.targetDate ? `Target ${fmt.format(action.targetDate)}` : "No target date"}
-                              </div>
-                              {defect ? (
-                                <div className="meta-row" style={{ marginTop: "0.3rem" }}>
-                                  <span className="small-text" style={{ fontFamily: "monospace", fontWeight: 600 }}>{defect.defectRef}</span>
-                                  <span className={`chip ${defect.status === "CLOSED" ? "chip-success" : "chip-warning"}`} style={{ fontSize: "0.65rem" }}>
-                                    {pmsDefectStatusLabel[defect.status as "OPEN" | "CLOSED"]}
-                                  </span>
-                                  {defect.status === "CLOSED" && defect.closedBy ? (
-                                    <span className="small-text">Closed by {defect.closedBy}</span>
-                                  ) : null}
-                                </div>
-                              ) : null}
+                    {finding.correctiveActions.map((action) => (
+                      <div className="question-card" key={action.id}>
+                        <div className="section-header">
+                          <div>
+                            <div style={{ fontWeight: 700 }}>{action.actionText}</div>
+                            <div className="small-text">
+                              {action.ownerName ? `${action.ownerName} / ` : ""}
+                              {action.targetDate ? `Target ${fmt.format(action.targetDate)}` : "No target date"}
                             </div>
-                            <span className={`chip ${toneForCorrectiveActionStatus(action.status)}`}>
-                              {correctiveActionStatusLabel[action.status]}
-                            </span>
                           </div>
-                          <div className="actions-row">
-                            {isVesselSession(session) ? (
-                              <>
-                                <form action={updateCorrectiveActionStatusAction.bind(null, inspection.id, action.id, "IN_PROGRESS")}>
-                                  <SubmitButton className="btn-secondary">Start</SubmitButton>
-                                </form>
-                                <form action={updateCorrectiveActionStatusAction.bind(null, inspection.id, action.id, "COMPLETED")}>
-                                  <SubmitButton className="btn-secondary">Complete</SubmitButton>
-                                </form>
-                                {defect && defect.status === "OPEN" ? (
-                                  <form action={closePmsDefectAction.bind(null, inspection.id, defect.id, null)}>
-                                    <SubmitButton className="btn">Close PMS Defect</SubmitButton>
-                                  </form>
-                                ) : null}
-                              </>
-                            ) : null}
-                            {isOfficeSession(session) && defectClosed ? (
-                              <form action={updateCorrectiveActionStatusAction.bind(null, inspection.id, action.id, "VERIFIED")}>
-                                <SubmitButton className="btn">Verify</SubmitButton>
-                              </form>
-                            ) : null}
-                            {isOfficeSession(session) && !defectClosed ? (
-                              <span className="small-text" style={{ color: "var(--color-amber)", fontStyle: "italic" }}>
-                                Verify available once vessel closes the PMS defect
-                              </span>
-                            ) : null}
-                          </div>
+                          <span className={`chip ${toneForCorrectiveActionStatus(action.status)}`}>
+                            {correctiveActionStatusLabel[action.status]}
+                          </span>
                         </div>
-                      );
-                    })}
+                        {isVesselSession(session) ? (
+                          <div className="actions-row">
+                            <form action={updateCorrectiveActionStatusAction.bind(null, inspection.id, action.id, "IN_PROGRESS")}>
+                              <SubmitButton className="btn-secondary">Start</SubmitButton>
+                            </form>
+                            <form action={updateCorrectiveActionStatusAction.bind(null, inspection.id, action.id, "COMPLETED")}>
+                              <SubmitButton className="btn-secondary">Complete</SubmitButton>
+                            </form>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
 
                     <form action={addCorrectiveActionAction.bind(null, inspection.id, finding.id)} className="form-grid">
                       <div className="field-wide">

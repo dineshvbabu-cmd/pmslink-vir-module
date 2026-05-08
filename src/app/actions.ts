@@ -1154,6 +1154,50 @@ export async function createInspectionAction(formData: FormData) {
   redirect(`/inspections/${inspection.id}`);
 }
 
+export async function approveInspectionFirstLevelAction(inspectionId: string, formData: FormData) {
+  const session = await requireVirSession();
+  ensureOffice(session, "Only office users can perform 1st-level approval.");
+
+  const approved = formData.get("approved") === "yes";
+  const remark = toStringOrNull(formData.get("remark"));
+
+  const inspection = await prisma.virInspection.findUnique({
+    where: { id: inspectionId },
+    select: { id: true, vesselId: true, status: true, metadata: true },
+  });
+
+  if (!inspection || inspection.status !== "PENDING_APPROVAL") {
+    throw new Error("This inspection is not awaiting 1st-level approval.");
+  }
+
+  ensureInspectionAccess(session, inspection.vesselId);
+
+  await prisma.virSignOff.create({
+    data: {
+      inspectionId,
+      stage: "SHORE_REVIEW",
+      approved,
+      actorName: session.actorName,
+      actorRole: session.actorRole ?? "Manager",
+      comment: remark ?? (approved ? "1st-level approval granted." : "1st-level approval declined."),
+    },
+  });
+
+  const notifyMsg = approved
+    ? `Inspection approved (1st level) by ${session.actorName ?? "office"}.${remark ? ` Remark: "${remark}"` : ""} Execution may now begin.`
+    : `Inspection declined (1st level) by ${session.actorName ?? "office"}.${remark ? ` Reason: "${remark}"` : ""} Please revise and resubmit.`;
+
+  await prisma.virInspection.update({
+    where: { id: inspectionId },
+    data: {
+      status: approved ? "IN_PROGRESS" : "DRAFT",
+      metadata: addNotification(inspection.metadata, "OFFICE", notifyMsg),
+    },
+  });
+
+  revalidateVirPaths(inspectionId);
+}
+
 export async function updateInspectionStatusAction(inspectionId: string, nextStatus: VirInspectionStatus) {
   const session = await requireVirSession();
   const inspection = await prisma.virInspection.findUnique({
@@ -1748,31 +1792,31 @@ export async function addFindingAction(inspectionId: string, formData: FormData)
     },
   });
 
+  // Auto-create one PMS defect per finding so it appears in the vessel's PMS module immediately
+  await prisma.virPmsDefect.create({
+    data: {
+      findingId: finding.id,
+      inspectionId,
+      defectRef: `PMS-${finding.id.slice(-6).toUpperCase()}`,
+      title,
+      description,
+      status: "OPEN",
+      raisedBy: session.actorName,
+    },
+  });
+
   // Create CAR: use explicit form fields if provided, else auto-generate for serious findings
   const shouldCreateCAR = requiresCAR || (findingType !== "POSITIVE" && (findingType === "NON_CONFORMITY" || severity === "HIGH" || severity === "CRITICAL"));
   if (shouldCreateCAR) {
     const autoDueDays = findingType === "NON_CONFORMITY" || severity === "HIGH" || severity === "CRITICAL" ? 14 : 30;
     const targetDate = carTargetDate ?? (() => { const d = new Date(); d.setDate(d.getDate() + autoDueDays); return d; })();
-    const car = await prisma.virCorrectiveAction.create({
+    await prisma.virCorrectiveAction.create({
       data: {
         findingId: finding.id,
         actionText: carActionText ?? `CAR for: ${title}`,
         ownerName: carOwner ?? toStringOrNull(formData.get("ownerName")),
         targetDate,
         status: "OPEN",
-      },
-    });
-    // Auto-create a PMS defect linked to this corrective action
-    await prisma.virPmsDefect.create({
-      data: {
-        correctiveActionId: car.id,
-        findingId: finding.id,
-        inspectionId,
-        defectRef: `PMS-${car.id.slice(-6).toUpperCase()}`,
-        title,
-        description,
-        status: "OPEN",
-        raisedBy: session.actorName,
       },
     });
   }
@@ -1883,27 +1927,13 @@ export async function addCorrectiveActionAction(inspectionId: string, findingId:
   ensureInspectionAccess(session, finding.inspection.vesselId);
 
   const actionText = toStringOrNull(formData.get("actionText")) ?? "Corrective action not described.";
-  const car = await prisma.virCorrectiveAction.create({
+  await prisma.virCorrectiveAction.create({
     data: {
       findingId,
       actionText,
       ownerName: toStringOrNull(formData.get("ownerName")),
       targetDate: toDateOrNull(formData.get("targetDate")),
       status: "OPEN",
-    },
-  });
-
-  // Auto-create PMS defect linked to this corrective action
-  await prisma.virPmsDefect.create({
-    data: {
-      correctiveActionId: car.id,
-      findingId,
-      inspectionId,
-      defectRef: `PMS-${car.id.slice(-6).toUpperCase()}`,
-      title: actionText.slice(0, 100),
-      description: actionText,
-      status: "OPEN",
-      raisedBy: session.actorName,
     },
   });
 
@@ -1963,12 +1993,17 @@ export async function updateCorrectiveActionStatusAction(
   revalidateVirPaths(inspectionId);
 }
 
-export async function closePmsDefectAction(inspectionId: string, defectId: string, remarks: string | null) {
+export async function closePmsDefectAction(inspectionId: string, defectId: string, formData: FormData) {
   const session = await requireVirSession();
+  const remarks = toStringOrNull(formData.get("remarks"));
+
   const defect = await prisma.virPmsDefect.findUnique({
     where: { id: defectId },
     select: {
-      inspection: { select: { id: true, vesselId: true } },
+      findingId: true,
+      title: true,
+      defectRef: true,
+      inspection: { select: { id: true, vesselId: true, metadata: true } },
     },
   });
 
@@ -1978,16 +2013,38 @@ export async function closePmsDefectAction(inspectionId: string, defectId: strin
 
   ensureInspectionAccess(session, defect.inspection.vesselId);
 
+  const now = new Date();
+  const closedBy = session.actorName ?? "Vessel";
+
+  // Close the PMS defect
   await prisma.virPmsDefect.update({
     where: { id: defectId },
-    data: {
-      status: "CLOSED",
-      closedAt: new Date(),
-      closedBy: session.actorName,
-      remarks: remarks ?? null,
-    },
+    data: { status: "CLOSED", closedAt: now, closedBy, remarks },
   });
 
+  // Auto-close the linked finding
+  await prisma.virFinding.update({
+    where: { id: defect.findingId },
+    data: { status: "CLOSED", closedAt: now, closedBy },
+  });
+
+  // Mark all open corrective actions on this finding as COMPLETED
+  await prisma.virCorrectiveAction.updateMany({
+    where: {
+      findingId: defect.findingId,
+      status: { in: ["OPEN", "IN_PROGRESS"] },
+    },
+    data: { status: "COMPLETED", completedAt: now },
+  });
+
+  // Notify office
+  const notifyMsg = `Vessel closed PMS defect ${defect.defectRef} — finding "${defect.title}" and its corrective actions have been automatically closed.${remarks ? ` Vessel remark: "${remarks}"` : ""}`;
+  await prisma.virInspection.update({
+    where: { id: inspectionId },
+    data: { metadata: addNotification(defect.inspection.metadata, "OFFICE", notifyMsg) },
+  });
+
+  await syncInspectionCounters(inspectionId);
   revalidateVirPaths(inspectionId);
 }
 
