@@ -687,7 +687,7 @@ function QuestionEditForm({
     id: string; code: string; prompt: string; responseType: string; isMandatory: boolean;
     allowsPhoto: boolean; isCicCandidate: boolean; cicTopic: string | null; helpText: string | null;
     smsReference: string | null; sireReference: string | null; risqReference: string | null;
-    referenceImageUrl: string | null; answerLibraryTypeId: string | null; sortOrder: number;
+    referenceImageUrl: string | null; favourableAnswer: string | null; answerLibraryTypeId: string | null; sortOrder: number;
     options: Array<{ value: string; label: string; score: number | null }>;
   };
   sectionId: string;
@@ -727,6 +727,21 @@ function QuestionEditForm({
         <label>SMS Reference<input defaultValue={question.smsReference ?? ""} name="smsReference" placeholder="e.g. SMS Chapter 8.3.1" type="text" /></label>
         <label>SIRE VIQ Reference<input defaultValue={question.sireReference ?? ""} name="sireReference" placeholder="e.g. 5.10.2" type="text" /></label>
         <label>RISQ Reference<input defaultValue={question.risqReference ?? ""} name="risqReference" placeholder="e.g. 4.35, 4.36" type="text" /></label>
+        <label>
+          Favourable answer
+          <input
+            defaultValue={question.favourableAnswer ?? ""}
+            name="favourableAnswer"
+            placeholder={
+              question.responseType === "YES_NO_NA" ? "YES / NO / NA" :
+              question.responseType === "SCORE" ? "1–5" :
+              question.responseType === "SINGLE_SELECT" ? "option value" :
+              question.responseType === "MULTI_SELECT" ? "value1, value2" :
+              "pre-fill value"
+            }
+            type="text"
+          />
+        </label>
         <label>CIR topic<input defaultValue={question.cicTopic ?? ""} name="cicTopic" type="text" /></label>
         <label className="register-form-span">Reference image URL<input defaultValue={question.referenceImageUrl ?? ""} name="referenceImageUrl" type="text" /></label>
         <label className="register-form-span">

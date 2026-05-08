@@ -242,6 +242,7 @@ model VirTemplateQuestion {
   sireReference         String?                 @db.Text
   risqReference         String?                 @db.Text
   referenceImageUrl     String?
+  favourableAnswer      String?                 @db.Text
   answerLibraryTypeId   String?
   sortOrder             Int
   createdAt             DateTime                @default(now())

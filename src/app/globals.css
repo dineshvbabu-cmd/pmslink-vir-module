@@ -3967,6 +3967,35 @@ textarea {
   flex-shrink: 0;
 }
 
+/* ── Score hint badges ─────────────────────────────────────── */
+.score-hint-badge {
+  display: block;
+  font-size: 0.6rem;
+  font-weight: 600;
+  border-radius: 3px;
+  padding: 1px 4px;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+.score-hint-warn {
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffe08a;
+}
+.score-hint-bp {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+}
+.score-comment-required {
+  border-color: #f59e0b !important;
+  background: #fffbeb !important;
+}
+.score-best-practice {
+  border-color: #10b981 !important;
+  background: #f0fdf4 !important;
+}
+
 /* ── Finding details panel ─────────────────────────────────── */
 .finding-panel-overlay {
   position: fixed;

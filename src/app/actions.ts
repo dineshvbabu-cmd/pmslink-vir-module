@@ -737,6 +737,7 @@ export async function upsertVirTemplateQuestionAction(formData: FormData) {
   const risqReference = toStringOrNull(formData.get("risqReference"));
   const cicTopic = toStringOrNull(formData.get("cicTopic"));
   const referenceImageUrl = toStringOrNull(formData.get("referenceImageUrl"));
+  const favourableAnswer = toStringOrNull(formData.get("favourableAnswer"));
   const responseType = parseVirResponseType(formData.get("responseType"));
   const riskLevel = parseVirRiskLevel(formData.get("riskLevel"));
   const isMandatory = isChecked(formData, "isMandatory");
@@ -806,6 +807,7 @@ export async function upsertVirTemplateQuestionAction(formData: FormData) {
         sireReference,
         risqReference,
         referenceImageUrl,
+        favourableAnswer,
         answerLibraryTypeId: answerLibraryTypeId || null,
         sortOrder,
       },
@@ -844,6 +846,7 @@ export async function upsertVirTemplateQuestionAction(formData: FormData) {
         sireReference,
         risqReference,
         referenceImageUrl,
+        favourableAnswer,
         answerLibraryTypeId: answerLibraryTypeId || null,
         sortOrder,
         options: {
@@ -1437,6 +1440,8 @@ export async function saveInspectionAnswersAction(inspectionId: string, formData
       })
   );
 
+  const lowScoreMissingComment: string[] = [];
+
   for (const section of (hasTemplate ? inspectionTemplate!.template!.sections : [])) {
     for (const question of section.questions) {
       const fieldName = `q:${question.id}`;
@@ -1453,6 +1458,10 @@ export async function saveInspectionAnswersAction(inspectionId: string, formData
       const normalizedSurveyStatus =
         surveyStatus && ["T", "I", "NS", "NA"].includes(surveyStatus.toUpperCase()) ? surveyStatus.toUpperCase() : null;
       const normalizedScore = typeof manualScore === "number" && Number.isFinite(manualScore) ? manualScore : null;
+
+      if ((normalizedScore === 1 || normalizedScore === 2) && !comment) {
+        lowScoreMissingComment.push(question.id);
+      }
 
       const hasValue =
         payload.answerText !== null ||
@@ -1493,6 +1502,12 @@ export async function saveInspectionAnswersAction(inspectionId: string, formData
         },
       });
     }
+  }
+
+  if (lowScoreMissingComment.length > 0) {
+    throw new Error(
+      `A comment is required for questions scored 1 (Unsatisfactory) or 2 (Fair). ${lowScoreMissingComment.length} question(s) are missing a comment.`
+    );
   }
 
   // Also persist T/I/NS/NA + score + comment for live checklist questions not bound to a DB template question

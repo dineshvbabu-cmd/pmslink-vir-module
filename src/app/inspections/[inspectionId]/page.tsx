@@ -19,6 +19,7 @@ import {
 import { ActionIconLink } from "@/components/action-icon-link";
 import { EvidenceSyncPanel } from "@/components/evidence-sync-panel";
 import { GuidancePanel } from "@/components/guidance-panel";
+import { ScoreHintObserver } from "@/components/score-hint-observer";
 import { FloatingActivityFeed } from "@/components/floating-activity-feed";
 import { LiveSectionProgress } from "@/components/live-section-progress";
 import { QuestionEvidenceInline } from "@/components/question-evidence-inline";
@@ -1025,6 +1026,7 @@ export default async function InspectionDetailPage({
               </div>
             ) : null}
 
+            <ScoreHintObserver />
             <form action={saveAnswers} id="questionnaire-form" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
               <input type="hidden" name="returnTo" value={`/inspections/${inspection.id}?pane=questionnaire${selectedSectionId ? `&section=${selectedSectionId}` : ""}`} />
               <div className="checklist-table-scroll">
@@ -1067,7 +1069,7 @@ export default async function InspectionDetailPage({
                               : bindingQuestion?.helpText ?? null;
 
                             const liveWorkflow = questionWorkflow[questionKey];
-                            const effectiveSurveyStatus = surveyStatus ?? liveWorkflow?.surveyStatus ?? null;
+                            const effectiveSurveyStatus = surveyStatus ?? liveWorkflow?.surveyStatus ?? bindingQuestion?.favourableAnswer ?? null;
                             const effectiveScore = manualScore ?? liveWorkflow?.score ?? null;
 
                             return (
@@ -1190,19 +1192,25 @@ export default async function InspectionDetailPage({
                                   <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                                     {(["YES", "NO", "NA"] as const).map((v) => (
                                       <label key={v} style={{ display: "flex", alignItems: "center", gap: "3px", fontSize: "0.72rem" }}>
-                                        <input defaultChecked={answer?.answerText === v} disabled={!canEditInspection} name={`q:${question.id}`} type="radio" value={v} />
+                                        <input
+                                          defaultChecked={answer ? answer.answerText === v : question.favourableAnswer === v}
+                                          disabled={!canEditInspection}
+                                          name={`q:${question.id}`}
+                                          type="radio"
+                                          value={v}
+                                        />
                                         {v}
                                       </label>
                                     ))}
                                   </div>
                                 ) : question.responseType === "TEXT" ? (
-                                  <input className="comment-input" defaultValue={answer?.answerText ?? ""} disabled={!canEditInspection} name={`q:${question.id}`} placeholder="Enter text" style={{ width: "100%" }} type="text" />
+                                  <input className="comment-input" defaultValue={answer?.answerText ?? question.favourableAnswer ?? ""} disabled={!canEditInspection} name={`q:${question.id}`} placeholder="Enter text" style={{ width: "100%" }} type="text" />
                                 ) : question.responseType === "NUMBER" || question.responseType === "SCORE" ? (
-                                  <input defaultValue={answer?.answerNumber !== null && answer?.answerNumber !== undefined ? String(answer.answerNumber) : ""} disabled={!canEditInspection} name={`q:${question.id}`} style={{ width: "70px" }} type="number" />
+                                  <input defaultValue={answer?.answerNumber !== null && answer?.answerNumber !== undefined ? String(answer.answerNumber) : (question.favourableAnswer ?? "")} disabled={!canEditInspection} name={`q:${question.id}`} style={{ width: "70px" }} type="number" />
                                 ) : question.responseType === "DATE" ? (
-                                  <input defaultValue={answer?.answerDate instanceof Date ? answer.answerDate.toISOString().slice(0, 10) : ""} disabled={!canEditInspection} name={`q:${question.id}`} type="date" />
+                                  <input defaultValue={answer?.answerDate instanceof Date ? answer.answerDate.toISOString().slice(0, 10) : (question.favourableAnswer ?? "")} disabled={!canEditInspection} name={`q:${question.id}`} type="date" />
                                 ) : question.responseType === "SINGLE_SELECT" ? (
-                                  <select className="score-select" defaultValue={answer?.answerText ?? ""} disabled={!canEditInspection} name={`q:${question.id}`} style={{ minWidth: "90px" }}>
+                                  <select className="score-select" defaultValue={answer?.answerText ?? question.favourableAnswer ?? ""} disabled={!canEditInspection} name={`q:${question.id}`} style={{ minWidth: "90px" }}>
                                     <option value="">—</option>
                                     {question.options.map((o: any) => (
                                       <option key={o.value} value={o.value}>{o.label}</option>
@@ -1211,8 +1219,10 @@ export default async function InspectionDetailPage({
                                 ) : question.responseType === "MULTI_SELECT" ? (
                                   <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                                     {question.options.map((o: any) => {
-                                      const selected = answer?.selectedOptions;
-                                      const isChecked = Array.isArray(selected) && (selected as string[]).includes(o.value);
+                                      const favValues = question.favourableAnswer?.split(",").map((s: string) => s.trim()) ?? [];
+                                      const isChecked = answer
+                                        ? Array.isArray(answer.selectedOptions) && (answer.selectedOptions as string[]).includes(o.value)
+                                        : favValues.includes(o.value);
                                       return (
                                         <label key={o.value} style={{ display: "flex", alignItems: "center", gap: "3px", fontSize: "0.72rem" }}>
                                           <input defaultChecked={isChecked} disabled={!canEditInspection} name={`q:${question.id}`} type="checkbox" value={o.value} />
