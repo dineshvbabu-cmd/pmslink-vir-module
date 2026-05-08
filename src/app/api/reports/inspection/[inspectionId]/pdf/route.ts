@@ -127,6 +127,39 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ins
       };
     }) ?? [];
 
+  type QwfEntry = { surveyStatus?: string | null; score?: number | null; comment?: string | null };
+  const qwf: Record<string, QwfEntry | undefined> =
+    inspection.metadata && typeof inspection.metadata === "object" && !Array.isArray(inspection.metadata)
+      ? ((inspection.metadata as Record<string, unknown>).questionWorkflow as Record<string, QwfEntry | undefined> | undefined) ?? {}
+      : {};
+  const answerMap = new Map<string, any>(
+    inspection.answers.map((answer: any) => [
+      answer.questionId,
+      {
+        ...answer,
+        surveyStatus: qwf[answer.questionId]?.surveyStatus ?? null,
+        score: qwf[answer.questionId]?.score ?? null,
+        comment: answer.comment ?? qwf[answer.questionId]?.comment ?? null,
+      },
+    ])
+  );
+  for (const [questionId, wf] of Object.entries(qwf)) {
+    if (!answerMap.has(questionId) && wf && (wf.surveyStatus || typeof wf.score === "number")) {
+      answerMap.set(questionId, {
+        questionId,
+        answerText: null,
+        answerNumber: null,
+        answerBoolean: null,
+        answerDate: null,
+        selectedOptions: null,
+        comment: wf.comment ?? null,
+        surveyStatus: wf.surveyStatus ?? null,
+        score: wf.score ?? null,
+        photos: [],
+      });
+    }
+  }
+
   const reportPhotos = collectReportPhotos(inspection);
   const selectedPhotos =
     imageMode === "selected" ? reportPhotos.filter((photo) => selectedImageIds.has(photo.id)) : reportPhotos;
@@ -140,7 +173,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ins
       `${fmt.format(inspection.inspectionDate)} / ${inspection.port ?? "Port not recorded"} / ${inspection.country ?? "Country not recorded"}`,
       `Image annex mode: ${imageMode === "selected" ? "Selected images" : "All images"}`,
     ],
-    sections: buildVariantSections(inspection, sectionRows, effectivePhotos, variant),
+    sections: buildVariantSections(inspection, sectionRows, effectivePhotos, variant, answerMap),
   });
 
   return new NextResponse(pdf, {
@@ -172,11 +205,21 @@ function variantLabel(variant: ReportVariant) {
   }
 }
 
+function resolveAnswerText(answer: any): string {
+  if (!answer) return "Not recorded";
+  if (Array.isArray(answer.selectedOptions) && answer.selectedOptions.length > 0) return answer.selectedOptions.join(", ");
+  if (answer.answerBoolean !== null && answer.answerBoolean !== undefined) return answer.answerBoolean ? "Yes" : "No";
+  if (answer.answerNumber !== null && answer.answerNumber !== undefined) return String(answer.answerNumber);
+  if (answer.answerDate) return fmt.format(new Date(answer.answerDate));
+  return answer.answerText ?? "Not recorded";
+}
+
 function buildVariantSections(
   inspection: any,
   sectionRows: SectionRow[],
   photos: ReportPhoto[],
-  variant: ReportVariant
+  variant: ReportVariant,
+  answerMap: Map<string, any>
 ) {
   const baseSections = [
     {
@@ -318,13 +361,34 @@ function buildVariantSections(
     },
     {
       title: "Detailed section report",
-      lines: sectionRows.length
-          ? sectionRows.flatMap((section: SectionRow, index: number) => [
-            `${index + 1}. ${section.title}`,
-            `Answered ${section.answeredCount}/${section.questionCount} / mandatory ${section.mandatoryCount} / findings ${section.findingCount} / evidence ${section.evidenceCount} / concentrated ${section.concentratedCount}`,
-            " ",
-          ])
-        : ["No section summary is available."],
+      lines: inspection.template?.sections?.length
+        ? (inspection.template.sections as any[]).flatMap((section: any, sIndex: number) => {
+            const sectionFindings = (inspection.findings as any[]).filter(
+              (f) => f.question?.section?.title === section.title
+            );
+            const lines: string[] = [
+              `${sIndex + 1}. ${section.title}`,
+              `Questions: ${section.questions.length} / Findings: ${sectionFindings.length}`,
+              " ",
+            ];
+            (section.questions as any[]).forEach((question: any, qIndex: number) => {
+              const answer = answerMap.get(question.id);
+              const surveyStatus = answer?.surveyStatus ?? "";
+              const score = answer?.score != null ? String(answer.score) : "";
+              const comment = answer?.comment || resolveAnswerText(answer);
+              const qFindings = (inspection.findings as any[]).filter((f) => f.questionId === question.id);
+              lines.push(
+                `${sIndex + 1}.${qIndex + 1} [${question.code}] ${question.prompt}`,
+                `  Status: ${surveyStatus || "—"} / Score: ${score || "—"} / Response: ${comment}`,
+                ...qFindings.map(
+                  (f) => `  Finding: ${f.title} | ${f.findingType} | ${f.severity} | ${f.status}`
+                ),
+                " "
+              );
+            });
+            return lines;
+          })
+        : ["No section data is available."],
     },
     {
       title: "Detailed finding register",

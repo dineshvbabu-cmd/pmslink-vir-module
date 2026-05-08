@@ -173,6 +173,11 @@ export default async function InspectionReportPage({
   }
 
   const inspectionMode = inferInspectionMode(inspection.title, inspection.inspectionType.name);
+  type QwfEntry = { surveyStatus?: string | null; score?: number | null; comment?: string | null };
+  const qwf: Record<string, QwfEntry | undefined> =
+    inspection.metadata && typeof inspection.metadata === "object" && !Array.isArray(inspection.metadata)
+      ? ((inspection.metadata as Record<string, unknown>).questionWorkflow as Record<string, QwfEntry | undefined> | undefined) ?? {}
+      : {};
   const vesselProfile = buildVesselProfile(inspection.vessel);
   const liveChecklist = buildLiveChecklist(inspection);
   const heroPhoto = inspection.photos[0]
@@ -235,7 +240,41 @@ export default async function InspectionReportPage({
   const vesselCondition = liveChecklist
     ? buildLiveVesselCondition(liveChecklist)
     : calculateVesselCondition(questions as any[], inspection.answers);
-  const answerMap = new Map(inspection.answers.map((answer) => [answer.questionId, answer]));
+  const enrichedAnswerMap = new Map<string, any>(
+    inspection.answers.map((answer) => [
+      answer.questionId,
+      {
+        ...answer,
+        surveyStatus: qwf[answer.questionId]?.surveyStatus ?? null,
+        score: qwf[answer.questionId]?.score ?? null,
+        comment: answer.comment ?? qwf[answer.questionId]?.comment ?? null,
+      },
+    ])
+  );
+  for (const [questionId, wf] of Object.entries(qwf)) {
+    if (!enrichedAnswerMap.has(questionId) && wf && (wf.surveyStatus || typeof wf.score === "number")) {
+      enrichedAnswerMap.set(questionId, {
+        id: `wf-${questionId}`,
+        inspectionId: inspection.id,
+        questionId,
+        answerText: null,
+        answerNumber: null,
+        answerBoolean: null,
+        answerDate: null,
+        selectedOptions: null,
+        comment: wf.comment ?? null,
+        answeredBy: null,
+        answeredAt: null,
+        evidenceCount: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        surveyStatus: wf.surveyStatus ?? null,
+        score: wf.score ?? null,
+        photos: [],
+      });
+    }
+  }
+  const answerMap = enrichedAnswerMap;
   const sectionRows = liveChecklist
     ? buildLiveSectionRows(liveChecklist, inspectionMode)
     : inspection.template?.sections.map((section) => {
@@ -252,7 +291,13 @@ export default async function InspectionReportPage({
           findings: sectionFindings,
           evidenceCount: sectionEvidence,
           findingImageCount: sectionFindingImageCount,
-          answeredCount: sectionAnswers.filter((answer) => hasRecordedAnswer(answer)).length,
+          answeredCount:
+            sectionAnswers.filter((answer) => hasRecordedAnswer(answer)).length +
+            section.questions.filter(
+              (q) =>
+                !sectionAnswers.some((a) => a.questionId === q.id) &&
+                Boolean(qwf[q.id]?.surveyStatus || typeof qwf[q.id]?.score === "number")
+            ).length,
           condition: sectionCondition,
           rating: sectionRating,
           subsections: [],
@@ -564,12 +609,14 @@ export default async function InspectionReportPage({
           </section>
 
           <section className="panel panel-elevated">
-            <div className="report-image-toolbar">
-              <div>
-                <h3 className="panel-title">Detailed report composition</h3>
-                <p className="panel-subtitle">
-                  Select the evidence images that should appear in the detailed annex and its PDF export.
-                </p>
+            <div>
+              <div className="section-header" style={{ marginBottom: "1rem" }}>
+                <div>
+                  <h3 className="panel-title">Detailed report composition</h3>
+                  <p className="panel-subtitle">
+                    Select the evidence images that should appear in the detailed annex and its PDF export.
+                  </p>
+                </div>
               </div>
               <div className="report-image-selector">
                 <form className="report-image-selector-form" method="get">
@@ -1488,13 +1535,17 @@ function hasRecordedAnswer(answer: {
   answerBoolean: boolean | null;
   answerDate: Date | null;
   selectedOptions: unknown;
+  surveyStatus?: string | null;
+  score?: number | null;
 }) {
   return Boolean(
     answer.answerText ||
       answer.answerNumber !== null ||
       answer.answerBoolean !== null ||
       answer.answerDate ||
-      (Array.isArray(answer.selectedOptions) && answer.selectedOptions.length > 0)
+      (Array.isArray(answer.selectedOptions) && answer.selectedOptions.length > 0) ||
+      answer.surveyStatus ||
+      (typeof answer.score === "number" && answer.score !== null)
   );
 }
 
@@ -2197,6 +2248,13 @@ function SectionSummaryBoard({ section }: { section: any }) {
 }
 
 function describeQuestionOutcome(question: any, answer: any) {
+  if (answer?.surveyStatus) {
+    const s = String(answer.surveyStatus).toUpperCase().replace(/[^A-Z]/g, "");
+    if (s === "T" || s === "TESTED") return "tested" as const;
+    if (s === "I" || s === "INSPECTED") return "inspected" as const;
+    if (s === "NS" || s === "NOTSIGHTED") return "notSighted" as const;
+    if (s === "NA" || s === "NOTAPPLICABLE") return "notApplicable" as const;
+  }
   if (!answer || !hasRecordedAnswer(answer)) {
     return "notSighted" as const;
   }
@@ -2220,6 +2278,9 @@ function describeQuestionOutcome(question: any, answer: any) {
 function deriveQuestionScore(question: any, answer: any) {
   if (!answer || !hasRecordedAnswer(answer)) {
     return null;
+  }
+  if (typeof answer.score === "number" && answer.score !== null) {
+    return answer.score;
   }
   if (typeof answer.answerNumber === "number") {
     return answer.answerNumber;

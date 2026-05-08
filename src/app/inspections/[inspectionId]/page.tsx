@@ -867,50 +867,11 @@ export default async function InspectionDetailPage({
               ) : null}
             </form>
 
-            {/* ── Sign-off trail (inline in details pane) ── */}
-            <div className="vir-report-section" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "1.25rem", marginTop: "0.5rem" }}>
-              <div className="vir-report-section-title">Sign-off trail</div>
-
-              <div className="signoff-stage-grid" style={{ marginBottom: "1rem" }}>
-                {buildSignoffStages(inspection.signOffs, inspection.template?.workflowConfig ?? null).map((stage) => (
-                  <div className="list-card signoff-stage-card" key={stage.key}>
-                    <div className="meta-row">
-                      <span className={`chip ${stage.approved ? "chip-success" : stage.present ? "chip-warning" : "chip-muted"}`}>
-                        {stage.approved ? "Approved" : stage.present ? "Captured" : "Pending"}
-                      </span>
-                      <span className="chip chip-info">{stage.label}</span>
-                    </div>
-                    <div className="list-card-title">{stage.actor ?? "Awaiting action"}</div>
-                    <div className="small-text">{stage.comment ?? "No note recorded yet."}</div>
-                    <div className="small-text">{stage.timeLabel ?? "No timestamp yet."}</div>
-                  </div>
-                ))}
-              </div>
-
-              {inspection.status !== "CLOSED" ? (
-                <form action={addSignOff} className="form-grid" style={{ marginBottom: "1rem" }}>
-                  <input name="stage" type="hidden" value={isOfficeSession(session) ? "SHORE_REVIEW" : "FINAL_ACKNOWLEDGEMENT"} />
-                  <div className="field">
-                    <label htmlFor="so-approved">Decision</label>
-                    <select id="so-approved" name="approved">
-                      <option value="YES">Approved</option>
-                      <option value="NO">Rejected / returned</option>
-                    </select>
-                  </div>
-                  <div className="field-wide">
-                    <label htmlFor="so-comment">Comment</label>
-                    <textarea id="so-comment" name="comment" placeholder={isOfficeSession(session) ? "Shore review note." : "Final vessel acknowledgement."} rows={3} />
-                  </div>
-                  <div className="field-wide">
-                    <SubmitButton className="btn-secondary">
-                      {isOfficeSession(session) ? "Record office sign-off" : "Record vessel acknowledgement"}
-                    </SubmitButton>
-                  </div>
-                </form>
-              ) : null}
-
-              {inspection.signOffs.length > 0 ? (
-                <div className="stack-list">
+            {/* ── Sign-off trail (read-only; editable via workflow buttons) ── */}
+            {inspection.signOffs.length > 0 ? (
+              <div className="vir-report-section" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "1rem", marginTop: "0.5rem" }}>
+                <div className="vir-report-section-title">Sign-off trail</div>
+                <div className="stack-list" style={{ marginTop: "0.5rem" }}>
                   {inspection.signOffs.map((signOff) => (
                     <div className="list-card" key={signOff.id}>
                       <div className="meta-row">
@@ -919,14 +880,14 @@ export default async function InspectionDetailPage({
                         </span>
                         <span className="chip chip-info">{signOffStageLabels[signOff.stage] ?? signOff.stage.replaceAll("_", " ")}</span>
                       </div>
-                      <div className="list-card-title">{signOff.actorName ?? "Unnamed actor"}</div>
+                      <div className="list-card-title">{signOff.actorName ?? "—"}</div>
                       {signOff.comment ? <p className="small-text">{signOff.comment}</p> : null}
                       <div className="small-text">{fmt.format(signOff.signedAt)}</div>
                     </div>
                   ))}
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
