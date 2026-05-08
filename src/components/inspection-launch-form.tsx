@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { Paperclip, X } from "lucide-react";
 import {
   alongsideByOptions,
   inspectionAuthorityOptions,
@@ -10,6 +11,17 @@ import {
   reviewTargetOptions,
 } from "@/lib/vir/launch-options";
 import { SubmitButton } from "@/components/submit-button";
+
+const INSPECTOR_CERT_TYPES = [
+  "Certificate of Competency (CoC)",
+  "ISM / ISPS Auditor Certificate",
+  "TMSA Lead Auditor Certificate",
+  "STCW Training Certificate",
+  "Vetting Inspector Authorisation",
+  "Class Society Authorisation",
+  "MLC Auditor Certificate",
+  "Other",
+] as const;
 
 type VesselOption = {
   id: string;
@@ -51,15 +63,33 @@ export function InspectionLaunchForm({
 }) {
   const [selectedInspectionTypeId, setSelectedInspectionTypeId] = useState(inspectionTypes[0]?.id ?? "");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [selectedAuthority, setSelectedAuthority] = useState("");
+  const [certFiles, setCertFiles] = useState<File[]>([]);
+  const certInputRef = useRef<HTMLInputElement>(null);
 
   const visibleTemplates = useMemo(
     () => templates.filter((template) => template.inspectionTypeId === selectedInspectionTypeId),
     [selectedInspectionTypeId, templates]
   );
 
+  function handleCertFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? []);
+    setCertFiles((prev) => {
+      const names = new Set(prev.map((f) => f.name));
+      return [...prev, ...picked.filter((f) => !names.has(f.name))];
+    });
+    if (certInputRef.current) certInputRef.current.value = "";
+  }
+
+  function removeCertFile(name: string) {
+    setCertFiles((prev) => prev.filter((f) => f.name !== name));
+  }
+
   return (
     <form action={action} className="inspection-launch-shell">
-      <input name="inspectorName" type="hidden" value={sessionActorName} />
+      {/* inspectorName submitted from the visible field below when authority is chosen;
+          fallback hidden keeps it populated if authority is skipped */}
+      {!selectedAuthority && <input name="inspectorName" type="hidden" value={sessionActorName} />}
 
       {!isOffice && defaultVesselId ? <input name="vesselId" type="hidden" value={defaultVesselId} /> : null}
 
@@ -214,7 +244,13 @@ export function InspectionLaunchForm({
 
           <div className="field">
             <label htmlFor="inspectionAuthority">Inspection Authority *</label>
-            <select defaultValue="" id="inspectionAuthority" name="inspectionAuthority" required>
+            <select
+              id="inspectionAuthority"
+              name="inspectionAuthority"
+              onChange={(e) => setSelectedAuthority(e.target.value)}
+              required
+              value={selectedAuthority}
+            >
               <option value="">Select authority</option>
               {inspectionAuthorityOptions.map((option) => (
                 <option key={option} value={option}>
@@ -247,8 +283,147 @@ export function InspectionLaunchForm({
               <span>No</span>
             </label>
           </div>
+
+          {/* Inspector details — appear once an authority is chosen */}
+          {selectedAuthority && (
+            <>
+              <div className="field">
+                <label htmlFor="inspectorName">Inspector Name *</label>
+                <input
+                  defaultValue={sessionActorName}
+                  id="inspectorName"
+                  name="inspectorName"
+                  placeholder="Full name of the inspector"
+                  required
+                />
+              </div>
+
+              <div className="field">
+                <label htmlFor="inspectorQualification">Qualification</label>
+                <input
+                  id="inspectorQualification"
+                  name="inspectorQualification"
+                  placeholder="e.g. Master Mariner / TMSA Lead Auditor"
+                />
+              </div>
+
+              <div className="field">
+                <label htmlFor="inspectorExperience">Experience</label>
+                <input
+                  id="inspectorExperience"
+                  name="inspectorExperience"
+                  placeholder="e.g. 15 years sea-going, 8 years auditing"
+                />
+              </div>
+            </>
+          )}
         </div>
       </section>
+
+      {/* Inspector certificates — shown once authority is selected */}
+      {selectedAuthority && (
+        <section className="inspection-launch-section">
+          <div className="section-header">
+            <div>
+              <h3 className="panel-title">Inspector Certificates</h3>
+              <p className="panel-subtitle">
+                Upload relevant qualification certificates for {selectedAuthority}. These are attached to the inspection record and will be available in the report.
+              </p>
+            </div>
+          </div>
+
+          <div className="inspection-launch-grid">
+            <div className="field">
+              <label htmlFor="inspectorCertType">Certificate type</label>
+              <select id="inspectorCertType" name="inspectorCertType">
+                <option value="">Select type (optional)</option>
+                {INSPECTOR_CERT_TYPES.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field">
+              <label htmlFor="inspectorCertNumber">Certificate number</label>
+              <input
+                id="inspectorCertNumber"
+                name="inspectorCertNumber"
+                placeholder="e.g. IND-COC-2021-00123"
+              />
+            </div>
+
+            <div className="field">
+              <label htmlFor="inspectorCertIssueDate">Issue date</label>
+              <input id="inspectorCertIssueDate" name="inspectorCertIssueDate" type="date" />
+            </div>
+
+            <div className="field">
+              <label htmlFor="inspectorCertExpiryDate">Expiry date</label>
+              <input id="inspectorCertExpiryDate" name="inspectorCertExpiryDate" type="date" />
+            </div>
+
+            <div className="field inspection-launch-full-width">
+              <label>Certificate files (PDF / image)</label>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
+                <label
+                  className="btn-secondary btn-compact"
+                  htmlFor="inspectorCertFilePicker"
+                  style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                >
+                  <Paperclip size={14} />
+                  Attach files
+                </label>
+                <input
+                  accept=".pdf,image/*"
+                  id="inspectorCertFilePicker"
+                  multiple
+                  onChange={handleCertFiles}
+                  ref={certInputRef}
+                  style={{ display: "none" }}
+                  type="file"
+                />
+                <span className="small-text">CoC, ISM / TMSA auditor cert, STCW, vetting authorisation, etc.</span>
+              </div>
+
+              {/* File list with remove buttons */}
+              {certFiles.length > 0 && (
+                <div style={{ marginTop: "0.6rem", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                  {certFiles.map((file) => (
+                    <div key={file.name} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <span className="chip chip-muted" style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "0.75rem" }}>
+                        {file.name}
+                      </span>
+                      <span className="small-text">({(file.size / 1024).toFixed(0)} KB)</span>
+                      <button
+                        className="icon-btn"
+                        onClick={() => removeCertFile(file.name)}
+                        title="Remove"
+                        type="button"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                  <p className="small-text" style={{ marginTop: "0.2rem" }}>
+                    {certFiles.length} file{certFiles.length > 1 ? "s" : ""} selected — will be uploaded on Save &amp; Continue
+                  </p>
+                </div>
+              )}
+              {/* Hidden file input that carries the final FileList to FormData via DataTransfer */}
+              <InspectorCertHiddenInput files={certFiles} />
+            </div>
+
+            <div className="field inspection-launch-full-width">
+              <label htmlFor="inspectorCertNotes">Certificate notes</label>
+              <input
+                id="inspectorCertNotes"
+                name="inspectorCertNotes"
+                placeholder="Any additional notes about qualifications, endorsements or validity"
+              />
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="inspection-launch-section">
         <div className="section-header">
@@ -375,5 +550,32 @@ export function InspectionLaunchForm({
         </div>
       </section>
     </form>
+  );
+}
+
+// Keeps the selected File objects in a real <input type="file"> so FormData
+// picks them up on submission (DataTransfer is available in all modern browsers).
+function InspectorCertHiddenInput({ files }: { files: File[] }) {
+  const ref = useRef<HTMLInputElement>(null);
+
+  // Sync files into the input whenever the list changes
+  if (typeof window !== "undefined" && ref.current) {
+    try {
+      const dt = new DataTransfer();
+      files.forEach((f) => dt.items.add(f));
+      ref.current.files = dt.files;
+    } catch {
+      // DataTransfer not supported — files won't upload, which is acceptable
+    }
+  }
+
+  return (
+    <input
+      multiple
+      name="inspectorCertFiles"
+      ref={ref}
+      style={{ display: "none" }}
+      type="file"
+    />
   );
 }

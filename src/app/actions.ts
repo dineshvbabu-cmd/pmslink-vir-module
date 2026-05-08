@@ -1063,6 +1063,34 @@ export async function createInspectionAction(formData: FormData) {
       inspectionMode,
     });
 
+  // Inspector qualification details
+  const inspectorQualification = toStringOrNull(formData.get("inspectorQualification"));
+  const inspectorExperience = toStringOrNull(formData.get("inspectorExperience"));
+  const inspectorCertType = toStringOrNull(formData.get("inspectorCertType"));
+  const inspectorCertNumber = toStringOrNull(formData.get("inspectorCertNumber"));
+  const inspectorCertIssueDate = toStringOrNull(formData.get("inspectorCertIssueDate"));
+  const inspectorCertExpiryDate = toStringOrNull(formData.get("inspectorCertExpiryDate"));
+  const inspectorCertNotes = toStringOrNull(formData.get("inspectorCertNotes"));
+
+  // Upload inspector certificate files to R2
+  const inspectorCertFileUrls: string[] = [];
+  const certFiles = formData.getAll("inspectorCertFiles") as Array<File | string>;
+  for (const file of certFiles) {
+    if (!(file instanceof File) || file.size === 0) continue;
+    try {
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const uploaded = await uploadToR2({
+        body: buffer,
+        contentType: file.type || "application/octet-stream",
+        fileName: file.name || "inspector-cert",
+        prefix: "inspector-certs",
+      });
+      if (uploaded) inspectorCertFileUrls.push(uploaded.url);
+    } catch {
+      // ignore individual upload failures
+    }
+  }
+
   const inspection = await prisma.virInspection.create({
     data: {
       vesselId,
@@ -1086,6 +1114,20 @@ export async function createInspectionAction(formData: FormData) {
         createdByWorkspace: session.workspace,
         createdByActor: session.actorName,
         carryForwardCandidateCount: carryForwardSource?.findings.length ?? 0,
+        ...(inspectorQualification ? { inspectorQualification } : {}),
+        ...(inspectorExperience ? { inspectorExperience } : {}),
+        ...(inspectorCertType || inspectorCertNumber || inspectorCertIssueDate || inspectorCertExpiryDate || inspectorCertNotes || inspectorCertFileUrls.length > 0
+          ? {
+              inspectorCertificate: {
+                type: inspectorCertType,
+                number: inspectorCertNumber,
+                issueDate: inspectorCertIssueDate,
+                expiryDate: inspectorCertExpiryDate,
+                notes: inspectorCertNotes,
+                fileUrls: inspectorCertFileUrls,
+              },
+            }
+          : {}),
       },
     },
     select: { id: true },

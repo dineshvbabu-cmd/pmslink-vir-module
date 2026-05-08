@@ -627,7 +627,13 @@ export default async function InspectionDetailPage({
                   <span className="vir-detail-label">Qualification</span>
                   <input
                     className="field-input"
-                    defaultValue={typeof narrativeMetadata.auditorQualification === "string" ? narrativeMetadata.auditorQualification : ""}
+                    defaultValue={
+                      typeof narrativeMetadata.inspectorQualification === "string"
+                        ? narrativeMetadata.inspectorQualification
+                        : typeof narrativeMetadata.auditorQualification === "string"
+                          ? narrativeMetadata.auditorQualification
+                          : ""
+                    }
                     disabled={!canEditInspection}
                     name="auditorQualification"
                     placeholder="e.g. Master / Internal Auditor"
@@ -651,15 +657,61 @@ export default async function InspectionDetailPage({
                   <span className="vir-detail-label">Audit Experience</span>
                   <input
                     className="field-input"
-                    defaultValue={typeof narrativeMetadata.auditExperience === "string" ? narrativeMetadata.auditExperience : ""}
+                    defaultValue={
+                      typeof narrativeMetadata.inspectorExperience === "string"
+                        ? narrativeMetadata.inspectorExperience
+                        : typeof narrativeMetadata.auditExperience === "string"
+                          ? narrativeMetadata.auditExperience
+                          : ""
+                    }
                     disabled={!canEditInspection}
                     name="auditExperience"
-                    placeholder="e.g. 24 months"
+                    placeholder="e.g. 24 months / 8 years auditing"
                     style={{ padding: "0.25rem 0.4rem", fontSize: "0.85rem" }}
                     type="text"
                   />
                 </div>
               </div>
+
+              {/* Inspector Certificates — populated at creation time */}
+              {(() => {
+                const cert = narrativeMetadata.inspectorCertificate && typeof narrativeMetadata.inspectorCertificate === "object" && !Array.isArray(narrativeMetadata.inspectorCertificate)
+                  ? (narrativeMetadata.inspectorCertificate as Record<string, unknown>)
+                  : null;
+                const fileUrls = Array.isArray(cert?.fileUrls) ? (cert.fileUrls as string[]) : [];
+                if (!cert && fileUrls.length === 0) return null;
+                return (
+                  <>
+                    <div className="vir-report-section-title">Inspector Certificates</div>
+                    <div className="vir-detail-grid" style={{ marginBottom: "0.8rem" }}>
+                      {cert?.type ? <VirField label="Certificate Type" value={String(cert.type)} /> : null}
+                      {cert?.number ? <VirField label="Certificate No." value={String(cert.number)} /> : null}
+                      {cert?.issueDate ? <VirField label="Issue Date" value={String(cert.issueDate)} /> : null}
+                      {cert?.expiryDate ? <VirField label="Expiry Date" value={String(cert.expiryDate)} /> : null}
+                      {cert?.notes ? <VirField label="Notes" value={String(cert.notes)} /> : null}
+                    </div>
+                    {fileUrls.length > 0 && (
+                      <div style={{ marginBottom: "1rem" }}>
+                        <div className="small-text" style={{ marginBottom: "0.35rem", fontWeight: 600 }}>Certificate files</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                          {fileUrls.map((url, i) => (
+                            <a
+                              className="chip chip-info"
+                              href={url}
+                              key={url}
+                              rel="noopener noreferrer"
+                              style={{ textDecoration: "none" }}
+                              target="_blank"
+                            >
+                              View certificate {i + 1}
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
 
               {/* Auditees */}
               <div className="vir-report-section-title">Auditees</div>
