@@ -2141,22 +2141,22 @@ export default async function InspectionDetailPage({
               </div>
 
               {/* CAR fields — shown when checkbox ticked (client JS not available; always render, user fills if needed) */}
-              <details style={{ marginTop: "0.75rem" }}>
-                <summary style={{ cursor: "pointer", fontSize: "0.8rem", fontWeight: 600, color: "var(--color-ink-soft)" }}>
+              <details style={{ marginTop: "1rem" }}>
+                <summary style={{ cursor: "pointer", fontSize: "0.85rem", fontWeight: 700, color: "var(--color-ink-soft)", padding: "0.4rem 0" }}>
                   + Add Corrective Action Request (CAR)
                 </summary>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
-                  <label style={{ fontSize: "0.8rem", fontWeight: 600 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "0.75rem", padding: "1rem", background: "var(--color-surface-alt, #f8f9fa)", borderRadius: "6px", border: "1px solid var(--color-border)" }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: "0.4rem", fontSize: "0.85rem", fontWeight: 600 }}>
                     CAR action text
-                    <textarea name="carActionText" placeholder="Describe the corrective action required." rows={3} style={{ marginTop: "0.3rem", fontSize: "0.82rem" }} />
+                    <textarea name="carActionText" placeholder="Describe the corrective action required." rows={4} style={{ fontSize: "0.84rem", padding: "0.5rem 0.6rem", resize: "vertical" }} />
                   </label>
-                  <label style={{ fontSize: "0.8rem", fontWeight: 600 }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: "0.4rem", fontSize: "0.85rem", fontWeight: 600 }}>
                     Responsible party
-                    <input name="carOwner" placeholder="Name or role responsible for action" style={{ marginTop: "0.3rem", fontSize: "0.82rem" }} type="text" />
+                    <input className="field-input" name="carOwner" placeholder="Name or role responsible" style={{ fontSize: "0.84rem" }} type="text" />
                   </label>
-                  <label style={{ fontSize: "0.8rem", fontWeight: 600 }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: "0.4rem", fontSize: "0.85rem", fontWeight: 600 }}>
                     Target date
-                    <input name="carTargetDate" style={{ marginTop: "0.3rem", fontSize: "0.82rem" }} type="date" />
+                    <input className="field-input" name="carTargetDate" style={{ fontSize: "0.84rem", width: "fit-content" }} type="date" />
                   </label>
                 </div>
               </details>
