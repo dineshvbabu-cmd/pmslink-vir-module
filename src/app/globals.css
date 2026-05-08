@@ -3879,9 +3879,92 @@ textarea {
   color: var(--color-blue);
   font-size: 0.7rem;
   font-weight: 800;
-  cursor: default;
+  cursor: pointer;
   flex-shrink: 0;
-  title: attr(title);
+  user-select: none;
+}
+
+.guidance-panel-popup {
+  position: absolute;
+  left: 1.8rem;
+  top: -0.3rem;
+  z-index: 200;
+  width: 340px;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.13);
+  overflow: hidden;
+}
+
+.guidance-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #1a5fa8;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.5rem 0.75rem;
+}
+
+.guidance-panel-close {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.8;
+}
+
+.guidance-panel-close:hover { opacity: 1; }
+
+.guidance-panel-body {
+  padding: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--color-ink);
+  line-height: 1.5;
+  border-bottom: 1px solid var(--color-border);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.guidance-panel-refs {
+  padding: 0.6rem 0.75rem;
+  background: #f5f8ff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.guidance-panel-refs-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--color-ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.1rem;
+}
+
+.guidance-panel-ref-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--color-ink);
+}
+
+.guidance-ref-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #1a5fa8;
+  background: #ddeeff;
+  border-radius: 3px;
+  padding: 1px 5px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* ── Finding details panel ─────────────────────────────────── */

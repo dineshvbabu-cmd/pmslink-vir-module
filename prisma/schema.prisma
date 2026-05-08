@@ -231,6 +231,9 @@ model VirTemplateQuestion {
   isCicCandidate        Boolean                 @default(false)
   cicTopic              String?
   helpText              String?                 @db.Text
+  smsReference          String?                 @db.Text
+  sireReference         String?                 @db.Text
+  risqReference         String?                 @db.Text
   referenceImageUrl     String?
   answerLibraryTypeId   String?
   sortOrder             Int

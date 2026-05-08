@@ -732,6 +732,9 @@ export async function upsertVirTemplateQuestionAction(formData: FormData) {
   const codeInput = toStringOrNull(formData.get("code"));
   const prompt = toStringOrNull(formData.get("prompt"));
   const helpText = toStringOrNull(formData.get("helpText"));
+  const smsReference = toStringOrNull(formData.get("smsReference"));
+  const sireReference = toStringOrNull(formData.get("sireReference"));
+  const risqReference = toStringOrNull(formData.get("risqReference"));
   const cicTopic = toStringOrNull(formData.get("cicTopic"));
   const referenceImageUrl = toStringOrNull(formData.get("referenceImageUrl"));
   const responseType = parseVirResponseType(formData.get("responseType"));
@@ -799,6 +802,9 @@ export async function upsertVirTemplateQuestionAction(formData: FormData) {
         isCicCandidate,
         cicTopic,
         helpText,
+        smsReference,
+        sireReference,
+        risqReference,
         referenceImageUrl,
         answerLibraryTypeId: answerLibraryTypeId || null,
         sortOrder,
@@ -834,6 +840,9 @@ export async function upsertVirTemplateQuestionAction(formData: FormData) {
         isCicCandidate,
         cicTopic,
         helpText,
+        smsReference,
+        sireReference,
+        risqReference,
         referenceImageUrl,
         answerLibraryTypeId: answerLibraryTypeId || null,
         sortOrder,

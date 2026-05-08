@@ -686,6 +686,7 @@ function QuestionEditForm({
   question: {
     id: string; code: string; prompt: string; responseType: string; isMandatory: boolean;
     allowsPhoto: boolean; isCicCandidate: boolean; cicTopic: string | null; helpText: string | null;
+    smsReference: string | null; sireReference: string | null; risqReference: string | null;
     referenceImageUrl: string | null; answerLibraryTypeId: string | null; sortOrder: number;
     options: Array<{ value: string; label: string; score: number | null }>;
   };
@@ -722,7 +723,10 @@ function QuestionEditForm({
         </label>
         <label>Sort order<input defaultValue={question.sortOrder} name="sortOrder" type="number" /></label>
         <label className="register-form-span">Prompt<textarea defaultValue={question.prompt} name="prompt" required rows={3} /></label>
-        <label className="register-form-span">Help text<textarea defaultValue={question.helpText ?? ""} name="helpText" rows={2} /></label>
+        <label className="register-form-span">Help text / guidance<textarea defaultValue={question.helpText ?? ""} name="helpText" rows={2} /></label>
+        <label>SMS Reference<input defaultValue={question.smsReference ?? ""} name="smsReference" placeholder="e.g. SMS Chapter 8.3.1" type="text" /></label>
+        <label>SIRE VIQ Reference<input defaultValue={question.sireReference ?? ""} name="sireReference" placeholder="e.g. 5.10.2" type="text" /></label>
+        <label>RISQ Reference<input defaultValue={question.risqReference ?? ""} name="risqReference" placeholder="e.g. 4.35, 4.36" type="text" /></label>
         <label>CIR topic<input defaultValue={question.cicTopic ?? ""} name="cicTopic" type="text" /></label>
         <label className="register-form-span">Reference image URL<input defaultValue={question.referenceImageUrl ?? ""} name="referenceImageUrl" type="text" /></label>
         <label className="register-form-span">

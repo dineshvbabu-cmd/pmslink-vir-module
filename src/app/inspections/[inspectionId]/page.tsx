@@ -17,6 +17,7 @@ import {
 } from "@/app/actions";
 import { ActionIconLink } from "@/components/action-icon-link";
 import { EvidenceSyncPanel } from "@/components/evidence-sync-panel";
+import { GuidancePanel } from "@/components/guidance-panel";
 import { FloatingActivityFeed } from "@/components/floating-activity-feed";
 import { LiveSectionProgress } from "@/components/live-section-progress";
 import { QuestionEvidenceInline } from "@/components/question-evidence-inline";
@@ -1011,9 +1012,9 @@ export default async function InspectionDetailPage({
                             const isCic = question.isCicCandidate ?? bindingQuestion?.isCicCandidate ?? false;
                             const hasFinding = inspection.findings.some((f) => f.questionId === bindingQuestion?.id);
                             const questionKey = bindingQuestion?.id ?? `live-${question.id}`;
-                            const guidanceText = question.guidanceNotes
-                              ? stripInlineHtml(question.guidanceNotes).slice(0, 120)
-                              : bindingQuestion?.helpText?.slice(0, 120) ?? null;
+                            const fullGuidanceText = question.guidanceNotes
+                              ? stripInlineHtml(question.guidanceNotes)
+                              : bindingQuestion?.helpText ?? null;
 
                             const liveWorkflow = questionWorkflow[questionKey];
                             const effectiveSurveyStatus = surveyStatus ?? liveWorkflow?.surveyStatus ?? null;
@@ -1023,8 +1024,14 @@ export default async function InspectionDetailPage({
                               <tr className={isCic ? "cic-row" : ""} key={questionKey}>
                                 <td className="td-no">{qi + 1}</td>
                                 <td className="td-guidance">
-                                  {guidanceText ? (
-                                    <span className="guidance-btn" title={guidanceText}>?</span>
+                                  {fullGuidanceText || bindingQuestion?.smsReference || bindingQuestion?.sireReference || bindingQuestion?.risqReference ? (
+                                    <GuidancePanel
+                                      helpText={fullGuidanceText}
+                                      smsReference={bindingQuestion?.smsReference ?? null}
+                                      sireReference={bindingQuestion?.sireReference ?? null}
+                                      risqReference={bindingQuestion?.risqReference ?? null}
+                                      questionCode={question.code ?? bindingQuestion?.code ?? null}
+                                    />
                                   ) : null}
                                 </td>
                                 <td className="td-question">
@@ -1113,8 +1120,14 @@ export default async function InspectionDetailPage({
                             <tr className={question.isCicCandidate ? "cic-row" : ""} key={question.id}>
                               <td className="td-no">{qi + 1}</td>
                               <td className="td-guidance">
-                                {question.helpText ? (
-                                  <span className="guidance-btn" title={question.helpText}>?</span>
+                                {question.helpText || question.smsReference || question.sireReference || question.risqReference ? (
+                                  <GuidancePanel
+                                    helpText={question.helpText ?? null}
+                                    smsReference={question.smsReference ?? null}
+                                    sireReference={question.sireReference ?? null}
+                                    risqReference={question.risqReference ?? null}
+                                    questionCode={question.code ?? null}
+                                  />
                                 ) : null}
                               </td>
                               <td className="td-question">
