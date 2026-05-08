@@ -2301,3 +2301,87 @@ export async function createTemplateFromImportAction(sessionId: string) {
   revalidateVirPaths();
   redirect(`/templates?type=${encodeURIComponent(inspectionType.name)}&template=${created.id}`);
 }
+
+export async function saveVesselCertificatesAction(vesselId: string, formData: FormData) {
+  const session = await requireVirSession();
+  ensureOffice(session);
+
+  const vessel = await prisma.vessel.findUnique({ where: { id: vesselId }, select: { metadata: true } });
+  if (!vessel) throw new Error("Vessel not found");
+
+  const currentMeta =
+    vessel.metadata && typeof vessel.metadata === "object" && !Array.isArray(vessel.metadata)
+      ? (vessel.metadata as Record<string, unknown>)
+      : {};
+
+  const enabledKeys = formData.getAll("cert") as string[];
+  const certificates = enabledKeys
+    .filter(Boolean)
+    .map((key) => ({
+      key,
+      name: toStringOrNull(formData.get(`certname_${key}`)) ?? key,
+    }));
+
+  await prisma.vessel.update({
+    where: { id: vesselId },
+    data: { metadata: { ...currentMeta, pmsCertificates: certificates } },
+  });
+
+  revalidatePath(`/vessels/${vesselId}`);
+  redirect(`/vessels/${vesselId}?tab=certificates`);
+}
+
+export async function addCustomVesselCertificateAction(vesselId: string, formData: FormData) {
+  const session = await requireVirSession();
+  ensureOffice(session);
+
+  const name = toStringOrNull(formData.get("name"));
+  if (!name) throw new Error("Certificate name is required");
+
+  const vessel = await prisma.vessel.findUnique({ where: { id: vesselId }, select: { metadata: true } });
+  if (!vessel) throw new Error("Vessel not found");
+
+  const currentMeta =
+    vessel.metadata && typeof vessel.metadata === "object" && !Array.isArray(vessel.metadata)
+      ? (vessel.metadata as Record<string, unknown>)
+      : {};
+
+  const existing = Array.isArray(currentMeta.pmsCertificates)
+    ? (currentMeta.pmsCertificates as Array<{ key: string; name: string }>)
+    : [];
+
+  const updated = [...existing, { key: `custom_${Date.now()}`, name }];
+
+  await prisma.vessel.update({
+    where: { id: vesselId },
+    data: { metadata: { ...currentMeta, pmsCertificates: updated } },
+  });
+
+  revalidatePath(`/vessels/${vesselId}`);
+  redirect(`/vessels/${vesselId}?tab=certificates`);
+}
+
+export async function removeVesselCertificateAction(vesselId: string, certKey: string) {
+  const session = await requireVirSession();
+  ensureOffice(session);
+
+  const vessel = await prisma.vessel.findUnique({ where: { id: vesselId }, select: { metadata: true } });
+  if (!vessel) throw new Error("Vessel not found");
+
+  const currentMeta =
+    vessel.metadata && typeof vessel.metadata === "object" && !Array.isArray(vessel.metadata)
+      ? (vessel.metadata as Record<string, unknown>)
+      : {};
+
+  const existing = Array.isArray(currentMeta.pmsCertificates)
+    ? (currentMeta.pmsCertificates as Array<{ key: string; name: string }>)
+    : [];
+
+  await prisma.vessel.update({
+    where: { id: vesselId },
+    data: { metadata: { ...currentMeta, pmsCertificates: existing.filter((c) => c.key !== certKey) } },
+  });
+
+  revalidatePath(`/vessels/${vesselId}`);
+  redirect(`/vessels/${vesselId}?tab=certificates`);
+}

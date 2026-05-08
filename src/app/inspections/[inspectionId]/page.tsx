@@ -315,16 +315,24 @@ export default async function InspectionDetailPage({
       : {};
   const showCertificatesTab = isAuditCategory || Boolean(templateWorkflowConfig.showCertificatesTab);
 
-  // Certificate library: look for a VirLibraryType with code VESSEL_CERTIFICATES; fall back to hardcoded list
-  const certLibraryType = showCertificatesTab
-    ? await prisma.virLibraryType.findFirst({
-        where: { code: "VESSEL_CERTIFICATES", isActive: true },
-        include: { items: { where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { label: "asc" }] } },
-      })
+  // Certificate library: vessel metadata → VirLibraryType → hardcoded fallback
+  const vesselMeta =
+    inspection.vessel.metadata && typeof inspection.vessel.metadata === "object" && !Array.isArray(inspection.vessel.metadata)
+      ? (inspection.vessel.metadata as Record<string, unknown>)
+      : {};
+  const vesselPmsCerts = Array.isArray(vesselMeta.pmsCertificates)
+    ? (vesselMeta.pmsCertificates as Array<{ key: string; name: string }>)
     : null;
-  const availableCerts: Array<{ key: string; name: string }> = certLibraryType
-    ? certLibraryType.items.map((item) => ({ key: item.id, name: item.label }))
-    : VESSEL_CERTIFICATES;
+  const certLibraryType =
+    showCertificatesTab && !vesselPmsCerts
+      ? await prisma.virLibraryType.findFirst({
+          where: { code: "VESSEL_CERTIFICATES", isActive: true },
+          include: { items: { where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { label: "asc" }] } },
+        })
+      : null;
+  const availableCerts: Array<{ key: string; name: string }> =
+    vesselPmsCerts ??
+    (certLibraryType ? certLibraryType.items.map((item) => ({ key: item.id, name: item.label })) : VESSEL_CERTIFICATES);
   const certEnabledRaw = Array.isArray(narrativeMetadata.certEnabled)
     ? (narrativeMetadata.certEnabled as string[])
     : null;

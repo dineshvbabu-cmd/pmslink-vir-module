@@ -7,13 +7,38 @@ import { normalizeRemoteAssetUrl } from "@/lib/vir/live-checklist";
 import { canAccessVessel, isOfficeSession, requireVirSession } from "@/lib/vir/session";
 import { buildVesselProfile } from "@/lib/vir/vessel-profile";
 import { inspectionStatusLabel, toneForInspectionStatus } from "@/lib/vir/workflow";
+import {
+  addCustomVesselCertificateAction,
+  removeVesselCertificateAction,
+  saveVesselCertificatesAction,
+} from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
 const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 const fmtInput = (d: Date) => d.toISOString().slice(0, 10);
 
-type TabKey = "details" | "history";
+const VESSEL_CERTIFICATES: Array<{ key: string; name: string }> = [
+  { key: "smc", name: "Safety Management Certificate (SMC)" },
+  { key: "doc", name: "Document of Compliance (DOC)" },
+  { key: "issc", name: "International Ship Security Certificate (ISSC)" },
+  { key: "ll", name: "International Load Line Certificate" },
+  { key: "safcon", name: "Safety Construction Certificate" },
+  { key: "safeq", name: "Safety Equipment Certificate" },
+  { key: "safrad", name: "Safety Radio Certificate" },
+  { key: "iopp", name: "International Oil Pollution Prevention Certificate (IOPP)" },
+  { key: "iapp", name: "International Air Pollution Prevention Certificate (IAPP)" },
+  { key: "iwm", name: "International Sewage Pollution Prevention Certificate (ISPP)" },
+  { key: "inert", name: "International Noxious Liquid Substances Certificate (NLS)" },
+  { key: "tonnage", name: "International Tonnage Certificate" },
+  { key: "clc", name: "Civil Liability Certificate (CLC)" },
+  { key: "mlc", name: "Maritime Labour Convention Certificate (MLC)" },
+  { key: "class", name: "Class Certificate" },
+  { key: "bow", name: "Continuous Synopsis Record (CSR)" },
+  { key: "iwwp", name: "Garbage Management Plan" },
+];
+
+type TabKey = "details" | "history" | "certificates";
 
 export default async function VesselDetailsPage({
   params,
@@ -26,7 +51,7 @@ export default async function VesselDetailsPage({
   const { vesselId } = await params;
   const { tab, from, to } = await searchParams;
 
-  const activeTab: TabKey = tab === "history" ? "history" : "details";
+  const activeTab: TabKey = tab === "history" ? "history" : tab === "certificates" ? "certificates" : "details";
 
   // Date filter for history tab
   const today = new Date();
@@ -34,7 +59,8 @@ export default async function VesselDetailsPage({
   const fromDate = from ? new Date(from) : defaultFrom;
   const toDate = to ? new Date(to) : today;
 
-  const vessel = await prisma.vessel.findUnique({
+  const [vessel, certLibraryType] = await Promise.all([
+  prisma.vessel.findUnique({
     where: { id: vesselId },
     include: {
       inspections: {
@@ -65,7 +91,12 @@ export default async function VesselDetailsPage({
         },
       },
     },
-  });
+  }),
+  prisma.virLibraryType.findFirst({
+    where: { code: "VESSEL_CERTIFICATES", isActive: true },
+    include: { items: { where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { label: "asc" }] } },
+  }),
+  ]);
 
   if (!vessel || !canAccessVessel(session, vessel.id)) {
     notFound();
@@ -74,6 +105,20 @@ export default async function VesselDetailsPage({
   const latestInspection = vessel.inspections[0] ?? null;
   const pendingDeviationCount = vessel.inspections.reduce((sum, i) => sum + i.findings.length, 0);
   const vesselProfile = buildVesselProfile(vessel);
+
+  // Vessel-specific PMS certificates
+  const vesselMeta =
+    vessel.metadata && typeof vessel.metadata === "object" && !Array.isArray(vessel.metadata)
+      ? (vessel.metadata as Record<string, unknown>)
+      : {};
+  const vesselPmsCerts: Array<{ key: string; name: string }> = Array.isArray(vesselMeta.pmsCertificates)
+    ? (vesselMeta.pmsCertificates as Array<{ key: string; name: string }>)
+    : [];
+  const masterCerts: Array<{ key: string; name: string }> = certLibraryType
+    ? certLibraryType.items.map((item) => ({ key: item.id, name: item.label }))
+    : VESSEL_CERTIFICATES;
+  const vesselCertKeys = new Set(vesselPmsCerts.map((c) => c.key));
+  const customCerts = vesselPmsCerts.filter((c) => !masterCerts.some((m) => m.key === c.key));
 
   const tabHref = (t: TabKey, extra?: Record<string, string>) => {
     const p = new URLSearchParams({ tab: t, ...extra });
@@ -90,14 +135,14 @@ export default async function VesselDetailsPage({
       {/* Tab bar */}
       <div className="panel panel-elevated" style={{ padding: 0, overflow: "hidden" }}>
         <div style={{ display: "flex", borderBottom: "1px solid var(--color-border)" }}>
-          {(["details", "history"] as TabKey[]).map((t) => (
+          {(["details", "history", ...(isOfficeSession(session) ? ["certificates"] : [])] as TabKey[]).map((t) => (
             <Link
               className={`vir-pane-tab${activeTab === t ? " vir-pane-tab-active" : ""}`}
               href={tabHref(t)}
               key={t}
               scroll={false}
             >
-              {t === "details" ? "Vessel Details" : "Inspection History"}
+              {t === "details" ? "Vessel Details" : t === "history" ? "Inspection History" : "Certificates"}
             </Link>
           ))}
           {isOfficeSession(session) && (
@@ -357,6 +402,116 @@ export default async function VesselDetailsPage({
           </div>
         </section>
       )}
+
+      {/* ── CERTIFICATES TAB ── */}
+      {activeTab === "certificates" && isOfficeSession(session) ? (
+        <div className="page-stack">
+          {/* Master cert selector */}
+          <section className="panel panel-elevated">
+            <div className="section-header">
+              <div>
+                <h3 className="panel-title">Vessel certificate register</h3>
+                <p className="panel-subtitle">
+                  Select the statutory and class certificates applicable to this vessel. These will auto-populate in inspection certificate reports.
+                </p>
+              </div>
+            </div>
+            <form action={saveVesselCertificatesAction.bind(null, vessel.id)}>
+              <div className="table-shell table-shell-compact">
+                <table className="table data-table vir-data-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: "2.5rem" }}>Apply</th>
+                      <th>Certificate</th>
+                      <th>Display name override</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {masterCerts.map((cert) => {
+                      const existing = vesselPmsCerts.find((c) => c.key === cert.key);
+                      return (
+                        <tr key={cert.key}>
+                          <td style={{ textAlign: "center" }}>
+                            <input
+                              defaultChecked={vesselCertKeys.has(cert.key)}
+                              name="cert"
+                              type="checkbox"
+                              value={cert.key}
+                            />
+                          </td>
+                          <td style={{ fontSize: "0.82rem" }}>{cert.name}</td>
+                          <td>
+                            <input
+                              className="field-input"
+                              defaultValue={existing?.name ?? cert.name}
+                              name={`certname_${cert.key}`}
+                              placeholder={cert.name}
+                              style={{ padding: "0.2rem 0.4rem", fontSize: "0.8rem", width: "100%" }}
+                              type="text"
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", padding: "0.75rem 0 0" }}>
+                <button className="btn" type="submit">Save certificate list</button>
+              </div>
+            </form>
+          </section>
+
+          {/* Custom certificates */}
+          <section className="panel panel-elevated">
+            <div className="section-header">
+              <div>
+                <h3 className="panel-title">Custom certificates</h3>
+                <p className="panel-subtitle">Add vessel-specific certificates that are not in the master list.</p>
+              </div>
+            </div>
+            {customCerts.length > 0 ? (
+              <div className="table-shell table-shell-compact" style={{ marginBottom: "1rem" }}>
+                <table className="table data-table vir-data-table">
+                  <thead>
+                    <tr><th>Certificate</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {customCerts.map((cert) => (
+                      <tr key={cert.key}>
+                        <td style={{ fontSize: "0.82rem" }}>{cert.name}</td>
+                        <td>
+                          <form action={removeVesselCertificateAction.bind(null, vessel.id, cert.key)}>
+                            <button
+                              className="action-icon-link action-icon-link-danger"
+                              style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.8rem" }}
+                              title="Remove"
+                              type="submit"
+                            >
+                              Remove
+                            </button>
+                          </form>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+            <form action={addCustomVesselCertificateAction.bind(null, vessel.id)} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+              <input
+                className="field-input"
+                name="name"
+                placeholder="Certificate name..."
+                required
+                style={{ flex: 1, padding: "0.3rem 0.5rem", fontSize: "0.82rem" }}
+                type="text"
+              />
+              <button className="btn btn-compact" type="submit">Add custom certificate</button>
+            </form>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

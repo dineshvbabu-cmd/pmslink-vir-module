@@ -573,15 +573,16 @@ function InspectionHistoryGrid({
         </thead>
         <tbody>
           {inspections.map((inspection) => {
-            const hasVesselSubmit = inspection.signOffs.some(
-              (s) => s.stage === "VESSEL_SUBMISSION" && s.approved
-            );
-            const hasShoreReview = inspection.signOffs.some(
-              (s) => s.stage === "SHORE_REVIEW" && s.approved
-            );
-            const hasFinalAck = inspection.signOffs.some(
-              (s) => s.stage === "FINAL_ACKNOWLEDGEMENT" && s.approved
-            );
+            const statusRank: Record<string, number> = {
+              DRAFT: 0, RETURNED: 0, IMPORT_REVIEW: 0, ARCHIVED: 0,
+              PENDING_APPROVAL: 1,
+              IN_PROGRESS: 2, SENT_TO_VESSEL: 2, SUBMITTED: 2,
+              SHORE_REVIEWED: 3, CLOSED: 3,
+            };
+            const rank = statusRank[inspection.status] ?? 0;
+            const hasVesselSubmit = rank >= 1; // S: submitted for first review
+            const hasShoreReview = rank >= 2;  // R: first review approved
+            const hasFinalAck = rank >= 3;     // A: second approval done
 
             return (
               <tr key={inspection.id}>
