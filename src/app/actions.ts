@@ -1228,12 +1228,18 @@ export async function updateInspectionStatusAction(inspectionId: string, nextSta
       where: { id: inspectionId },
       data: { status: "SUBMITTED", metadata: addNotification(inspection.metadata, "OFFICE", `${session.actorName} submitted inspection for office review.`) },
     });
+  } else if (nextStatus === "PENDING_APPROVAL") {
+    // Any user with vessel access can send for pre-execution approval; notifies OFFICE.
+    await prisma.virInspection.update({
+      where: { id: inspectionId },
+      data: { status: "PENDING_APPROVAL", metadata: addNotification(inspection.metadata, "OFFICE", `${session.actorName} has sent this inspection for approval. Please review and approve to release it to the vessel.`) },
+    });
   } else if (nextStatus === "SENT_TO_VESSEL") {
-    ensureOffice(session, "Only office workspaces can send an inspection to vessel.");
+    ensureOffice(session, "Only office workspaces can approve and send an inspection to vessel.");
 
     await prisma.virInspection.update({
       where: { id: inspectionId },
-      data: { status: "SENT_TO_VESSEL", metadata: addNotification(inspection.metadata, "VESSEL", `Office has sent this inspection for vessel completion. Please fill in all required sections and submit.`) },
+      data: { status: "SENT_TO_VESSEL", metadata: addNotification(inspection.metadata, "VESSEL", `Inspection has been approved and sent to vessel. Please fill in all required sections and submit.`) },
     });
   } else if (nextStatus === "RETURNED") {
     ensureOffice(session, "Only office workspaces can return an inspection.");
@@ -1357,6 +1363,10 @@ function addNotification(
 
 export async function saveInspectionAnswersAction(inspectionId: string, formData: FormData) {
   const { session, inspection } = await getInspectionAccess(inspectionId);
+
+  if (inspection.status === "DRAFT" || inspection.status === "PENDING_APPROVAL") {
+    throw new Error("This inspection has not been approved for editing yet. Send for approval and wait for office approval before filling in the questionnaire.");
+  }
 
   const inspectionTemplate = await prisma.virInspection.findUnique({
     where: { id: inspection.id },
@@ -1712,13 +1722,26 @@ export async function addFindingAction(inspectionId: string, formData: FormData)
   if (shouldCreateCAR) {
     const autoDueDays = findingType === "NON_CONFORMITY" || severity === "HIGH" || severity === "CRITICAL" ? 14 : 30;
     const targetDate = carTargetDate ?? (() => { const d = new Date(); d.setDate(d.getDate() + autoDueDays); return d; })();
-    await prisma.virCorrectiveAction.create({
+    const car = await prisma.virCorrectiveAction.create({
       data: {
         findingId: finding.id,
         actionText: carActionText ?? `CAR for: ${title}`,
         ownerName: carOwner ?? toStringOrNull(formData.get("ownerName")),
         targetDate,
         status: "OPEN",
+      },
+    });
+    // Auto-create a PMS defect linked to this corrective action
+    await prisma.virPmsDefect.create({
+      data: {
+        correctiveActionId: car.id,
+        findingId: finding.id,
+        inspectionId,
+        defectRef: `PMS-${car.id.slice(-6).toUpperCase()}`,
+        title,
+        description,
+        status: "OPEN",
+        raisedBy: session.actorName,
       },
     });
   }
@@ -1828,13 +1851,28 @@ export async function addCorrectiveActionAction(inspectionId: string, findingId:
 
   ensureInspectionAccess(session, finding.inspection.vesselId);
 
-  await prisma.virCorrectiveAction.create({
+  const actionText = toStringOrNull(formData.get("actionText")) ?? "Corrective action not described.";
+  const car = await prisma.virCorrectiveAction.create({
     data: {
       findingId,
-      actionText: toStringOrNull(formData.get("actionText")) ?? "Corrective action not described.",
+      actionText,
       ownerName: toStringOrNull(formData.get("ownerName")),
       targetDate: toDateOrNull(formData.get("targetDate")),
       status: "OPEN",
+    },
+  });
+
+  // Auto-create PMS defect linked to this corrective action
+  await prisma.virPmsDefect.create({
+    data: {
+      correctiveActionId: car.id,
+      findingId,
+      inspectionId,
+      defectRef: `PMS-${car.id.slice(-6).toUpperCase()}`,
+      title: actionText.slice(0, 100),
+      description: actionText,
+      status: "OPEN",
+      raisedBy: session.actorName,
     },
   });
 
@@ -1871,6 +1909,14 @@ export async function updateCorrectiveActionStatusAction(
 
   if (status === "VERIFIED") {
     ensureOffice(session, "Only office workspaces can verify corrective actions.");
+    // PMS defect must be closed by vessel before office can verify
+    const defect = await prisma.virPmsDefect.findUnique({
+      where: { correctiveActionId: actionId },
+      select: { status: true },
+    });
+    if (defect && defect.status !== "CLOSED") {
+      throw new Error("The PMS defect raised for this corrective action must be closed on the vessel side before it can be verified.");
+    }
   }
 
   await prisma.virCorrectiveAction.update({
@@ -1880,6 +1926,34 @@ export async function updateCorrectiveActionStatusAction(
       completedAt: status === "COMPLETED" || status === "VERIFIED" ? new Date() : null,
       verifiedAt: status === "VERIFIED" ? new Date() : null,
       verifiedBy: status === "VERIFIED" ? session.actorName : null,
+    },
+  });
+
+  revalidateVirPaths(inspectionId);
+}
+
+export async function closePmsDefectAction(inspectionId: string, defectId: string, remarks: string | null) {
+  const session = await requireVirSession();
+  const defect = await prisma.virPmsDefect.findUnique({
+    where: { id: defectId },
+    select: {
+      inspection: { select: { id: true, vesselId: true } },
+    },
+  });
+
+  if (!defect || defect.inspection.id !== inspectionId) {
+    throw new Error("PMS defect could not be found.");
+  }
+
+  ensureInspectionAccess(session, defect.inspection.vesselId);
+
+  await prisma.virPmsDefect.update({
+    where: { id: defectId },
+    data: {
+      status: "CLOSED",
+      closedAt: new Date(),
+      closedBy: session.actorName,
+      remarks: remarks ?? null,
     },
   });
 

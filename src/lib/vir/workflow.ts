@@ -3,12 +3,14 @@ import type {
   VirCorrectiveActionStatus,
   VirFindingStatus,
   VirInspectionStatus,
+  VirPmsDefectStatus,
   VirRiskLevel,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 export const inspectionStatusLabel: Record<VirInspectionStatus, string> = {
   DRAFT: "Draft",
+  PENDING_APPROVAL: "Pending Approval",
   SENT_TO_VESSEL: "Sent to Vessel",
   SUBMITTED: "Submitted",
   RETURNED: "Returned to Vessel",
@@ -16,6 +18,11 @@ export const inspectionStatusLabel: Record<VirInspectionStatus, string> = {
   CLOSED: "Closed",
   IMPORT_REVIEW: "Import Review",
   ARCHIVED: "Archived",
+};
+
+export const pmsDefectStatusLabel: Record<VirPmsDefectStatus, string> = {
+  OPEN: "PMS Defect Open",
+  CLOSED: "PMS Defect Closed",
 };
 
 export const findingStatusLabel: Record<VirFindingStatus, string> = {
@@ -53,6 +60,8 @@ export function toneForInspectionStatus(status: VirInspectionStatus) {
       return "chip-info";
     case "RETURNED":
       return "chip-danger";
+    case "PENDING_APPROVAL":
+      return "chip-warning";
     case "ARCHIVED":
       return "chip-muted";
     case "DRAFT":

@@ -17,6 +17,7 @@ enum VirInspectionTypeCategory {
 
 enum VirInspectionStatus {
   DRAFT
+  PENDING_APPROVAL
   SENT_TO_VESSEL
   SUBMITTED
   RETURNED
@@ -24,6 +25,11 @@ enum VirInspectionStatus {
   CLOSED
   IMPORT_REVIEW
   ARCHIVED
+}
+
+enum VirPmsDefectStatus {
+  OPEN
+  CLOSED
 }
 
 enum VirQuestionResponseType {
@@ -305,6 +311,7 @@ model VirInspection {
   findings           VirFinding[]
   signOffs           VirSignOff[]
   photos             VirPhoto[]
+  pmsDefects         VirPmsDefect[]
 
   @@index([vesselId, inspectionDate])
   @@index([inspectionTypeId, inspectionDate])
@@ -361,6 +368,7 @@ model VirFinding {
   carriedFromFinding VirFinding?          @relation("VirFindingCarryover", fields: [carriedFromFindingId], references: [id])
   carriedFindings    VirFinding[]         @relation("VirFindingCarryover")
   correctiveActions  VirCorrectiveAction[]
+  pmsDefects         VirPmsDefect[]
   photos             VirPhoto[]
 
   @@index([inspectionId, status])
@@ -406,10 +414,37 @@ model VirCorrectiveAction {
   createdAt          DateTime                  @default(now())
   updatedAt          DateTime                  @updatedAt
 
-  finding VirFinding @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  finding    VirFinding    @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  pmsDefect  VirPmsDefect?
 
   @@index([status])
   @@index([targetDate])
+}
+
+model VirPmsDefect {
+  id                 String             @id @default(cuid())
+  correctiveActionId String             @unique
+  findingId          String
+  inspectionId       String
+  defectRef          String
+  title              String
+  description        String             @db.Text
+  status             VirPmsDefectStatus @default(OPEN)
+  raisedAt           DateTime           @default(now())
+  raisedBy           String?
+  closedAt           DateTime?
+  closedBy           String?
+  remarks            String?            @db.Text
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  correctiveAction VirCorrectiveAction @relation(fields: [correctiveActionId], references: [id], onDelete: Cascade)
+  finding          VirFinding          @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  inspection       VirInspection       @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  @@index([inspectionId])
+  @@index([findingId])
+  @@index([status])
 }
 
 model VirSignOff {
