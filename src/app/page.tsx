@@ -121,7 +121,12 @@ async function OfficeDashboard({
   const selectedFocus = normalizeDashboardFocus(searchParams.focus);
   const scopedVesselCodes = defaultDashboardScopedVesselCodes(session);
 
-  const [vessels, inspections] = await Promise.all([
+  const filterPanelVesselWhere = {
+    isActive: true,
+    ...(scopedVesselCodes.length > 0 ? { code: { in: scopedVesselCodes } } : {}),
+  };
+
+  const [vessels, allScopedVessels, inspections] = await Promise.all([
     prisma.vessel.findMany({
       where: {
         isActive: true,
@@ -137,6 +142,11 @@ async function OfficeDashboard({
         vesselType: true,
         fleet: true,
       },
+    }),
+    prisma.vessel.findMany({
+      where: filterPanelVesselWhere,
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, fleet: true },
     }),
     prisma.virInspection.findMany({
       where: {
@@ -192,7 +202,7 @@ async function OfficeDashboard({
     }),
   ]);
 
-  const fleetOptions = [...new Set(vessels.map((vessel) => vessel.fleet).filter((value): value is string => Boolean(value)))].sort();
+  const fleetOptions = [...new Set(allScopedVessels.map((vessel) => vessel.fleet).filter((value): value is string => Boolean(value)))].sort();
 
   const inspectionsByVessel = new Map<string, typeof inspections>();
 
@@ -346,7 +356,7 @@ async function OfficeDashboard({
           </label>
           <AutoSubmitSelect defaultValue={selectedVesselId} name="vesselId">
             <option value="">All vessels</option>
-            {vessels.map((vessel) => (
+            {allScopedVessels.map((vessel) => (
               <option key={vessel.id} value={vessel.id}>
                 {vessel.name}
               </option>

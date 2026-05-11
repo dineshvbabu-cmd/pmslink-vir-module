@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 export function AutoSubmitSelect({
   name,
-  defaultValue,
+  defaultValue = "",
   className,
   style,
   children,
@@ -13,13 +15,20 @@ export function AutoSubmitSelect({
   style?: React.CSSProperties;
   children: React.ReactNode;
 }) {
+  const [value, setValue] = useState(defaultValue);
+
+  useEffect(() => {
+    setValue(defaultValue);
+  }, [defaultValue]);
+
   return (
     <select
       name={name}
-      defaultValue={defaultValue}
+      value={value}
       className={className}
       style={style}
       onChange={(e) => {
+        setValue(e.target.value);
         e.currentTarget.form?.submit();
       }}
     >
