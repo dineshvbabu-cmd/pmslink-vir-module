@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ChevronRight, Copy, FilePlus, LayoutList, Pencil, Plus, Trash2, Upload } from "lucide-react";
+import { CopyQuestionsPanel } from "./copy-questions-panel";
 import {
   cloneVirTemplateVersionAction,
   copyQuestionsFromSectionAction,
@@ -135,6 +136,7 @@ export default async function TemplatesPage({
       questionCount: s.questions.length,
       templateName: t.name,
       groupName: t.inspectionType.name,
+      questions: s.questions.map((q) => ({ id: q.id, code: q.code ?? "", prompt: q.prompt })),
     }))
   );
 
@@ -279,38 +281,11 @@ export default async function TemplatesPage({
           {!templateLocked ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               {/* Copy from another section */}
-              <details className="panel list-card">
-                <summary style={{ cursor: "pointer", fontWeight: 600, padding: "0.25rem 0" }}>
-                  <Copy size={13} style={{ display: "inline", marginRight: "0.4rem" }} />
-                  Copy questions from another section
-                </summary>
-                <p className="panel-subtitle" style={{ margin: "0.5rem 0" }}>
-                  Copies all questions from the selected section into this section. Duplicate codes are renamed automatically.
-                </p>
-                <form action={copyQuestionsFromSectionAction} className="register-form" style={{ marginTop: "0.5rem" }}>
-                  <input name="targetSectionId" type="hidden" value={selectedSection.id} />
-                  <input name="returnTo" type="hidden" value={returnToThis} />
-                  <label className="register-form-span">
-                    Source section
-                    <select name="sourceSectionId" required>
-                      <option value="">— Select a section —</option>
-                      {allSectionsForCopy
-                        .filter((s) => s.id !== selectedSection.id && s.questionCount > 0)
-                        .map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.groupName} / {s.templateName} / {s.title} ({s.questionCount} questions)
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  <div className="register-form-actions">
-                    <button className="btn btn-compact" type="submit">
-                      <Copy size={13} />
-                      Copy questions
-                    </button>
-                  </div>
-                </form>
-              </details>
+              <CopyQuestionsPanel
+                sections={allSectionsForCopy.filter((s) => s.id !== selectedSection.id && s.questionCount > 0)}
+                targetSectionId={selectedSection.id}
+                returnTo={returnToThis}
+              />
 
               {/* Add new question */}
               <article className="panel list-card">

@@ -912,6 +912,7 @@ export async function copyQuestionsFromSectionAction(formData: FormData) {
   const targetSectionId = toStringOrNull(formData.get("targetSectionId"));
   const sourceSectionId = toStringOrNull(formData.get("sourceSectionId"));
   const returnTo = toStringOrNull(formData.get("returnTo")) ?? "/templates";
+  const selectedQuestionIds = formData.getAll("questionId").map(String).filter(Boolean);
 
   if (!targetSectionId || !sourceSectionId) throw new Error("Source and target sections are required.");
   if (targetSectionId === sourceSectionId) throw new Error("Source and target sections must be different.");
@@ -926,6 +927,7 @@ export async function copyQuestionsFromSectionAction(formData: FormData) {
       select: {
         questions: {
           orderBy: { sortOrder: "asc" },
+          where: selectedQuestionIds.length > 0 ? { id: { in: selectedQuestionIds } } : undefined,
           select: {
             code: true, prompt: true, helpText: true, cicTopic: true, referenceImageUrl: true,
             responseType: true, riskLevel: true, isMandatory: true, allowsPhoto: true,
