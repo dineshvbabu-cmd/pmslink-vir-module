@@ -60,6 +60,14 @@ export default async function DashboardBoardsPage({
     ...(requestedFleets.length > 0 ? { fleet: { in: requestedFleets } } : {}),
   };
 
+  // Filter panel needs all scoped vessels regardless of current selection — otherwise
+  // the vessel dropdown disappears once you pick one (vessels.length drops to 1).
+  const filterPanelVesselWhere = {
+    isActive: true,
+    ...(session.workspace === "VESSEL" && session.vesselId ? { id: session.vesselId } : {}),
+    ...(enforcedVesselCodes.length > 0 ? { code: { in: enforcedVesselCodes } } : {}),
+  };
+
   const now = new Date();
 
   // Date range — custom inputs take priority over presets
@@ -81,7 +89,7 @@ export default async function DashboardBoardsPage({
   const dueSoonDate = new Date();
   dueSoonDate.setDate(now.getDate() + 45);
 
-  const [vessels, inspections, overdueActions, allTimeInspections] = await Promise.all([
+  const [vessels, allScopedVessels, inspections, overdueActions, allTimeInspections] = await Promise.all([
     prisma.vessel.findMany({
       where: vesselWhere,
       orderBy: { name: "asc" },
@@ -94,6 +102,11 @@ export default async function DashboardBoardsPage({
         fleet: true,
         manager: true,
       },
+    }),
+    prisma.vessel.findMany({
+      where: filterPanelVesselWhere,
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, fleet: true },
     }),
     prisma.virInspection.findMany({
       where: {
@@ -310,8 +323,8 @@ export default async function DashboardBoardsPage({
       item.inspection.inspectionType.category === "VETTING" ||
       ["SIRE", "SIRE_2_0", "RIGHTSHIP", "CID"].includes(item.inspection.inspectionType.code)
   );
-  // Unique fleet names from scoped vessels (for fleet toggle chips)
-  const uniqueFleets = [...new Set(vessels.map((v) => v.fleet).filter((f): f is string => Boolean(f)))].sort();
+  // Unique fleet names from all scoped vessels (for fleet toggle chips)
+  const uniqueFleets = [...new Set(allScopedVessels.map((v) => v.fleet).filter((f): f is string => Boolean(f)))].sort();
 
   const visibleScopeLabel =
     session.workspace === "VESSEL"
@@ -359,7 +372,7 @@ export default async function DashboardBoardsPage({
 
       <section className="panel panel-elevated">
         <DashboardFilterPanel
-          vessels={vessels.map((v) => ({ id: v.id, name: v.name, fleet: v.fleet ?? null }))}
+          vessels={allScopedVessels.map((v) => ({ id: v.id, name: v.name, fleet: v.fleet ?? null }))}
           uniqueFleets={uniqueFleets}
           isTsi={isTsiSession(session)}
           isVessel={session.workspace === "VESSEL"}
