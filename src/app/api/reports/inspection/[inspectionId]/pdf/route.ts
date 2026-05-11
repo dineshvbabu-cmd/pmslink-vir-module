@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildBrandedPdfDocument, PdfEmbeddedPhoto, readJpegInfo } from "@/lib/vir/pdf";
+import sharp from "sharp";
+import { buildBrandedPdfDocument, PdfEmbeddedPhoto } from "@/lib/vir/pdf";
 import { prisma } from "@/lib/prisma";
 import { canAccessVessel, getVirSession } from "@/lib/vir/session";
+import { getR2Object } from "@/lib/r2";
 
 const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 
@@ -235,17 +237,21 @@ function imageAnnexSection(
   };
 }
 
+const R2_URL_PREFIX = "/api/files/r2/";
+
 async function fetchPhotosForPdf(photos: ReportPhoto[], maxCount: number): Promise<PdfEmbeddedPhoto[]> {
   const toFetch = photos.slice(0, maxCount);
   const results = await Promise.allSettled(
     toFetch.map(async (photo): Promise<PdfEmbeddedPhoto | null> => {
       try {
-        const res = await fetch(photo.url, { signal: AbortSignal.timeout(6000) });
-        if (!res.ok) return null;
-        const data = Buffer.from(await res.arrayBuffer());
-        const info = readJpegInfo(data);
-        if (!info || info.components > 3) return null;
-        return { data, width: info.width, height: info.height, components: info.components, label: photo.label, caption: photo.caption };
+        if (!photo.url.startsWith(R2_URL_PREFIX)) return null;
+        const storageKey = photo.url.slice(R2_URL_PREFIX.length).split("/").map(decodeURIComponent).join("/");
+        const obj = await getR2Object(storageKey);
+        if (!obj) return null;
+        const { data: jpegBuffer, info } = await sharp(Buffer.from(obj.body))
+          .jpeg({ quality: 85 })
+          .toBuffer({ resolveWithObject: true });
+        return { data: jpegBuffer, width: info.width, height: info.height, components: info.channels, label: photo.label, caption: photo.caption };
       } catch {
         return null;
       }
