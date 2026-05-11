@@ -94,19 +94,19 @@ const DEMO_PORTS = [
 ];
 
 const DEMO_INSPECTORS = [
-  "Capt. Mukhtar Singh",
-  "Capt. Kulbir Singh",
-  "Gopikrishna Alamanda",
-  "Pankaj Kumar",
-  "Gaurav Chaturvedi",
-  "Bhuvanesh Dogra",
+  "Capt. James Harrington",
+  "Capt. Alexander Reid",
+  "Thomas Whitfield",
+  "David Morrison",
+  "Robert Chen",
+  "Michael Torres",
 ];
 
 const DEMO_REVIEWERS = [
-  "Gopikrishna Alamanda",
-  "Pankaj Kumar",
-  "Gaurav Chaturvedi",
-  "Bhuvanesh Dogra",
+  "Sarah Mitchell",
+  "David Morrison",
+  "Robert Chen",
+  "Michael Torres",
 ];
 
 const TEMPLATE_SEEDS: DemoTemplateSeed[] = [
