@@ -142,15 +142,11 @@ export function DashboardFilterPanel({
   }
 
   function handleVesselChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const selected = Array.from(e.target.selectedOptions).map((o) => o.value);
-    setVesselIds(selected);
+    const val = e.target.value;
+    const newIds = val ? [val] : [];
+    setVesselIds(newIds);
     setFleets([]);
-    go({ vesselIds: selected, fleets: [] });
-  }
-
-  function clearVessels() {
-    setVesselIds([]);
-    go({ vesselIds: [], fleets });
+    go({ vesselIds: newIds, fleets: [] });
   }
 
   function handleScopeToggle(newScope: string) {
@@ -280,35 +276,22 @@ export function DashboardFilterPanel({
         </div>
       )}
 
-      {/* Vessel multi-select — hide for vessel-scoped sessions */}
+      {/* Vessel select — single dropdown, consistent with other pages */}
       {!isVessel && vessels.length > 1 && (
-        <div style={{ display: "flex", gap: "0.75rem", marginBottom: "0.85rem", alignItems: "flex-start", flexWrap: "wrap" }}>
-          <span className="inline-form-label" style={{ paddingTop: "3px" }}>Vessels</span>
-          <div>
-            <select
-              multiple
-              size={Math.min(vessels.length, 6)}
-              value={vesselIds}
-              onChange={handleVesselChange}
-              style={{ minWidth: "200px", maxWidth: "420px", fontSize: "0.82rem" }}
-            >
-              {vessels.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
-                </option>
-              ))}
-            </select>
-            <div className="small-text" style={{ marginTop: "0.2rem" }}>
-              {vesselIds.length === 0
-                ? "All vessels · hold Ctrl / Cmd to select multiple"
-                : `${vesselIds.length} vessel${vesselIds.length > 1 ? "s" : ""} selected · hold Ctrl / Cmd to add more`}
-            </div>
-            {vesselIds.length > 0 && (
-              <button className="btn-secondary btn-compact" onClick={clearVessels} style={{ marginTop: "0.3rem" }} type="button">
-                Clear selection
-              </button>
-            )}
-          </div>
+        <div style={{ display: "flex", gap: "0.4rem", marginBottom: "0.85rem", flexWrap: "wrap", alignItems: "center" }}>
+          <span className="inline-form-label">Vessel</span>
+          <select
+            value={vesselIds[0] ?? ""}
+            onChange={handleVesselChange}
+            style={{ height: "26px", fontSize: "0.82rem", padding: "0 0.4rem" }}
+          >
+            <option value="">All vessels</option>
+            {vessels.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </select>
         </div>
       )}
 
