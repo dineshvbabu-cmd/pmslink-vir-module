@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildBrandedPdfDocument } from "@/lib/vir/pdf";
+import { buildBrandedPdfDocument, PdfEmbeddedPhoto, readJpegInfo } from "@/lib/vir/pdf";
 import { prisma } from "@/lib/prisma";
 import { canAccessVessel, getVirSession } from "@/lib/vir/session";
 
@@ -164,6 +164,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ins
   const selectedPhotos =
     imageMode === "selected" ? reportPhotos.filter((photo) => selectedImageIds.has(photo.id)) : reportPhotos;
   const effectivePhotos = selectedPhotos.length > 0 ? selectedPhotos : reportPhotos;
+  const embeddedPhotos = await fetchPhotosForPdf(effectivePhotos, 40);
 
   const pdf = buildBrandedPdfDocument({
     brand: "Atlantas Marine / PMSLink VIR",
@@ -171,9 +172,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ins
     subtitleLines: [
       `${inspection.vessel.name} / ${inspection.inspectionType.name}`,
       `${fmt.format(inspection.inspectionDate)} / ${inspection.port ?? "Port not recorded"} / ${inspection.country ?? "Country not recorded"}`,
-      `Image annex mode: ${imageMode === "selected" ? "Selected images" : "All images"}`,
+      `Image annex: ${embeddedPhotos.length} of ${effectivePhotos.length} image(s) embedded`,
     ],
-    sections: buildVariantSections(inspection, sectionRows, effectivePhotos, variant, answerMap),
+    sections: buildVariantSections(inspection, sectionRows, effectivePhotos, variant, answerMap, embeddedPhotos),
   });
 
   return new NextResponse(pdf, {
@@ -214,12 +215,58 @@ function resolveAnswerText(answer: any): string {
   return answer.answerText ?? "Not recorded";
 }
 
+function imageAnnexSection(
+  title: string,
+  photos: ReportPhoto[],
+  embeddedPhotos: PdfEmbeddedPhoto[]
+) {
+  if (embeddedPhotos.length > 0) {
+    return {
+      title,
+      lines: [`${embeddedPhotos.length} of ${photos.length} image(s) embedded below.`],
+      photos: embeddedPhotos,
+    };
+  }
+  return {
+    title,
+    lines: photos.length
+      ? photos.map((photo, index) => `Image ${index + 1}: ${photo.label} / ${photo.caption}`)
+      : ["No photos were selected for this report."],
+  };
+}
+
+async function fetchPhotosForPdf(photos: ReportPhoto[], maxCount: number): Promise<PdfEmbeddedPhoto[]> {
+  const toFetch = photos.slice(0, maxCount);
+  const results = await Promise.allSettled(
+    toFetch.map(async (photo): Promise<PdfEmbeddedPhoto | null> => {
+      try {
+        const res = await fetch(photo.url, { signal: AbortSignal.timeout(6000) });
+        if (!res.ok) return null;
+        const data = Buffer.from(await res.arrayBuffer());
+        const info = readJpegInfo(data);
+        if (!info || info.components > 3) return null;
+        return { data, width: info.width, height: info.height, components: info.components, label: photo.label, caption: photo.caption };
+      } catch {
+        return null;
+      }
+    })
+  );
+  const embedded: PdfEmbeddedPhoto[] = [];
+  for (const result of results) {
+    if (result.status === "fulfilled" && result.value !== null) {
+      embedded.push(result.value);
+    }
+  }
+  return embedded;
+}
+
 function buildVariantSections(
   inspection: any,
   sectionRows: SectionRow[],
   photos: ReportPhoto[],
   variant: ReportVariant,
-  answerMap: Map<string, any>
+  answerMap: Map<string, any>,
+  embeddedPhotos: PdfEmbeddedPhoto[]
 ) {
   const baseSections = [
     {
@@ -291,12 +338,7 @@ function buildVariantSections(
               ])
             : ["No findings recorded."],
       },
-      {
-        title: "Finding image annex",
-        lines: photos.length
-          ? photos.map((photo, index) => `Image ${index + 1}: ${photo.label} / ${photo.caption} / ${photo.url}`)
-          : ["No photos were selected for this report."],
-      },
+      imageAnnexSection("Finding image annex", photos, embeddedPhotos),
     ];
   }
 
@@ -340,12 +382,7 @@ function buildVariantSections(
               )
             : ["No findings recorded."],
       },
-      {
-        title: "Photo annex",
-        lines: photos.length
-          ? photos.map((photo: ReportPhoto, index: number) => `Image ${index + 1}: ${photo.label} / ${photo.caption} / ${photo.url}`)
-          : ["No photos were selected for this report."],
-      },
+      imageAnnexSection("Photo annex", photos, embeddedPhotos),
     ];
   }
 
@@ -403,12 +440,7 @@ function buildVariantSections(
             ])
           : ["No findings recorded."],
     },
-    {
-      title: "Selected image annex",
-      lines: photos.length
-        ? photos.map((photo: ReportPhoto, index: number) => `Image ${index + 1}: ${photo.label} / ${photo.caption} / ${photo.url}`)
-        : ["No photos were selected for this report."],
-    },
+    imageAnnexSection("Selected image annex", photos, embeddedPhotos),
   ];
 }
 
