@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Eye, FileText, LayoutGrid, TableProperties, Trash2, TriangleAlert } from "lucide-react";
 import { deleteDraftInspectionAction } from "@/app/actions";
 import { ActionIconLink } from "@/components/action-icon-link";
+import { ConfirmButton } from "@/components/confirm-button";
 import { AutoSubmitSelect } from "@/components/auto-submit-select";
 import { prisma } from "@/lib/prisma";
 import { summarizeProgress } from "@/lib/vir/analytics";
@@ -729,13 +730,13 @@ function InspectionRegisterGrid({
                   ) : null}
                   {isOffice && inspection.status === "DRAFT" ? (
                     <form action={deleteDraftInspectionAction.bind(null, inspection.id)}>
-                      <button
+                      <ConfirmButton
                         className="action-icon-button action-icon-button-danger"
+                        message={`Delete draft inspection "${inspection.title}"? This cannot be undone.`}
                         title="Delete draft inspection"
-                        type="submit"
                       >
                         <Trash2 size={15} />
-                      </button>
+                      </ConfirmButton>
                     </form>
                   ) : null}
                 </div>

@@ -6,6 +6,7 @@ import {
 } from "@/app/actions";
 import { prisma } from "@/lib/prisma";
 import { isOfficeSession, requireVirSession } from "@/lib/vir/session";
+import { ConfirmButton } from "@/components/confirm-button";
 
 const valueKinds = ["TEXT", "NUMBER", "BOOLEAN", "REFERENCE"] as const;
 
@@ -182,9 +183,12 @@ export default async function VirLibraryRegisterPage() {
                           </div>
                         </form>
                         <form action={deleteVirLibraryItemAction.bind(null, item.id)} className="register-delete-form">
-                          <button className="button button-ghost-danger" type="submit">
+                          <ConfirmButton
+                            className="button button-ghost-danger"
+                            message={`Delete library item "${item.label}"? This cannot be undone.`}
+                          >
                             Delete
-                          </button>
+                          </ConfirmButton>
                         </form>
                       </td>
                     </tr>

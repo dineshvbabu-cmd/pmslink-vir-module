@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronRight, Copy, FilePlus, LayoutList, Pencil, Plus, Trash2, Upload } from "lucide-react";
 import { CopyQuestionsPanel } from "./copy-questions-panel";
+import { ConfirmButton } from "@/components/confirm-button";
 import {
   cloneVirTemplateVersionAction,
   copyQuestionsFromSectionAction,
@@ -166,10 +167,13 @@ export default async function TemplatesPage({
               {!templateLocked ? (
                 <form action={deleteVirTemplateSectionAction.bind(null, selectedSection.id)}>
                   <input name="returnTo" type="hidden" value={returnToSection} />
-                  <button className="btn-danger btn-compact" type="submit">
+                  <ConfirmButton
+                    className="btn-danger btn-compact"
+                    message={`Delete section "${selectedSection.title}" and all its ${selectedSection.questions.length} question(s)? This cannot be undone.`}
+                  >
                     <Trash2 size={14} />
                     Delete section
-                  </button>
+                  </ConfirmButton>
                 </form>
               ) : null}
             </div>
@@ -258,9 +262,14 @@ export default async function TemplatesPage({
                     <td style={{ textAlign: "center" }}>
                       {!templateLocked ? (
                         <form action={deleteVirTemplateQuestionAction.bind(null, question.id)}>
-                          <button className="btn-danger btn-compact" style={{ fontSize: "0.7rem", padding: "0.25rem 0.5rem" }} title="Delete question" type="submit">
+                          <ConfirmButton
+                            className="btn-danger btn-compact"
+                            message={`Delete question [${question.code}]? This cannot be undone.`}
+                            style={{ fontSize: "0.7rem", padding: "0.25rem 0.5rem" }}
+                            title="Delete question"
+                          >
                             <Trash2 size={12} />
-                          </button>
+                          </ConfirmButton>
                         </form>
                       ) : null}
                     </td>

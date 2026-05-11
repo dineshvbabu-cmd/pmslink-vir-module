@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Eye, FileText, Plus, TriangleAlert } from "lucide-react";
 import { ActionIconLink } from "@/components/action-icon-link";
+import { ConfirmButton } from "@/components/confirm-button";
 import { prisma } from "@/lib/prisma";
 import { normalizeRemoteAssetUrl } from "@/lib/vir/live-checklist";
 import { canAccessVessel, isOfficeSession, requireVirSession } from "@/lib/vir/session";
@@ -482,14 +483,14 @@ export default async function VesselDetailsPage({
                         <td style={{ fontSize: "0.82rem" }}>{cert.name}</td>
                         <td>
                           <form action={removeVesselCertificateAction.bind(null, vessel.id, cert.key)}>
-                            <button
+                            <ConfirmButton
                               className="action-icon-link action-icon-link-danger"
+                              message={`Remove "${cert.name}" from this vessel's certificate profile?`}
                               style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.8rem" }}
                               title="Remove"
-                              type="submit"
                             >
                               Remove
-                            </button>
+                            </ConfirmButton>
                           </form>
                         </td>
                       </tr>

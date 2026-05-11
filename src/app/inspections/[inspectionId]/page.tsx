@@ -25,6 +25,7 @@ import { FloatingActivityFeed } from "@/components/floating-activity-feed";
 import { LiveSectionProgress } from "@/components/live-section-progress";
 import { QuestionEvidenceInline } from "@/components/question-evidence-inline";
 import { SubmitButton } from "@/components/submit-button";
+import { ConfirmButton } from "@/components/confirm-button";
 import { prisma } from "@/lib/prisma";
 import { calculateInspectionScore, calculateVesselCondition, summarizeProgress } from "@/lib/vir/analytics";
 import {
@@ -393,15 +394,15 @@ export default async function InspectionDetailPage({
                   style={{ fontSize: "0.74rem", width: "260px", padding: "0.25rem 0.4rem", resize: "vertical" }}
                 />
                 <div style={{ display: "flex", gap: "0.4rem" }}>
-                  <button
+                  <ConfirmButton
                     className="btn-danger btn-compact"
+                    message="Decline this approval? The inspection will be returned for rework."
                     name="approved"
                     style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}
-                    type="submit"
                     value="no"
                   >
                     Decline
-                  </button>
+                  </ConfirmButton>
                   <button
                     className="btn btn-compact"
                     name="approved"
@@ -434,7 +435,11 @@ export default async function InspectionDetailPage({
             {/* ── STEP 3 (optional): SENT_TO_VESSEL — office can cancel back; vessel submits ── */}
             {isOfficeSession(session) && inspection.status === "SENT_TO_VESSEL" ? (
               <form action={updateInspectionStatusAction.bind(null, inspection.id, "IN_PROGRESS")}>
-                <SubmitButton className="btn-danger btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
+                <SubmitButton
+                  className="btn-danger btn-compact"
+                  confirmMessage="Cancel sending to vessel and return this inspection to In Progress?"
+                  style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}
+                >
                   Cancel &amp; Return to In Progress
                 </SubmitButton>
               </form>
@@ -460,7 +465,11 @@ export default async function InspectionDetailPage({
             {isOfficeSession(session) && inspection.status === "SHORE_REVIEWED" ? (
               <>
                 <form action={updateInspectionStatusAction.bind(null, inspection.id, "IN_PROGRESS")}>
-                  <SubmitButton className="btn-danger btn-compact" style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}>
+                  <SubmitButton
+                    className="btn-danger btn-compact"
+                    confirmMessage="Return this inspection for rework? It will go back to In Progress."
+                    style={{ fontSize: "0.74rem", padding: "0.26rem 0.6rem" }}
+                  >
                     Return for Rework
                   </SubmitButton>
                 </form>
