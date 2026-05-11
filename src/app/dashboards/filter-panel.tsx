@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type BoardKey = "tmsa" | "class" | "psc-sire";
 export type RangeKey = "90" | "180" | "365" | "ytd";
@@ -53,6 +53,12 @@ export function DashboardFilterPanel({
   const [dateTo, setDateTo] = useState(initialDateTo);
   const [scope, setScope] = useState(initialScope);
   const dateDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Re-sync state when URL-derived props change (e.g. browser back/forward navigation)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setFleets(initialFleets); }, [initialFleets.join(",")]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setVesselIds(initialVesselIds); }, [initialVesselIds.join(",")]);
 
   function buildUrl(overrides: {
     board?: BoardKey;
@@ -125,23 +131,26 @@ export function DashboardFilterPanel({
   function handleFleetToggle(fleet: string) {
     const next = fleets.includes(fleet) ? fleets.filter((f) => f !== fleet) : [...fleets, fleet];
     setFleets(next);
-    go({ fleets: next });
+    setVesselIds([]);
+    go({ fleets: next, vesselIds: [] });
   }
 
   function clearFleets() {
     setFleets([]);
-    go({ fleets: [] });
+    setVesselIds([]);
+    go({ fleets: [], vesselIds: [] });
   }
 
   function handleVesselChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const selected = Array.from(e.target.selectedOptions).map((o) => o.value);
     setVesselIds(selected);
-    go({ vesselIds: selected });
+    setFleets([]);
+    go({ vesselIds: selected, fleets: [] });
   }
 
   function clearVessels() {
     setVesselIds([]);
-    go({ vesselIds: [] });
+    go({ vesselIds: [], fleets });
   }
 
   function handleScopeToggle(newScope: string) {
