@@ -4476,3 +4476,340 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Inspection Quick View Modal ────────────────────────────── */
+.insp-qv-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(8, 20, 35, 0.5);
+  backdrop-filter: blur(5px);
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+}
+
+.insp-qv-shell {
+  width: min(1040px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2.5rem);
+  background: var(--color-panel-strong);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.insp-qv-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-shell);
+  flex-shrink: 0;
+}
+
+.insp-qv-eyebrow {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-blue);
+}
+
+.insp-qv-close {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-ink-soft);
+  text-decoration: none;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-panel-strong);
+  cursor: pointer;
+}
+
+.insp-qv-close:hover {
+  background: var(--color-shell);
+  color: var(--color-ink);
+}
+
+.insp-qv-body {
+  display: grid;
+  grid-template-columns: 265px 1fr;
+  flex: 1;
+  min-height: 0;
+}
+
+.insp-qv-left {
+  border-right: 1px solid var(--color-border);
+  background: var(--color-shell);
+  padding: 1.1rem;
+  overflow-y: auto;
+}
+
+.insp-qv-right {
+  padding: 1.1rem 1.3rem;
+  overflow-y: auto;
+}
+
+.insp-qv-section-eyebrow {
+  font-size: 0.67rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-ink-soft);
+  margin-bottom: 0.9rem;
+}
+
+.insp-qv-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--color-blue);
+  display: grid;
+  place-items: center;
+  margin-bottom: 0.65rem;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: white;
+  letter-spacing: 0.04em;
+}
+
+.insp-qv-name {
+  font-size: 0.94rem;
+  font-weight: 700;
+  color: var(--color-ink);
+  margin-bottom: 0.2rem;
+}
+
+.insp-qv-company {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--color-ink-soft);
+}
+
+.insp-qv-hr {
+  height: 1px;
+  background: var(--color-border);
+  margin: 0.8rem 0;
+}
+
+.insp-qv-profile-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.insp-qv-profile-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.insp-qv-profile-row-stacked {
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.insp-qv-plabel {
+  font-size: 0.7rem;
+  color: var(--color-ink-soft);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.insp-qv-pvalue {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  text-align: right;
+}
+
+.insp-qv-profile-row-stacked .insp-qv-pvalue {
+  text-align: left;
+}
+
+.insp-qv-cert-title {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-blue);
+  margin-bottom: 0.55rem;
+}
+
+.insp-qv-empty-note {
+  font-size: 0.75rem;
+  color: var(--color-ink-soft);
+  font-style: italic;
+  margin: 0;
+}
+
+/* Right panel */
+.insp-qv-right-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.insp-qv-ref {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--color-ink);
+  margin-bottom: 0.1rem;
+}
+
+.insp-qv-title-secondary {
+  font-size: 0.79rem;
+  color: var(--color-ink-soft);
+}
+
+.insp-qv-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.insp-qv-detail-item {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.insp-qv-detail-icon {
+  color: var(--color-blue);
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.insp-qv-dlabel {
+  font-size: 0.67rem;
+  color: var(--color-ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+  margin-bottom: 0.1rem;
+}
+
+.insp-qv-dvalue {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.insp-qv-dsub {
+  color: var(--color-ink-soft);
+  font-weight: 400;
+}
+
+.insp-qv-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  margin: 0.85rem 0;
+}
+
+.insp-qv-stat {
+  text-align: center;
+  padding: 0.55rem 0.35rem;
+  background: var(--color-shell);
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+}
+
+.insp-qv-stat-val {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--color-ink);
+  line-height: 1.1;
+  margin-bottom: 0.2rem;
+}
+
+.insp-qv-stat-val-danger {
+  color: var(--color-red);
+}
+
+.insp-qv-stat-val-ok {
+  color: var(--color-green);
+}
+
+.insp-qv-stat-lbl {
+  font-size: 0.63rem;
+  color: var(--color-ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+}
+
+.insp-qv-signoffs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.insp-qv-signoff-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+}
+
+.insp-qv-so-ok {
+  color: var(--color-green);
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.insp-qv-so-pending {
+  color: var(--color-border);
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.insp-qv-so-stage {
+  font-size: 0.79rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.insp-qv-so-actor {
+  font-size: 0.71rem;
+  color: var(--color-ink-soft);
+}
+
+.insp-qv-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding-top: 0.9rem;
+  margin-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+@media (max-width: 680px) {
+  .insp-qv-body {
+    grid-template-columns: 1fr;
+  }
+
+  .insp-qv-left {
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .insp-qv-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

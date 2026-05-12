@@ -1,8 +1,9 @@
 import type { VirInspectionTypeCategory } from "@prisma/client";
 import Link from "next/link";
-import { Eye, FileText, LayoutGrid, TableProperties, Trash2, TriangleAlert } from "lucide-react";
+import { Eye, FileText, LayoutGrid, ScanSearch, TableProperties, Trash2, TriangleAlert } from "lucide-react";
 import { deleteDraftInspectionAction } from "@/app/actions";
 import { ActionIconLink } from "@/components/action-icon-link";
+import { InspectionQuickView, type InspectionPreviewData } from "@/components/inspection-quick-view";
 import { ConfirmButton } from "@/components/confirm-button";
 import { AutoSubmitSelect } from "@/components/auto-submit-select";
 import { prisma } from "@/lib/prisma";
@@ -21,6 +22,7 @@ type SearchParams = {
   vesselId?: string;
   view?: string;
   q?: string;
+  preview?: string;
 };
 
 type PageMode = "register" | "approved" | "history";
@@ -95,7 +97,7 @@ export default async function InspectionsPage({
 }) {
   const session = await requireVirSession();
   const workspaceFilter = isOfficeSession(session) ? await getVirWorkspaceFilter() : null;
-  const { scope, status, vesselId, view, q } = await searchParams;
+  const { scope, status, vesselId, view, q, preview } = await searchParams;
   const pageMode = normalizePageMode(scope, session.workspace === "OFFICE");
   const viewMode = normalizeViewMode(view);
   const searchTerm = q?.trim().toLowerCase() ?? "";
@@ -316,6 +318,24 @@ export default async function InspectionsPage({
     }
   });
 
+  // Build preview data if ?preview= is in the URL
+  const previewId = typeof preview === "string" ? preview.trim() : undefined;
+  const previewSource = previewId ? (enriched.find((i) => i.id === previewId) ?? null) : null;
+  const previewData: InspectionPreviewData | null = previewSource
+    ? buildPreviewData(previewSource, fmt, scope, status, selectedVesselId, view, q)
+    : null;
+
+  // Base URL params string used by grids to build per-row preview hrefs
+  const previewBase = (() => {
+    const p = new URLSearchParams();
+    if (scope) p.set("scope", scope);
+    if (status) p.set("status", status);
+    if (selectedVesselId) p.set("vesselId", selectedVesselId);
+    if (view) p.set("view", view);
+    if (q) p.set("q", q);
+    return p.toString();
+  })();
+
   const header = pageMode === "approved"
     ? {
         title: "Approved inspections",
@@ -337,6 +357,8 @@ export default async function InspectionsPage({
         };
 
   return (
+    <>
+    {previewData ? <InspectionQuickView data={previewData} /> : null}
     <div className="page-stack">
       <section className="panel panel-elevated">
         <div className="section-header">
@@ -463,23 +485,26 @@ export default async function InspectionsPage({
         </div>
 
         {viewMode === "summary" ? (
-          <SummaryInspectionView inspections={filtered} pageMode={pageMode} isOffice={isOfficeSession(session)} />
+          <SummaryInspectionView inspections={filtered} pageMode={pageMode} isOffice={isOfficeSession(session)} previewBase={previewBase} />
         ) : pageMode === "approved" ? (
-          <ApprovedInspectionGrid inspections={filtered} />
+          <ApprovedInspectionGrid inspections={filtered} previewBase={previewBase} />
         ) : pageMode === "history" ? (
-          <InspectionHistoryGrid inspections={filtered} isOffice={isOfficeSession(session)} selectedVesselId={selectedVesselId} />
+          <InspectionHistoryGrid inspections={filtered} isOffice={isOfficeSession(session)} selectedVesselId={selectedVesselId} previewBase={previewBase} />
         ) : (
-          <InspectionRegisterGrid inspections={filtered} isOffice={isOfficeSession(session)} />
+          <InspectionRegisterGrid inspections={filtered} isOffice={isOfficeSession(session)} previewBase={previewBase} />
         )}
       </section>
     </div>
+    </>
   );
 }
 
 function ApprovedInspectionGrid({
   inspections,
+  previewBase,
 }: {
   inspections: InspectionRow[];
+  previewBase: string;
 }) {
   return (
     <div className="table-shell table-shell-page">
@@ -528,6 +553,7 @@ function ApprovedInspectionGrid({
               </td>
               <td>
                 <div className="table-actions table-actions-icons">
+                  <ActionIconLink href={previewHref(inspection.id, previewBase)} icon={ScanSearch} label="Quick view" tone="neutral" />
                   <ActionIconLink href={`/inspections/${inspection.id}`} icon={Eye} label="Inspection workflow" tone="primary" />
                   <ActionIconLink
                     href={`/reports/inspection/${inspection.id}?variant=detailed`}
@@ -549,10 +575,12 @@ function InspectionHistoryGrid({
   inspections,
   isOffice,
   selectedVesselId,
+  previewBase,
 }: {
   inspections: InspectionRow[];
   isOffice: boolean;
   selectedVesselId: string;
+  previewBase: string;
 }) {
   return (
     <div className="table-shell table-shell-page">
@@ -627,6 +655,7 @@ function InspectionHistoryGrid({
                 <td style={{ fontSize: "0.78rem" }}>{inspection.inspectionMode}</td>
                 <td>
                   <div className="table-actions table-actions-icons">
+                    <ActionIconLink href={previewHref(inspection.id, previewBase)} icon={ScanSearch} label="Quick view" tone="neutral" />
                     <ActionIconLink href={`/inspections/${inspection.id}`} icon={Eye} label="Inspection workflow" tone="primary" />
                     <ActionIconLink
                       href={`/reports/inspection/${inspection.id}?variant=detailed`}
@@ -656,9 +685,11 @@ function InspectionHistoryGrid({
 function InspectionRegisterGrid({
   inspections,
   isOffice,
+  previewBase,
 }: {
   inspections: InspectionRow[];
   isOffice: boolean;
+  previewBase: string;
 }) {
   return (
     <div className="table-shell table-shell-page">
@@ -713,6 +744,7 @@ function InspectionRegisterGrid({
               </td>
               <td>
                 <div className="table-actions table-actions-icons">
+                  <ActionIconLink href={previewHref(inspection.id, previewBase)} icon={ScanSearch} label="Quick view" tone="neutral" />
                   <ActionIconLink href={`/inspections/${inspection.id}`} icon={Eye} label="Inspection workflow" tone="primary" />
                   <ActionIconLink
                     href={`/reports/inspection/${inspection.id}?variant=detailed`}
@@ -753,10 +785,12 @@ function SummaryInspectionView({
   inspections,
   pageMode,
   isOffice,
+  previewBase,
 }: {
   inspections: InspectionRow[];
   pageMode: PageMode;
   isOffice: boolean;
+  previewBase: string;
 }) {
   return (
     <div className="inspection-summary-grid">
@@ -804,6 +838,7 @@ function SummaryInspectionView({
             {inspection.approvedSignOff?.actorName ? ` / Approved by ${inspection.approvedSignOff.actorName}` : ""}
           </div>
           <div className="table-actions table-actions-icons" style={{ marginTop: "0.8rem" }}>
+            <ActionIconLink href={previewHref(inspection.id, previewBase)} icon={ScanSearch} label="Quick view" tone="neutral" />
             <ActionIconLink href={`/inspections/${inspection.id}`} icon={Eye} label="Inspection workflow" tone="primary" />
             <ActionIconLink
               href={`/reports/inspection/${inspection.id}?variant=detailed`}
@@ -887,4 +922,98 @@ function inferInspectionMode(title: string, inspectionTypeName: string) {
 
 function syncLabelForInspection(status: string): "Synced" | "Not Synced" {
   return ["DRAFT", "RETURNED", "IMPORT_REVIEW"].includes(status) ? "Not Synced" : "Synced";
+}
+
+function previewHref(inspectionId: string, base: string) {
+  return `/inspections?${base ? base + "&" : ""}preview=${inspectionId}`;
+}
+
+function buildPreviewData(
+  inspection: InspectionRow & { inspectorCompany?: string | null },
+  formatter: Intl.DateTimeFormat,
+  scope: string | undefined,
+  status: string | undefined,
+  vesselId: string,
+  view: string | undefined,
+  q: string | undefined,
+): InspectionPreviewData {
+  const meta =
+    inspection.metadata && typeof inspection.metadata === "object" && !Array.isArray(inspection.metadata)
+      ? (inspection.metadata as Record<string, unknown>)
+      : {};
+
+  const qual =
+    typeof meta.inspectorQualification === "string"
+      ? meta.inspectorQualification
+      : typeof meta.auditorQualification === "string"
+        ? meta.auditorQualification
+        : null;
+
+  const exp =
+    typeof meta.inspectorExperience === "string"
+      ? meta.inspectorExperience
+      : typeof meta.auditExperience === "string"
+        ? meta.auditExperience
+        : null;
+
+  const cmdExp = typeof meta.commandExperience === "string" ? meta.commandExperience : null;
+
+  const certRaw =
+    meta.inspectorCertificate && typeof meta.inspectorCertificate === "object" && !Array.isArray(meta.inspectorCertificate)
+      ? (meta.inspectorCertificate as Record<string, unknown>)
+      : null;
+
+  const cert = certRaw
+    ? {
+        type: typeof certRaw.type === "string" ? certRaw.type : null,
+        number: typeof certRaw.number === "string" ? certRaw.number : null,
+        issueDate: typeof certRaw.issueDate === "string" ? certRaw.issueDate : null,
+        expiryDate: typeof certRaw.expiryDate === "string" ? certRaw.expiryDate : null,
+        notes: typeof certRaw.notes === "string" ? certRaw.notes : null,
+      }
+    : null;
+
+  const p = new URLSearchParams();
+  if (scope) p.set("scope", scope);
+  if (status) p.set("status", status);
+  if (vesselId) p.set("vesselId", vesselId);
+  if (view) p.set("view", view);
+  if (q) p.set("q", q);
+  const closeHref = `/inspections${p.toString() ? `?${p.toString()}` : ""}`;
+
+  return {
+    id: inspection.id,
+    title: inspection.title,
+    refNo: inspection.refNo,
+    vessel: {
+      id: inspection.vessel.id,
+      name: inspection.vessel.name,
+      vesselType: inspection.vessel.vesselType,
+      fleet: inspection.vessel.fleet,
+    },
+    inspectionTypeName: inspection.inspectionType.name,
+    status: inspection.status,
+    statusLabel: inspectionStatusLabel[inspection.status] ?? inspection.status,
+    statusTone: toneForInspectionStatus(inspection.status),
+    inspectionDate: inspection.auditFromDate ?? formatter.format(inspection.inspectionDate),
+    auditEndDate: inspection.auditEndDate,
+    placeOfInspection: inspection.placeOfInspection,
+    inspectorName: inspection.inspectorName,
+    inspectorCompany: inspection.inspectorCompany ?? null,
+    inspectorQualification: qual,
+    inspectorExperience: exp,
+    commandExperience: cmdExp,
+    certificate: cert,
+    openFindings: inspection.findings.length,
+    completionPct: inspection.progress.completionPct,
+    mandatoryAnswered: inspection.progress.answeredMandatory,
+    mandatoryTotal: inspection.progress.mandatoryQuestions,
+    signOffs: inspection.signOffs.map((so) => ({
+      stage: so.stage,
+      actorName: so.actorName,
+      approved: so.approved,
+      signedAt: formatter.format(so.signedAt),
+    })),
+    closeHref,
+  };
 }
