@@ -38,12 +38,15 @@ const officeNavigation: WorkspaceNavItem[] = [
   { href: "/schedule", label: "Inspection Calendar", note: "Planner and compliance status" },
   { href: "/inspections", label: "Inspection Register", note: "Draft, review, sync, and closure" },
   { href: "/templates", label: "Template Library", note: "Questionnaires" },
+  { href: "/library", label: "Inspector Library", note: "Templates, defect descriptions, references" },
+  { href: "/reports/defects", label: "Defect Traceability", note: "Cross-inspection defect register" },
 ];
 
 const vesselNavigation: WorkspaceNavItem[] = [
   { href: "/", label: "Dashboard", note: "Vessel dashboard" },
   { href: "/schedule", label: "Inspection Calendar", note: "View-only vessel plan" },
   { href: "/inspections", label: "Inspection Register", note: "Synced vessel inspections" },
+  { href: "/library", label: "Inspector Library", note: "Templates and references" },
 ];
 
 function secret() {

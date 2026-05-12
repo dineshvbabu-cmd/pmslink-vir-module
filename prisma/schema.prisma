@@ -95,6 +95,33 @@ enum VirImportStatus {
   FAILED
 }
 
+enum VirDefectClassification {
+  SEP
+  NORMAL
+}
+
+enum VirDefectTarget {
+  PMS
+  QHSE
+  BOTH
+  FINDINGS_ONLY
+}
+
+enum VirFindingRecordStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
+  CANCELLED
+}
+
+enum VirInspectorLibraryItemType {
+  TEMPLATE
+  QUESTION_SET
+  REFERENCE
+  DEFECT_DESC
+  FAVOURITE
+}
+
 model Vessel {
   id          String   @id @default(cuid())
   code        String   @unique
@@ -118,14 +145,15 @@ model Vessel {
 }
 
 model VirInspectionType {
-  id          String                    @id @default(cuid())
-  code        String                    @unique
-  name        String
-  category    VirInspectionTypeCategory
-  description String?                   @db.Text
-  isActive    Boolean                   @default(true)
-  createdAt   DateTime                  @default(now())
-  updatedAt   DateTime                  @updatedAt
+  id                  String                    @id @default(cuid())
+  code                String                    @unique
+  name                String
+  category            VirInspectionTypeCategory
+  description         String?                   @db.Text
+  defaultDefectTarget VirDefectTarget           @default(PMS)
+  isActive            Boolean                   @default(true)
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
 
   templates      VirTemplate[]
   inspections    VirInspection[]
@@ -314,6 +342,7 @@ model VirInspection {
   signOffs           VirSignOff[]
   photos             VirPhoto[]
   pmsDefects         VirPmsDefect[]
+  findingRecords     VirFindingDefectRecord[]
 
   @@index([vesselId, inspectionDate])
   @@index([inspectionTypeId, inspectionDate])
@@ -345,36 +374,42 @@ model VirAnswer {
 }
 
 model VirFinding {
-  id                   String           @id @default(cuid())
+  id                   String                   @id @default(cuid())
   inspectionId         String
   questionId           String?
   findingType          VirFindingType
-  severity             VirRiskLevel     @default(MEDIUM)
-  status               VirFindingStatus @default(OPEN)
-  priority             Int              @default(0)
+  severity             VirRiskLevel             @default(MEDIUM)
+  status               VirFindingStatus         @default(OPEN)
+  priority             Int                      @default(0)
   title                String
-  description          String           @db.Text
+  description          String                   @db.Text
+  defectClassification VirDefectClassification?
+  defectTarget         VirDefectTarget?
+  qhseRef              String?
+  routingOverride      Boolean                  @default(false)
   dueDate              DateTime?
-  vesselResponse       String?          @db.Text
-  shoreFeedback        String?          @db.Text
-  isCarriedOver        Boolean          @default(false)
+  vesselResponse       String?                  @db.Text
+  shoreFeedback        String?                  @db.Text
+  isCarriedOver        Boolean                  @default(false)
   carriedFromFindingId String?
   ownerName            String?
   closedBy             String?
   closedAt             DateTime?
-  createdAt            DateTime         @default(now())
-  updatedAt            DateTime         @updatedAt
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
 
-  inspection         VirInspection        @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
-  question           VirTemplateQuestion? @relation(fields: [questionId], references: [id])
-  carriedFromFinding VirFinding?          @relation("VirFindingCarryover", fields: [carriedFromFindingId], references: [id])
-  carriedFindings    VirFinding[]         @relation("VirFindingCarryover")
+  inspection         VirInspection          @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  question           VirTemplateQuestion?   @relation(fields: [questionId], references: [id])
+  carriedFromFinding VirFinding?            @relation("VirFindingCarryover", fields: [carriedFromFindingId], references: [id])
+  carriedFindings    VirFinding[]           @relation("VirFindingCarryover")
   correctiveActions  VirCorrectiveAction[]
   pmsDefects         VirPmsDefect[]
+  findingRecords     VirFindingDefectRecord[]
   photos             VirPhoto[]
 
   @@index([inspectionId, status])
   @@index([findingType, severity])
+  @@index([defectClassification])
 }
 
 model VirPhoto {
@@ -507,4 +542,69 @@ model VirImportFieldReview {
   importSession VirImportSession @relation(fields: [importSessionId], references: [id], onDelete: Cascade)
 
   @@index([importSessionId, fieldPath])
+}
+
+model VirFindingDefectRecord {
+  id                   String                   @id @default(cuid())
+  findingId            String
+  inspectionId         String
+  defectRef            String
+  title                String
+  description          String                   @db.Text
+  defectClassification VirDefectClassification?
+  defectTarget         VirDefectTarget          @default(PMS)
+  qhseRef              String?
+  status               VirFindingRecordStatus   @default(OPEN)
+  raisedAt             DateTime                 @default(now())
+  raisedBy             String?
+  closedAt             DateTime?
+  closedBy             String?
+  cancelledAt          DateTime?
+  cancelledBy          String?
+  cancellationReason   String?                  @db.Text
+  remarks              String?                  @db.Text
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+
+  finding    VirFinding    @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  inspection VirInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  @@index([inspectionId])
+  @@index([findingId])
+  @@index([status])
+  @@index([defectTarget])
+}
+
+model VirInspectorLibrary {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?  @db.Text
+  inspectorName String?
+  isDefault     Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  items VirInspectorLibraryItem[]
+
+  @@index([isActive])
+  @@index([inspectorName])
+}
+
+model VirInspectorLibraryItem {
+  id          String                      @id @default(cuid())
+  libraryId   String
+  itemType    VirInspectorLibraryItemType
+  title       String
+  content     String                      @db.Text
+  metadata    Json?
+  isFavourite Boolean                     @default(false)
+  sortOrder   Int                         @default(0)
+  createdAt   DateTime                    @default(now())
+  updatedAt   DateTime                    @updatedAt
+
+  library VirInspectorLibrary @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+
+  @@index([libraryId, itemType])
+  @@index([libraryId, isFavourite])
 }

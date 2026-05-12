@@ -4813,3 +4813,103 @@ textarea {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* ── FR-01: Mandatory question indicator ─────────────────────── */
+.mandatory-star {
+  display: inline-block;
+  color: var(--color-red);
+  font-weight: 900;
+  font-size: 0.8rem;
+  margin-right: 0.25rem;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+/* ── FR-02: SEP badge ────────────────────────────────────────── */
+.chip-sep {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: #4a0000;
+  color: #fff;
+  text-transform: uppercase;
+}
+
+/* ── FR-02/03: Classification + routing radio group ─────────── */
+.radio-group-inline {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 0.3rem 0;
+}
+
+.radio-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+
+.radio-opt-sep {
+  color: #9b0000;
+  font-weight: 600;
+}
+
+.radio-opt-sep-hint {
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--color-ink-soft);
+}
+
+/* ── FR-06: Inspector Library ────────────────────────────────── */
+.lib-sidebar-item {
+  display: block;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.lib-sidebar-item:hover {
+  background: var(--color-shell);
+}
+
+.lib-sidebar-item-active {
+  background: var(--color-blue-soft);
+  border-left: 3px solid var(--color-blue);
+}
+
+.lib-sidebar-name {
+  font-weight: 600;
+  font-size: 0.84rem;
+  color: var(--color-ink);
+}
+
+.lib-sidebar-sub {
+  font-size: 0.75rem;
+  color: var(--color-ink-soft);
+  margin-top: 1px;
+}
+
+.lib-sidebar-count {
+  font-size: 0.7rem;
+  color: var(--color-ink-soft);
+  margin-top: 2px;
+}
+
+.lib-tab-active {
+  background: var(--color-blue-soft);
+  color: var(--color-blue);
+  font-weight: 600;
+}
+
+.lib-star-active {
+  color: var(--color-amber);
+  font-weight: 700;
+}

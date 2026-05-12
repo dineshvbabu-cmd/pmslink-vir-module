@@ -1087,20 +1087,27 @@ export default async function InspectionDetailPage({
                                 </td>
                                 <td className="td-question">
                                   {question.code ? <span style={{ fontWeight: 700, color: "var(--color-blue)", fontSize: "0.72rem", marginRight: "0.3rem" }}>{question.code}</span> : null}
+                                  {(question.isMandatory ?? bindingQuestion?.isMandatory) ? <span className="mandatory-star" title="Mandatory — N/A not allowed">*</span> : null}
                                   {question.prompt}
                                   {isCic ? <span className="chip chip-warning" style={{ marginLeft: "0.3rem", fontSize: "0.62rem", padding: "1px 5px" }}>CIC</span> : null}
                                 </td>
                                 <td className="td-response" style={{ minWidth: "80px" }}>—</td>
-                                {(["T", "I", "NS", "NA"] as const).map((status) => (
-                                  <td className="td-checkbox survey-radio" key={status}>
-                                    <input
-                                      defaultChecked={effectiveSurveyStatus === status}
-                                      name={`status:${questionKey}`}
-                                      type="radio"
-                                      value={status}
-                                    />
-                                  </td>
-                                ))}
+                                {(["T", "I", "NS", "NA"] as const).map((status) => {
+                                  const isMandatoryQ = question.isMandatory ?? bindingQuestion?.isMandatory;
+                                  return (
+                                    <td className="td-checkbox survey-radio" key={status}>
+                                      <input
+                                        defaultChecked={effectiveSurveyStatus === status}
+                                        disabled={status === "NA" && Boolean(isMandatoryQ)}
+                                        name={`status:${questionKey}`}
+                                        style={status === "NA" && isMandatoryQ ? { opacity: 0.25, cursor: "not-allowed" } : undefined}
+                                        title={status === "NA" && isMandatoryQ ? "N/A not allowed for mandatory questions" : undefined}
+                                        type="radio"
+                                        value={status}
+                                      />
+                                    </td>
+                                  );
+                                })}
                                 <td className="td-score">
                                   <select
                                     className="score-select"
@@ -1183,13 +1190,14 @@ export default async function InspectionDetailPage({
                               </td>
                               <td className="td-question">
                                 <span style={{ fontWeight: 700, color: "var(--color-blue)", fontSize: "0.72rem", marginRight: "0.3rem" }}>{question.code}</span>
+                                {question.isMandatory ? <span className="mandatory-star" title="Mandatory — N/A not allowed">*</span> : null}
                                 {question.prompt}
                                 {question.isCicCandidate ? <span className="chip chip-warning" style={{ marginLeft: "0.3rem", fontSize: "0.62rem", padding: "1px 5px" }}>CIC</span> : null}
                               </td>
                               <td className="td-response" style={{ minWidth: "100px" }}>
                                 {question.responseType === "YES_NO_NA" ? (
                                   <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                                    {(["YES", "NO", "NA"] as const).map((v) => (
+                                    {(question.isMandatory ? (["YES", "NO"] as const) : (["YES", "NO", "NA"] as const)).map((v) => (
                                       <label key={v} style={{ display: "flex", alignItems: "center", gap: "3px", fontSize: "0.72rem" }}>
                                         <input
                                           defaultChecked={(answer?.answerText ?? question.favourableAnswer) === v}
@@ -1374,6 +1382,32 @@ export default async function InspectionDetailPage({
               </select>
             </div>
             <div className="field">
+              <label>Classification</label>
+              <div className="radio-group-inline">
+                <label className="radio-opt">
+                  <input defaultChecked name="defectClassification" type="radio" value="NORMAL" />
+                  Normal
+                </label>
+                <label className="radio-opt radio-opt-sep">
+                  <input name="defectClassification" type="radio" value="SEP" />
+                  SEP <span className="radio-opt-sep-hint">(forces Critical)</span>
+                </label>
+              </div>
+            </div>
+            <div className="field">
+              <label htmlFor="defectTarget">Route to</label>
+              <select defaultValue={inspection.inspectionType.defaultDefectTarget} id="defectTarget" name="defectTarget">
+                <option value="PMS">PMS only</option>
+                <option value="QHSE">QHSE only</option>
+                <option value="BOTH">PMS + QHSE</option>
+                <option value="FINDINGS_ONLY">Findings only (no routing)</option>
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="qhseRef">QHSE reference (optional)</label>
+              <input id="qhseRef" name="qhseRef" placeholder="e.g. QHSE-2024-001" type="text" />
+            </div>
+            <div className="field">
               <label htmlFor="dueDate">Target date</label>
               <input id="dueDate" name="dueDate" type="date" />
             </div>
@@ -1413,6 +1447,13 @@ export default async function InspectionDetailPage({
                       <div className="meta-row">
                         <span className={`chip ${toneForRisk(finding.severity)}`}>{riskLabel[finding.severity]}</span>
                         <span className={`chip ${toneForFindingStatus(finding.status)}`}>{findingStatusLabel[finding.status]}</span>
+                        {(finding as typeof finding & { defectClassification?: string | null }).defectClassification === "SEP" ? (
+                          <span className="chip-sep">SEP</span>
+                        ) : null}
+                        {(() => {
+                          const dt = (finding as typeof finding & { defectTarget?: string | null }).defectTarget;
+                          return dt && dt !== "PMS" ? <span className="chip chip-info" style={{ fontSize: "0.62rem" }}>{dt}</span> : null;
+                        })()}
                       </div>
                       <div className="list-card-title">{finding.title}</div>
                       <p className="small-text">{finding.description}</p>
@@ -2127,6 +2168,35 @@ export default async function InspectionDetailPage({
                   <option value="HIGH">High</option>
                   <option value="CRITICAL">Critical</option>
                 </select>
+              </div>
+
+              <div className="field">
+                <label>Classification</label>
+                <div className="radio-group-inline">
+                  <label className="radio-opt">
+                    <input defaultChecked name="defectClassification" type="radio" value="NORMAL" />
+                    Normal
+                  </label>
+                  <label className="radio-opt radio-opt-sep">
+                    <input name="defectClassification" type="radio" value="SEP" />
+                    SEP <span className="radio-opt-sep-hint">(forces Critical)</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="field">
+                <label htmlFor="fp-defectTarget">Route to</label>
+                <select defaultValue={inspection.inspectionType.defaultDefectTarget} id="fp-defectTarget" name="defectTarget">
+                  <option value="PMS">PMS only</option>
+                  <option value="QHSE">QHSE only</option>
+                  <option value="BOTH">PMS + QHSE</option>
+                  <option value="FINDINGS_ONLY">Findings only (no routing)</option>
+                </select>
+              </div>
+
+              <div className="field">
+                <label htmlFor="fp-qhseRef">QHSE reference (optional)</label>
+                <input className="field-input" id="fp-qhseRef" name="qhseRef" placeholder="e.g. QHSE-2024-001" style={{ fontSize: "0.85rem" }} type="text" />
               </div>
 
               <div className="field-wide">

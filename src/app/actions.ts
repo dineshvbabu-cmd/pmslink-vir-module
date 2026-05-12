@@ -1764,7 +1764,13 @@ export async function addFindingAction(inspectionId: string, formData: FormData)
   const rawQuestionId = toStringOrNull(formData.get("questionId"));
   // live-* IDs are not DB rows — nullify to avoid FK constraint violation
   const questionId = rawQuestionId && !rawQuestionId.startsWith("live-") ? rawQuestionId : null;
-  const severity = (toStringOrNull(formData.get("severity")) ?? "MEDIUM") as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+
+  // FR-02: SEP classification forces CRITICAL severity
+  const rawClassification = toStringOrNull(formData.get("defectClassification"))?.toUpperCase();
+  const defectClassification = rawClassification === "SEP" ? "SEP" as const : rawClassification === "NORMAL" ? "NORMAL" as const : null;
+  const rawSeverity = (toStringOrNull(formData.get("severity")) ?? "MEDIUM") as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  const severity = defectClassification === "SEP" ? "CRITICAL" as const : rawSeverity;
+
   const findingType = (toStringOrNull(formData.get("findingType")) ?? "OBSERVATION") as
     | "NON_CONFORMITY"
     | "OBSERVATION"
@@ -1778,12 +1784,33 @@ export async function addFindingAction(inspectionId: string, formData: FormData)
   const carTargetDate = toDateOrNull(formData.get("carTargetDate"));
   const returnTo = toStringOrNull(formData.get("returnTo"));
 
+  // FR-03: defect routing — form value takes priority, else fall back to inspection type default
+  const rawTarget = toStringOrNull(formData.get("defectTarget"))?.toUpperCase();
+  const VALID_TARGETS = ["PMS", "QHSE", "BOTH", "FINDINGS_ONLY"] as const;
+  type DefectTarget = (typeof VALID_TARGETS)[number];
+  let defectTarget: DefectTarget = "PMS";
+  if (rawTarget && VALID_TARGETS.includes(rawTarget as DefectTarget)) {
+    defectTarget = rawTarget as DefectTarget;
+  } else {
+    const fullInspection = await prisma.virInspection.findUnique({
+      where: { id: inspectionId },
+      select: { inspectionType: { select: { defaultDefectTarget: true } } },
+    });
+    defectTarget = (fullInspection?.inspectionType?.defaultDefectTarget ?? "PMS") as DefectTarget;
+  }
+  const qhseRef = toStringOrNull(formData.get("qhseRef"));
+  const routingOverride = rawTarget !== null && rawTarget !== undefined;
+
   const finding = await prisma.virFinding.create({
     data: {
       inspectionId,
       questionId,
       findingType,
       severity,
+      defectClassification,
+      defectTarget,
+      qhseRef,
+      routingOverride,
       title,
       description,
       ownerName: toStringOrNull(formData.get("ownerName")),
@@ -1794,18 +1821,43 @@ export async function addFindingAction(inspectionId: string, formData: FormData)
     },
   });
 
-  // Auto-create one PMS defect per finding so it appears in the vessel's PMS module immediately
-  await prisma.virPmsDefect.create({
+  // FR-05: central defect record for traceability
+  const defectRef = `DEF-${finding.id.slice(-6).toUpperCase()}`;
+  await prisma.virFindingDefectRecord.create({
     data: {
       findingId: finding.id,
       inspectionId,
-      defectRef: `PMS-${finding.id.slice(-6).toUpperCase()}`,
+      defectRef,
       title,
       description,
+      defectClassification,
+      defectTarget,
+      qhseRef,
       status: "OPEN",
       raisedBy: session.actorName,
     },
   });
+
+  // FR-03: route to PMS when target is PMS or BOTH
+  if (defectTarget === "PMS" || defectTarget === "BOTH") {
+    await prisma.virPmsDefect.create({
+      data: {
+        findingId: finding.id,
+        inspectionId,
+        defectRef: `PMS-${finding.id.slice(-6).toUpperCase()}`,
+        title,
+        description,
+        status: "OPEN",
+        raisedBy: session.actorName,
+      },
+    });
+  }
+
+  // FR-03: stub QHSE routing — stores ref in finding record (external integration point)
+  if ((defectTarget === "QHSE" || defectTarget === "BOTH") && qhseRef) {
+    // External QHSE system integration stub — replace with real API call when available
+    console.log(`[QHSE-STUB] Route finding ${finding.id} → QHSE ref: ${qhseRef}`);
+  }
 
   // Create CAR: use explicit form fields if provided, else auto-generate for serious findings
   const shouldCreateCAR = requiresCAR || (findingType !== "POSITIVE" && (findingType === "NON_CONFORMITY" || severity === "HIGH" || severity === "CRITICAL"));
