@@ -2,10 +2,14 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 
-const ALLOWED_HOSTS = new Set([
-  "vir.synergymarinegroup.com",
-  "ia.synergymarinegroup.com",
-]);
+function getAllowedHosts() {
+  return new Set(
+    (process.env.VIR_ASSET_ALLOWED_HOSTS ?? "")
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
 
 export async function GET(request: NextRequest) {
   const rawUrl = request.nextUrl.searchParams.get("url")?.trim();
@@ -21,25 +25,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Invalid asset URL" }, { status: 400 });
   }
 
-  if (!ALLOWED_HOSTS.has(target.hostname)) {
+  const allowedHosts = getAllowedHosts();
+
+  if (allowedHosts.size > 0 && !allowedHosts.has(target.hostname.toLowerCase())) {
     return NextResponse.json({ ok: false, error: "Asset host not allowed" }, { status: 403 });
   }
 
   const liveAuth = await resolveLiveAssetAuth(target.hostname);
 
+  const assetOrigin = `${target.protocol}//${target.host}`;
   const upstream = await fetch(target.toString(), {
     headers: {
       Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
       ...(liveAuth.cookieHeader ? { Cookie: liveAuth.cookieHeader } : {}),
       ...(liveAuth.bearerToken ? { Authorization: `Bearer ${liveAuth.bearerToken}` } : {}),
-      Referer:
-        target.hostname === "ia.synergymarinegroup.com"
-          ? "https://ia.synergymarinegroup.com/ia/"
-          : "https://vir.synergymarinegroup.com/vir/",
-      Origin:
-        target.hostname === "ia.synergymarinegroup.com"
-          ? "https://ia.synergymarinegroup.com"
-          : "https://vir.synergymarinegroup.com",
+      Referer: `${assetOrigin}/`,
+      Origin: assetOrigin,
       "User-Agent": "PMSLink-VIR-Module/1.0",
     },
     cache: "no-store",
@@ -79,13 +80,15 @@ export async function GET(request: NextRequest) {
 }
 
 async function resolveLiveAssetAuth(hostname: string) {
+  const secondaryHost = (process.env.VIR_SECONDARY_ASSET_HOST ?? "").trim().toLowerCase();
+  const isSecondaryHost = secondaryHost.length > 0 && hostname.toLowerCase() === secondaryHost;
   const cookieHeader =
-    hostname === "ia.synergymarinegroup.com"
+    isSecondaryHost
       ? process.env.LIVE_IA_COOKIE ?? process.env.LIVE_ASSET_COOKIE ?? process.env.LIVE_VIR_COOKIE ?? ""
       : process.env.LIVE_VIR_COOKIE ?? process.env.LIVE_ASSET_COOKIE ?? process.env.LIVE_IA_COOKIE ?? "";
 
   const explicitToken =
-    hostname === "ia.synergymarinegroup.com"
+    isSecondaryHost
       ? process.env.LIVE_IA_TOKEN ?? process.env.LIVE_VIR_TOKEN ?? ""
       : process.env.LIVE_VIR_TOKEN ?? process.env.LIVE_IA_TOKEN ?? "";
 

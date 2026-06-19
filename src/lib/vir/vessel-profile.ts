@@ -1,4 +1,4 @@
-import liveUserVessels from "@/data/live-user-vessels.json";
+import liveUserVessels from "@/data/pmslink-vessels.json";
 
 type VesselProfileInput = {
   code: string;
@@ -84,17 +84,10 @@ export function buildVesselProfile(vessel: VesselProfileInput): VesselProfile {
   const isOilTanker = vesselType.includes("OIL") || vesselType.includes("ASPHALT") || vesselType.includes("CHEM");
   const portRegistry = normalizeWhitespace(liveRecord?.PortOfRegistery) || pick(["MAJURO", "SINGAPORE", "PANAMA", "MONROVIA", "HONG KONG"], seed, 0);
   const classNotation = normalizeWhitespace(liveRecord?.Class) || pick(["BV", "LR", "ABS", "NK", "DNV"], seed, 1);
-  const owner = pick(
-    [
-      "PMSLink Maritime Ltd",
-      "Ocean Meridian Shipping",
-      "Bluewake Tankers",
-      "Harbor Crest Marine",
-      "Aster Fleet Management",
-    ],
-    seed,
-    2
-  );
+  const owner =
+    normalizeWhitespace(liveRecord?.RegisteredOwner) ||
+    vessel.manager ||
+    pick(["PMSLink Maritime Ltd", "UML", "Atlantas", "PMSLink Fleet Services"], seed, 2);
   const builder = normalizeWhitespace(liveRecord?.ShipBuilder) || pick(
     ["Hyundai Mipo", "New Times Shipyard", "STX Offshore", "Daehan Shipbuilding", "NACKS"],
     seed,
@@ -117,7 +110,6 @@ export function buildVesselProfile(vessel: VesselProfileInput): VesselProfile {
   const nitrogenMaker = normalizeWhitespace(liveRecord?.NGManufacturer) || (isGasCarrier ? pick(["Air Liquide", "Atlas Copco", "Nikkiso"], seed, 10) : "N/A");
   const manager = (normalizeWhitespace(liveRecord?.Management) || vessel.manager || "Not recorded")
     .replace(/SMPL\s*[-–]\s*/gi, "")
-    .replace(/Synergy Maritime Private Limited/gi, "Union Maritime Limited")
     .replace(/^,\s*|,\s*$/g, "")
     .trim() || "Not recorded";
   const registeredOwner = normalizeWhitespace(liveRecord?.RegisteredOwner) || owner;

@@ -234,7 +234,7 @@ export default async function VesselListPage({
               </div>
               <div className="field">
                 <label htmlFor="ev-manager">Manager / Owner</label>
-                <input defaultValue={dialogVessel.manager ?? ""} id="ev-manager" name="manager" placeholder="e.g. Union Maritime Limited" />
+                <input defaultValue={dialogVessel.manager ?? ""} id="ev-manager" name="manager" placeholder="e.g. UML or Atlantas" />
               </div>
 
               <div className="field field-wide" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "1rem", marginTop: "0.5rem" }}>

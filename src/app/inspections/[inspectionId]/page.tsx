@@ -909,7 +909,7 @@ export default async function InspectionDetailPage({
         </div>
       ) : null}
 
-      {/* ── PANE: Checklist (Synergy split-pane table) ── */}
+      {/* ── PANE: Checklist (PMSLink split-pane table) ── */}
       {activePane === "questionnaire" ? (
         <div className="checklist-shell">
           {/* LEFT: Chapter tree */}

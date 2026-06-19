@@ -1,8 +1,9 @@
 import type { Prisma, VirInspectionStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
-import liveVirBlueprint from "@/data/live-vir-blueprint.json";
 import { prisma } from "@/lib/prisma";
 import { VIR_INSPECTION_TYPES } from "@/lib/vir/catalog";
+import demoLiveBlueprint from "@/lib/vir/demo-live-blueprint";
+import { DEMO_INSPECTOR_COMPANY, DEMO_VESSELS } from "@/lib/vir/demo-fleet";
 import { normalizeVirTemplateImport, type VirTemplateImport } from "@/lib/vir/import";
 import { syncInspectionCounters } from "@/lib/vir/workflow";
 
@@ -12,18 +13,7 @@ type DemoTemplateSeed = {
   payload: VirTemplateImport;
 };
 
-type DemoVesselSeed = {
-  code: string;
-  name: string;
-  imoNumber: string;
-  vesselType: string;
-  fleet: string;
-  flag: string;
-  manager: string;
-};
-
-
-type LiveChecklistBlueprint = typeof liveVirBlueprint;
+type LiveChecklistBlueprint = typeof demoLiveBlueprint;
 
 type SeededInspectionMetadata = {
   seeded: true;
@@ -64,21 +54,6 @@ type ConcernQuestion = {
   comments?: string | null;
   finding: boolean;
 };
-
-const ATLANTAS_VESSELS: DemoVesselSeed[] = [
-  { code: "ATLATL001", name: "Alkebulan",         imoNumber: "9769101", vesselType: "CHEM / PROD TANKER", fleet: "Atlantas MR Fleet", flag: "MARSHALL ISLANDS", manager: "Union Maritime Limited" },
-  { code: "ATLBDP001", name: "BDP Spirit",         imoNumber: "9769102", vesselType: "CHEM / PROD TANKER", fleet: "Atlantas MR Fleet", flag: "MARSHALL ISLANDS", manager: "Union Maritime Limited" },
-  { code: "ATLATL002", name: "Atlantas Horizon",   imoNumber: "9769103", vesselType: "MR TANKER",          fleet: "Atlantas MR Fleet", flag: "PANAMA",           manager: "Union Maritime Limited" },
-  { code: "ATLATL003", name: "Atlantas Pioneer",   imoNumber: "9769104", vesselType: "PRODUCT TANKER",     fleet: "Atlantas MR Fleet", flag: "LIBERIA",          manager: "Union Maritime Limited" },
-  { code: "ATLATL004", name: "Atlantas Ranger",    imoNumber: "9769105", vesselType: "CHEM / PROD TANKER", fleet: "Atlantas MR Fleet", flag: "MARSHALL ISLANDS", manager: "Union Maritime Limited" },
-  { code: "ATLATL005", name: "Atlantas Star",      imoNumber: "9769106", vesselType: "MR TANKER",          fleet: "Atlantas MR Fleet", flag: "PANAMA",           manager: "Union Maritime Limited" },
-  { code: "ATLBDP002", name: "BDP Resolve",        imoNumber: "9769107", vesselType: "CHEM / PROD TANKER", fleet: "Atlantas MR Fleet", flag: "MARSHALL ISLANDS", manager: "Union Maritime Limited" },
-  { code: "ATLBDP003", name: "BDP Endeavour",      imoNumber: "9769108", vesselType: "PRODUCT TANKER",     fleet: "Atlantas MR Fleet", flag: "LIBERIA",          manager: "Union Maritime Limited" },
-  { code: "ATLATL006", name: "Atlantas Venture",   imoNumber: "9769109", vesselType: "MR TANKER",          fleet: "Atlantas MR Fleet", flag: "MARSHALL ISLANDS", manager: "Union Maritime Limited" },
-  { code: "ATLATL007", name: "Atlantas Global",    imoNumber: "9769110", vesselType: "CHEM / PROD TANKER", fleet: "Atlantas MR Fleet", flag: "PANAMA",           manager: "Union Maritime Limited" },
-];
-
-const DEMO_VESSELS = ATLANTAS_VESSELS;
 
 const DEMO_PORTS = [
   { port: "Long Beach", country: "USA" },
@@ -423,7 +398,7 @@ const QHSE_LIBRARY_SEEDS: Array<{
   {
     code: "GFPUNN",
     name: "Grading: Good / Fair / Poor / Unsatisfactory / Not Seen / Not Applicable",
-    description: "Six-point condition grading scale used in Synergy VIR and OCIMF-aligned inspections.",
+    description: "Six-point condition grading scale used in PMSLink VIR and OCIMF-aligned inspections.",
     valueKind: "TEXT",
     sortOrder: 1,
     items: [
@@ -1123,7 +1098,7 @@ async function clearSeededDemoData(vesselIds: string[]) {
   await prisma.virInspection.updateMany({
     where: {
       vesselId: { in: vesselIds },
-      inspectorCompany: "Union Maritime Limited",
+      inspectorCompany: DEMO_INSPECTOR_COMPANY,
     },
     data: {
       previousInspectionId: null,
@@ -1134,7 +1109,7 @@ async function clearSeededDemoData(vesselIds: string[]) {
   await prisma.virInspection.deleteMany({
     where: {
       vesselId: { in: vesselIds },
-      inspectorCompany: "Union Maritime Limited",
+      inspectorCompany: DEMO_INSPECTOR_COMPANY,
     },
   });
 }
@@ -1157,7 +1132,7 @@ function buildPreviousScenario(index: number): DemoScenario {
     port: port.port,
     country: port.country,
     inspectorName,
-    inspectorCompany: "Union Maritime Limited",
+    inspectorCompany: DEMO_INSPECTOR_COMPANY,
     shoreReviewedBy: reviewer,
     shoreReviewDate: addDays(date, 2),
     closedAt: addDays(date, 5),
@@ -1183,7 +1158,7 @@ function buildCurrentScenario(index: number): DemoScenario {
     port: port.port,
     country: port.country,
     inspectorName,
-    inspectorCompany: "Union Maritime Limited",
+    inspectorCompany: DEMO_INSPECTOR_COMPANY,
     shoreReviewedBy: ["RETURNED", "SHORE_REVIEWED", "CLOSED"].includes(status) ? reviewer : null,
     shoreReviewDate: ["RETURNED", "SHORE_REVIEWED", "CLOSED"].includes(status) ? addDays(date, 2) : null,
     closedAt: status === "CLOSED" ? addDays(date, 4) : null,
@@ -1448,7 +1423,7 @@ function buildInspectionMetadata(
 ): SeededInspectionMetadata {
   const liveChecklist = buildLiveChecklistPayload(vessel, scenario, seedIndex, isPreviousInspection);
   const concernQuestions = (
-    liveChecklist.sections as Array<{
+    liveChecklist.sections as unknown as Array<{
       subsections: Array<{
         questions: ConcernQuestion[];
       }>;
@@ -1507,7 +1482,7 @@ function buildLiveChecklistPayload(
   seedIndex: number,
   isPreviousInspection: boolean
 ) {
-  const cloned = structuredClone(liveVirBlueprint) as any;
+  const cloned = structuredClone(demoLiveBlueprint) as any;
   const prefix = `${vessel.code.toLowerCase()}-${isPreviousInspection ? "history" : "current"}-${seedIndex + 1}`;
 
   cloned.id = prefix;
@@ -1549,8 +1524,8 @@ function buildLiveChecklistPayload(
 }
 
 function computeLiveChecklistSummary(blueprint: LiveChecklistBlueprint, inspectionMode: string) {
-  const allQuestions = (blueprint.sections as any[]).flatMap((section: any) =>
-    (section.subsections as any[]).flatMap((subsection: any) => subsection.questions as Array<{ tested: boolean; inspected: boolean; notSighted: boolean; notApplicable: boolean; finding: boolean; files: Array<unknown>; score: number | null; isMandatory?: boolean }>)
+  const allQuestions = (blueprint.sections as unknown as any[]).flatMap((section: any) =>
+    (section.subsections as unknown as any[]).flatMap((subsection: any) => subsection.questions as Array<{ tested: boolean; inspected: boolean; notSighted: boolean; notApplicable: boolean; finding: boolean; files: Array<unknown>; score: number | null; isMandatory?: boolean }>)
   );
   const summary = {
     tested: allQuestions.filter((question) => question.tested).length,
@@ -1562,8 +1537,8 @@ function computeLiveChecklistSummary(blueprint: LiveChecklistBlueprint, inspecti
     evidenceCount: allQuestions.reduce((sum, question) => sum + question.files.length, 0),
   };
 
-  for (const section of blueprint.sections as any[]) {
-    const sectionQuestions = (section.subsections as any[]).flatMap((subsection: any) => subsection.questions as typeof allQuestions);
+  for (const section of blueprint.sections as unknown as any[]) {
+    const sectionQuestions = (section.subsections as unknown as any[]).flatMap((subsection: any) => subsection.questions as typeof allQuestions);
     const sectionScore = averageScore(sectionQuestions);
     const sectionRating = deriveRatingBand(sectionQuestions, inspectionMode);
     section.summary = {
@@ -1583,7 +1558,7 @@ function computeLiveChecklistSummary(blueprint: LiveChecklistBlueprint, inspecti
       mandatoryQuestionsWithFindings: sectionQuestions.filter((question) => question.isMandatory && question.finding).length,
     };
 
-    for (const subsection of section.subsections as any[]) {
+    for (const subsection of section.subsections as unknown as any[]) {
       const subsectionQuestions = subsection.questions as typeof allQuestions;
       const subsectionScore = averageScore(subsectionQuestions);
       const subsectionRating = deriveRatingBand(subsectionQuestions, inspectionMode);
@@ -1654,12 +1629,21 @@ function collectLiveChecklistPhotos(blueprint: LiveChecklistBlueprint) {
   return blueprint.sections.flatMap((section) =>
     section.subsections.flatMap((subsection) =>
       subsection.questions.flatMap((question) =>
-        question.files.map((file) => ({
-          url: file.url,
-          fileName: file.url.split("/").pop() ?? `${file.id}.jpg`,
-          caption: file.caption || file.label || question.prompt,
-          contentType: inferContentType(file.url),
-        }))
+        question.files.map((file) => {
+          const source = file as {
+            id: string;
+            url: string;
+            caption?: string;
+            label?: string;
+          };
+
+          return {
+            url: source.url,
+            fileName: source.url.split("/").pop() ?? `${source.id}.jpg`,
+            caption: source.caption || source.label || question.prompt,
+            contentType: inferContentType(source.url),
+          };
+        })
       )
     )
   );

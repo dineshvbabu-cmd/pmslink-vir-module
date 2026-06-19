@@ -3,6 +3,11 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import {
+  MARINE_SUPERINTENDENT_VESSEL_CODES,
+  TECHNICAL_SUPERINTENDENT_VESSEL_CODES,
+  TSI_VESSEL_CODES,
+} from "@/lib/vir/demo-fleet";
 import { createSessionToken, VIR_SESSION_COOKIE, type VirSession } from "@/lib/vir/session";
 import { toStringOrNull } from "@/lib/vir/workflow";
 
@@ -27,7 +32,7 @@ const OFFICE_USERS: OfficeUser[] = [
     password: "PMSLink@2026",
     actorName: "Gopikrishna Alamanda",
     actorRole: "Marine Superintendent",
-    dashboardVesselCodes: ["ATLATL005", "ATLBDP002", "ATLBDP003", "ATLATL006", "ATLATL007"],
+    dashboardVesselCodes: MARINE_SUPERINTENDENT_VESSEL_CODES,
     dashboardScopeLabel: "Marine — assigned vessels",
   },
   {
@@ -35,7 +40,7 @@ const OFFICE_USERS: OfficeUser[] = [
     password: "PMSLink@2026",
     actorName: "Pankaj Kumar",
     actorRole: "Technical Superintendent",
-    dashboardVesselCodes: ["ATLATL001", "ATLBDP001", "ATLATL002", "ATLATL003", "ATLATL004"],
+    dashboardVesselCodes: TECHNICAL_SUPERINTENDENT_VESSEL_CODES,
     dashboardScopeLabel: "Technical — assigned vessels",
   },
   {
@@ -43,7 +48,7 @@ const OFFICE_USERS: OfficeUser[] = [
     password: "PMSLink@2026",
     actorName: "Capt. Mukhtar Singh",
     actorRole: "TSI Superintendent",
-    dashboardVesselCodes: ["ATLATL001", "ATLBDP001", "ATLATL002", "ATLATL003", "ATLATL004", "ATLATL005", "ATLBDP002", "ATLBDP003", "ATLATL006", "ATLATL007"],
+    dashboardVesselCodes: TSI_VESSEL_CODES,
     dashboardScopeLabel: "TSI — all assigned vessels",
   },
 ];

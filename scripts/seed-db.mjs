@@ -29,7 +29,7 @@ const QHSE_LIBRARIES = [
   {
     code: "GFPUNN",
     name: "Grading: Good / Fair / Poor / Unsatisfactory / Not Seen / Not Applicable",
-    description: "Six-point condition grading scale used in Synergy VIR and OCIMF-aligned inspections.",
+    description: "Six-point condition grading scale used in PMSLink VIR and OCIMF-aligned inspections.",
     valueKind: "TEXT",
     sortOrder: 1,
     items: [
