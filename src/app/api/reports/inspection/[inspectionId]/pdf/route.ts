@@ -169,7 +169,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ins
   const embeddedPhotos = await fetchPhotosForPdf(effectivePhotos, 40);
 
   const pdf = buildBrandedPdfDocument({
-    brand: "Atlantas Marine / PMSLink VIR",
+    brand: "ASM / UML / PMSLink VIR",
     title: `${variantLabel(variant)} - ${inspection.title}`,
     subtitleLines: [
       `${inspection.vessel.name} / ${inspection.inspectionType.name}`,

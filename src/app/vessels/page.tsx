@@ -226,7 +226,7 @@ export default async function VesselListPage({
               </div>
               <div className="field">
                 <label htmlFor="ev-fleet">Fleet</label>
-                <input defaultValue={dialogVessel.fleet ?? ""} id="ev-fleet" name="fleet" placeholder="e.g. Atlantic Fleet" />
+                <input defaultValue={dialogVessel.fleet ?? ""} id="ev-fleet" name="fleet" placeholder="e.g. ASM or UML" />
               </div>
               <div className="field">
                 <label htmlFor="ev-flag">Flag state</label>
@@ -234,7 +234,7 @@ export default async function VesselListPage({
               </div>
               <div className="field">
                 <label htmlFor="ev-manager">Manager / Owner</label>
-                <input defaultValue={dialogVessel.manager ?? ""} id="ev-manager" name="manager" placeholder="e.g. UML or Atlantas" />
+                <input defaultValue={dialogVessel.manager ?? ""} id="ev-manager" name="manager" placeholder="e.g. ASM or UML" />
               </div>
 
               <div className="field field-wide" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "1rem", marginTop: "0.5rem" }}>

@@ -56,7 +56,7 @@ export async function GET() {
   ]);
 
   const pdf = buildBrandedPdfDocument({
-    brand: "Atlantas Marine / PMSLink QHSE",
+    brand: "ASM / UML / PMSLink QHSE",
     title: "Management Review Pack",
     subtitleLines: [
       `Generated ${new Date().toISOString().slice(0, 10)}`,

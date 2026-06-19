@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
   const latestInspections = inspections.slice(0, 18);
 
   const pdf = buildBrandedPdfDocument({
-    brand: "Atlantas Marine / PMSLink VIR",
+    brand: "ASM / UML / PMSLink VIR",
     title: kind === "dashboard" ? "VIR Dashboard Export" : "VIR Analytics Export",
     subtitleLines: [
       `Generated ${fmt.format(now)}`,

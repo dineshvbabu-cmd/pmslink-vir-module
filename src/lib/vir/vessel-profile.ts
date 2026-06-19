@@ -84,10 +84,7 @@ export function buildVesselProfile(vessel: VesselProfileInput): VesselProfile {
   const isOilTanker = vesselType.includes("OIL") || vesselType.includes("ASPHALT") || vesselType.includes("CHEM");
   const portRegistry = normalizeWhitespace(liveRecord?.PortOfRegistery) || pick(["MAJURO", "SINGAPORE", "PANAMA", "MONROVIA", "HONG KONG"], seed, 0);
   const classNotation = normalizeWhitespace(liveRecord?.Class) || pick(["BV", "LR", "ABS", "NK", "DNV"], seed, 1);
-  const owner =
-    normalizeWhitespace(liveRecord?.RegisteredOwner) ||
-    vessel.manager ||
-    pick(["PMSLink Maritime Ltd", "UML", "Atlantas", "PMSLink Fleet Services"], seed, 2);
+  const owner = normalizeWhitespace(liveRecord?.RegisteredOwner) || vessel.manager || pick(["ASM", "UML"], seed, 2);
   const builder = normalizeWhitespace(liveRecord?.ShipBuilder) || pick(
     ["Hyundai Mipo", "New Times Shipyard", "STX Offshore", "Daehan Shipbuilding", "NACKS"],
     seed,

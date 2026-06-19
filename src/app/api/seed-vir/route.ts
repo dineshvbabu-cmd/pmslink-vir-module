@@ -100,9 +100,10 @@ const LEGACY_DEMO_VESSEL_CODES = [
   "ATLATL007",
 ] as const;
 
-const LEGACY_DEMO_FLEETS = ["Atlantas MR Fleet"] as const;
-const LEGACY_DEMO_MANAGERS = ["Union Maritime Limited"] as const;
-const LEGACY_DEMO_INSPECTOR_COMPANIES = ["Union Maritime Limited"] as const;
+const LEGACY_DEMO_FLEETS = ["Atlantas MR Fleet", "Atlantas Fleet"] as const;
+const LEGACY_DEMO_MANAGERS = ["Union Maritime Limited", "Atlantas"] as const;
+const LEGACY_DEMO_INSPECTOR_COMPANIES = ["Union Maritime Limited", "Atlantas"] as const;
+const ALLOWED_DEMO_VESSEL_CODES = DEMO_VESSELS.map((vessel) => vessel.code);
 
 const TEMPLATE_SEEDS: DemoTemplateSeed[] = [
   {
@@ -590,6 +591,8 @@ async function runSeed(request: Request) {
 
   await clearSeededDemoData(vessels.map((vessel) => vessel.id));
   results.push("Cleared previously seeded VIR inspections so the demo dataset can be rebuilt cleanly.");
+  await enforceDemoFleetScope();
+  results.push("Archived non-demo inspection records and kept only the approved ASM / UML vessel register active.");
 
   const inspectionTypeRecords = await prisma.virInspectionType.findMany({
     where: {
@@ -747,6 +750,37 @@ async function archiveLegacyDemoData() {
       sourceFileName: {
         in: ["PSC_Sample_Imported_Checklist.pdf", "PSC_Self_Assessment_Starter.json"],
       },
+    },
+  });
+}
+
+async function enforceDemoFleetScope() {
+  await prisma.virInspection.updateMany({
+    where: {
+      vessel: {
+        is: {
+          code: {
+            notIn: ALLOWED_DEMO_VESSEL_CODES,
+          },
+        },
+      },
+    },
+    data: {
+      status: "ARCHIVED",
+      previousInspectionId: null,
+      importSessionId: null,
+    },
+  });
+
+  await prisma.vessel.updateMany({
+    where: {
+      code: {
+        notIn: ALLOWED_DEMO_VESSEL_CODES,
+      },
+    },
+    data: {
+      isActive: false,
+      imoNumber: null,
     },
   });
 }
@@ -1135,7 +1169,6 @@ async function clearSeededDemoData(vesselIds: string[]) {
   await prisma.virInspection.updateMany({
     where: {
       vesselId: { in: vesselIds },
-      inspectorCompany: DEMO_INSPECTOR_COMPANY,
     },
     data: {
       previousInspectionId: null,
@@ -1146,7 +1179,6 @@ async function clearSeededDemoData(vesselIds: string[]) {
   await prisma.virInspection.deleteMany({
     where: {
       vesselId: { in: vesselIds },
-      inspectorCompany: DEMO_INSPECTOR_COMPANY,
     },
   });
 }

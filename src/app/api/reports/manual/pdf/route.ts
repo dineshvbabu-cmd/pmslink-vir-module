@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
   const manual = manuals[kind];
 
   const pdf = buildBrandedPdfDocument({
-    brand: "Atlantas Marine / PMSLink VIR",
+    brand: "ASM / UML / PMSLink VIR",
     title: manual.title,
     subtitleLines: [manual.subtitle, "Prepared for demo workflow guidance and onboard / shore user support."],
     sections: manual.sections.map((section) => ({

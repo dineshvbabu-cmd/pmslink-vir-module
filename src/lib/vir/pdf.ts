@@ -223,7 +223,7 @@ function finalizePdfBinary(objects: PdfRawObject[]): Buffer {
 
 export function buildBrandedPdfDocument({
   title,
-  brand = "Atlantas Marine / PMSLink QHSE",
+  brand = "ASM / UML / PMSLink QHSE",
   subtitleLines = [],
   sections,
 }: PdfDocumentDefinition): Uint8Array<ArrayBuffer> {
