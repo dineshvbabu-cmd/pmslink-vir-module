@@ -1,11 +1,13 @@
 /**
  * Startup seed script — runs after prisma migrate deploy on every startup.
- * Seeds the minimum required reference data (inspection types + QHSE libraries).
+ * Seeds the minimum required reference data (inspection types + QHSE libraries),
+ * then invokes the compiled VIR demo seed route so vessel/fleet data is refreshed too.
  * All operations are upserts so running this multiple times is safe.
- *
- * Full demo data (vessels, inspections, findings) is seeded via /api/seed-vir?secret=...
  */
 
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -159,6 +161,59 @@ async function main() {
   } catch (err) {
     console.error("[seed] Template seed failed:", err.message);
   }
+
+  try {
+    await seedFullDemoData();
+  } catch (err) {
+    console.error("[seed] Full VIR demo seed failed:", err.message);
+  }
 }
 
 main();
+
+async function seedFullDemoData() {
+  const seedSecret = process.env.SEED_SECRET;
+
+  if (!seedSecret) {
+    console.log("[seed] Skipping full VIR demo seed because SEED_SECRET is not configured.");
+    return;
+  }
+
+  const compiledRoutePath = path.resolve(process.cwd(), ".next", "server", "app", "api", "seed-vir", "route.js");
+
+  if (!existsSync(compiledRoutePath)) {
+    console.log(`[seed] Skipping full VIR demo seed because compiled route was not found at ${compiledRoutePath}.`);
+    return;
+  }
+
+  const importedRoute = await import(pathToFileURL(compiledRoutePath).href);
+  const routeModule =
+    importedRoute.routeModule?.userland ??
+    importedRoute.default?.routeModule?.userland ??
+    importedRoute["module.exports"]?.routeModule?.userland ??
+    importedRoute;
+  const handler = routeModule.POST ?? routeModule.GET;
+
+  if (typeof handler !== "function") {
+    throw new Error("Compiled seed route does not export a GET or POST handler.");
+  }
+
+  const request = new Request(`http://127.0.0.1/api/seed-vir?secret=${encodeURIComponent(seedSecret)}`, {
+    method: "POST",
+  });
+  const response = await handler(request);
+  const payload = await response.json();
+
+  if (!response.ok || !payload?.ok) {
+    throw new Error(payload?.error ?? `Seed route returned HTTP ${response.status}.`);
+  }
+
+  for (const line of payload.results ?? []) {
+    console.log(`[seed] ${line}`);
+  }
+
+  const summary = payload.summary ?? {};
+  console.log(
+    `[seed] Full VIR demo dataset ready (${summary.vessels ?? 0} vessels, ${summary.inspections ?? 0} inspections, ${summary.templates ?? 0} templates).`
+  );
+}

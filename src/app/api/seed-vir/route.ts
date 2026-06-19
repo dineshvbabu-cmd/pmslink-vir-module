@@ -84,6 +84,26 @@ const DEMO_REVIEWERS = [
   "Michael Torres",
 ];
 
+const LEGACY_DEMO_VESSEL_CODES = [
+  "UM-DMO-001",
+  "UM-DMO-002",
+  "UM-DMO-003",
+  "ATLATL001",
+  "ATLBDP001",
+  "ATLATL002",
+  "ATLATL003",
+  "ATLATL004",
+  "ATLATL005",
+  "ATLBDP002",
+  "ATLBDP003",
+  "ATLATL006",
+  "ATLATL007",
+] as const;
+
+const LEGACY_DEMO_FLEETS = ["Atlantas MR Fleet"] as const;
+const LEGACY_DEMO_MANAGERS = ["Union Maritime Limited"] as const;
+const LEGACY_DEMO_INSPECTOR_COMPANIES = ["Union Maritime Limited"] as const;
+
 const TEMPLATE_SEEDS: DemoTemplateSeed[] = [
   {
     key: "SAILING_VIR",
@@ -547,7 +567,7 @@ async function runSeed(request: Request) {
   }
 
   await archiveLegacyDemoData();
-  results.push(`Seeded ${VIR_INSPECTION_TYPES.length} inspection types and archived the old PSC starter demo records.`);
+  results.push(`Seeded ${VIR_INSPECTION_TYPES.length} inspection types and archived legacy starter and pre-PMSLink demo records.`);
 
   const libraryCount = await seedQhseLibraries();
   results.push(`Seeded ${libraryCount} QHSE library types (GFPUNN, YNN, YN, CNN, QTY, DT) with standard answer options for questionnaire bindings.`);
@@ -689,14 +709,31 @@ async function archiveLegacyDemoData() {
         { externalReference: { in: ["PSC-SIN-2026-0042", "PSC-FJR-2026-0018"] } },
         { title: { contains: "PSC Self Assessment" } },
         { title: { contains: "PSC Readiness Review" } },
+        { inspectorCompany: { in: [...LEGACY_DEMO_INSPECTOR_COMPANIES] } },
+        { vessel: { is: { code: { in: [...LEGACY_DEMO_VESSEL_CODES] } } } },
+        { vessel: { is: { fleet: { in: [...LEGACY_DEMO_FLEETS] } } } },
+        { vessel: { is: { manager: { in: [...LEGACY_DEMO_MANAGERS] } } } },
       ],
     },
-    data: { status: "ARCHIVED" },
+    data: {
+      status: "ARCHIVED",
+      previousInspectionId: null,
+      importSessionId: null,
+    },
   });
 
   await prisma.vessel.updateMany({
-    where: { code: { in: ["UM-DMO-001", "UM-DMO-002", "UM-DMO-003"] } },
-    data: { isActive: false },
+    where: {
+      OR: [
+        { code: { in: [...LEGACY_DEMO_VESSEL_CODES] } },
+        { fleet: { in: [...LEGACY_DEMO_FLEETS] } },
+        { manager: { in: [...LEGACY_DEMO_MANAGERS] } },
+      ],
+    },
+    data: {
+      isActive: false,
+      imoNumber: null,
+    },
   });
 
   await prisma.virTemplate.updateMany({
